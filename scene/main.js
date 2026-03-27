@@ -23,7 +23,7 @@ const camera = { x: 0, y: 0 };
 
 const palette = {
   roomFloor: "#705970",
-  hallFloor: "#8a7188",
+  hallFloor: "#a67ba6",
   wallFront: "#593b56",
   wallSide: "#4a3047",
   wallTop: "#866783",
@@ -142,15 +142,15 @@ const props = [
 ];
 
 const ROOM_KIND_LABELS = {
-  registration: "Registration",
-  consultation: "Consultation",
-  triage: "Triage",
-  pharmacy: "Pharmacy",
-  ward: "Ward",
-  lab: "Lab",
+  registration: "挂号处",
+  consultation: "诊室",
+  triage: "分诊区",
+  pharmacy: "药房",
+  ward: "病房",
+  lab: "实验室",
   icu: "ICU",
-  office: "Office",
-  hall: "Lobby",
+  office: "办公室",
+  hall: "大厅",
 };
 
 function roomBounds(room) {
@@ -172,24 +172,267 @@ const triggerZones = rooms.map((room, index) => {
 
 const zoneState = {
   currentZoneId: null,
-  currentZoneLabel: "Outside",
+  currentZoneLabel: "室外",
   currentFloor: player.floor,
   enteredAtMs: 0,
   staySeconds: 0,
-  lastEventText: "No trigger yet",
+  lastEventText: "暂无触发",
   lastEventAtMs: 0,
 };
 
 const taskBoard = {
-  title: "Hospital Tasks",
+  title: "医院任务",
   tasks: [
-    { text: "Check in at Registration", done: true },
-    { text: "Visit Consultation Room", done: false },
-    { text: "Go to Pharmacy and collect meds", done: false },
-    { text: "Take lab sample to 2F Lab", done: false },
-    { text: "Report status to Nurse Station", done: false },
+    { text: "到挂号处登记", done: true },
+    { text: "前往诊室就诊", done: false },
+    { text: "到药房取药", done: false },
+    { text: "将样本送至二层实验室", done: false },
+    { text: "向护士站汇报状态", done: false },
   ],
 };
+
+function deriveTriageInteractPoint() {
+  const triageRoom = rooms.find((room) => room.floor === 1 && room.kind === "triage");
+  if (!triageRoom) {
+    return { x: 10.6 * TILE, y: 17.4 * TILE, floor: 1, radius: 56 };
+  }
+
+  const triageRect = roomBounds(triageRoom);
+  const roomCenterX = triageRect.x + triageRect.w * 0.5;
+  const roomCenterY = triageRect.y + triageRect.h * 0.5;
+
+  const desk = props
+    .filter((prop) => prop.floor === triageRoom.floor && prop.type === "reception")
+    .find((prop) => {
+      const x = prop.x * TILE;
+      const y = prop.y * TILE;
+      const w = prop.w * TILE;
+      const h = prop.h * TILE;
+      return x >= triageRect.x && x + w <= triageRect.x + triageRect.w && y >= triageRect.y && y + h <= triageRect.y + triageRect.h;
+    });
+
+  const interactX = desk ? (desk.x + desk.w * 0.5) * TILE : roomCenterX;
+  const interactY = desk ? (desk.y + desk.h * 0.5 + 0.6) * TILE : roomCenterY;
+  const radius = Math.min(92, Math.max(52, Math.round(Math.min(triageRect.w, triageRect.h) * 0.16)));
+
+  return {
+    x: interactX,
+    y: interactY,
+    floor: triageRoom.floor,
+    radius,
+  };
+}
+
+const triageInteractPoint = deriveTriageInteractPoint();
+const privateApiConfig = window.HOS_PRIVATE_API || {};
+const backendState = {
+  baseUrl: privateApiConfig.baseUrl || "http://127.0.0.1:8787",
+  apiKey: privateApiConfig.apiKey || "mock-key-001",
+  connected: false,
+  lastPollAt: 0,
+  polling: false,
+  submitting: false,
+  lastError: "",
+};
+
+const triageUi = {
+  open: false,
+  modal: document.getElementById("triageModal"),
+  form: document.getElementById("triageForm"),
+  cancelBtn: document.getElementById("triageCancelBtn"),
+  fields: {
+    symptoms: document.getElementById("symptoms"),
+    temp: document.getElementById("temp_c"),
+    heartRate: document.getElementById("heart_rate"),
+    systolic: document.getElementById("systolic_bp"),
+    diastolic: document.getElementById("diastolic_bp"),
+    pain: document.getElementById("pain_score"),
+  },
+  painDisplay: document.getElementById("painDisplay"),
+};
+const triageDialogueUi = {
+  open: false,
+  awaitingResult: false,
+  modal: document.getElementById("triageDialogueModal"),
+  status: document.getElementById("triageDialogueStatus"),
+  messages: document.getElementById("triageDialogueMessages"),
+  levelBadge: document.getElementById("triageLevelBadge"),
+  deptBadge: document.getElementById("triageDeptBadge"),
+  evidenceList: document.getElementById("triageEvidenceList"),
+  closeBtn: document.getElementById("triageDialogueCloseBtn"),
+  lastRenderedAt: "",
+};
+
+function mapPatientStateToTask(patient) {
+  const activeStates = new Set(["正在分诊", "等待问诊", "问诊中", "待复诊"]);
+  return {
+    text: `${patient.name} | ${patient.state} | ${patient.location ?? "-"}`,
+    done: !activeStates.has(patient.state),
+  };
+}
+
+async function pollBackendStatuses(force = false) {
+  const now = performance.now();
+  if (!force && now - backendState.lastPollAt < 2200) return;
+  if (backendState.polling) return;
+
+  backendState.polling = true;
+  backendState.lastPollAt = now;
+  try {
+    const response = await fetch(`${backendState.baseUrl}/api/statuses`, {
+      headers: { "X-API-Key": backendState.apiKey },
+    });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    const data = await response.json();
+    const patients = Array.isArray(data.patients) ? data.patients.slice(0, 6) : [];
+
+    taskBoard.title = "实时病人状态";
+    taskBoard.tasks = patients.map(mapPatientStateToTask);
+    if (taskBoard.tasks.length === 0) {
+      taskBoard.tasks = [{ text: "暂无病人状态", done: false }];
+    }
+    backendState.connected = true;
+    backendState.lastError = "";
+  } catch (error) {
+    backendState.connected = false;
+    backendState.lastError = error?.message || "backend offline";
+    taskBoard.title = "实时病人状态（离线）";
+    taskBoard.tasks = [{ text: "后端未连接，显示本地占位状态", done: false }];
+  } finally {
+    backendState.polling = false;
+  }
+}
+
+function canInteractWithTriageDesk() {
+  if (player.floor !== triageInteractPoint.floor) return false;
+  return Math.hypot(player.x - triageInteractPoint.x, player.y - triageInteractPoint.y) <= triageInteractPoint.radius;
+}
+
+function openTriageModal() {
+  if (!triageUi.modal || triageUi.open) return;
+  triageUi.open = true;
+  triageUi.modal.classList.remove("hidden");
+  triageUi.modal.setAttribute("aria-hidden", "false");
+  keys.clear();
+  if (triageUi.fields.symptoms) {
+    triageUi.fields.symptoms.focus();
+    triageUi.fields.symptoms.selectionStart = triageUi.fields.symptoms.value.length;
+    triageUi.fields.symptoms.selectionEnd = triageUi.fields.symptoms.value.length;
+  }
+}
+
+function closeTriageModal() {
+  if (!triageUi.modal) return;
+  triageUi.open = false;
+  triageUi.modal.classList.add("hidden");
+  triageUi.modal.setAttribute("aria-hidden", "true");
+  keys.clear();
+}
+
+function setDialogueBadge(level, department, priority) {
+  if (!triageDialogueUi.levelBadge || !triageDialogueUi.deptBadge) return;
+  triageDialogueUi.levelBadge.className = "triage-badge";
+  if (priority === "H") triageDialogueUi.levelBadge.classList.add("triage-badge--high");
+  else if (priority === "M") triageDialogueUi.levelBadge.classList.add("triage-badge--medium");
+  else if (priority === "L") triageDialogueUi.levelBadge.classList.add("triage-badge--low");
+  else triageDialogueUi.levelBadge.classList.add("triage-badge--muted");
+
+  triageDialogueUi.levelBadge.textContent = level ? `分诊等级 ${level}` : "分级待定";
+  triageDialogueUi.deptBadge.textContent = department ? `建议科室 ${department}` : "科室待定";
+}
+
+function renderDialogueMessages(messages) {
+  if (!triageDialogueUi.messages) return;
+  triageDialogueUi.messages.innerHTML = messages
+    .map(
+      (message) => `
+        <article class="triage-message triage-message--${message.role}">
+          <span class="triage-message__label">${message.label}</span>
+          <div class="triage-message__body">${message.body}</div>
+        </article>
+      `
+    )
+    .join("");
+  triageDialogueUi.messages.scrollTop = triageDialogueUi.messages.scrollHeight;
+}
+
+function renderDialogueEvidence(evidence) {
+  if (!triageDialogueUi.evidenceList) return;
+  if (!Array.isArray(evidence) || evidence.length === 0) {
+    triageDialogueUi.evidenceList.innerHTML = "";
+    return;
+  }
+  triageDialogueUi.evidenceList.innerHTML = evidence
+    .map((item) => `<span class="triage-evidence-chip">${item.title || item.id || "命中规则"}</span>`)
+    .join("");
+}
+
+function openTriageDialogueLegacy(initialPayload) {
+  return initialPayload;
+}
+
+function closeTriageDialogue() {
+  if (!triageDialogueUi.modal) return;
+  triageDialogueUi.open = false;
+  triageDialogueUi.awaitingResult = false;
+  triageDialogueUi.modal.classList.add("hidden");
+  triageDialogueUi.modal.setAttribute("aria-hidden", "true");
+  keys.clear();
+}
+
+function syncTriageDialogueLegacy(patient) {
+  return patient;
+}
+
+function buildTriagePayloadFromForm() {
+  const symptoms = triageUi.fields.symptoms?.value?.trim() || "未填写";
+  const temp = Number.parseFloat(triageUi.fields.temp?.value ?? "37.8");
+  const heartRate = Number.parseInt(triageUi.fields.heartRate?.value ?? "105", 10);
+  const systolic = Number.parseInt(triageUi.fields.systolic?.value ?? "132", 10);
+  const diastolic = Number.parseInt(triageUi.fields.diastolic?.value ?? "86", 10);
+  const pain = Number.parseInt(triageUi.fields.pain?.value ?? "5", 10);
+
+  return {
+    patient_id: "P-self",
+    name: "你(玩家)",
+    symptoms,
+    vitals: {
+      temp_c: Number.isFinite(temp) ? temp : 37.8,
+      heart_rate: Number.isFinite(heartRate) ? heartRate : 105,
+      systolic_bp: Number.isFinite(systolic) ? systolic : 132,
+      diastolic_bp: Number.isFinite(diastolic) ? diastolic : 86,
+      pain_score: Number.isFinite(pain) ? Math.max(0, Math.min(10, pain)) : 5,
+    },
+    location: zoneState.currentZoneLabel,
+    floor: player.floor,
+  };
+}
+
+async function submitTriageFromModal() {
+  if (backendState.submitting || !canInteractWithTriageDesk()) return;
+  backendState.submitting = true;
+  try {
+    const payload = buildTriagePayloadFromForm();
+    const response = await fetch(`${backendState.baseUrl}/api/triage/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": backendState.apiKey },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    closeTriageModal();
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.connected = false;
+    backendState.lastError = error?.message || "triage submit failed";
+  } finally {
+    backendState.submitting = false;
+  }
+}
+
+function submitTriageRequest() {
+  if (backendState.submitting || triageUi.open || !canInteractWithTriageDesk()) return;
+  openTriageModal();
+}
 
 function pointInZone(x, y, zone) {
   return x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h;
@@ -216,7 +459,7 @@ function recordZoneEvent(text, nowMs) {
 function updateZoneTriggers(nowMs) {
   const zone = findCurrentZone(player.x, player.y, player.floor);
   const nextZoneId = zone ? zone.id : null;
-  const nextZoneLabel = zone ? zone.label : "Outside";
+  const nextZoneLabel = zone ? zone.label : "室外";
 
   if (player.floor !== zoneState.currentFloor) {
     zoneState.currentFloor = player.floor;
@@ -225,23 +468,23 @@ function updateZoneTriggers(nowMs) {
     zoneState.enteredAtMs = nowMs;
     zoneState.staySeconds = 0;
     if (nextZoneId !== null) {
-      recordZoneEvent(`Enter ${nextZoneLabel}`, nowMs);
+      recordZoneEvent(`进入 ${nextZoneLabel}`, nowMs);
     } else {
-      recordZoneEvent("Moved to Outside", nowMs);
+      recordZoneEvent("移动到室外", nowMs);
     }
     return;
   }
 
   if (nextZoneId !== zoneState.currentZoneId) {
     if (zoneState.currentZoneId !== null) {
-      recordZoneEvent(`Exit ${zoneState.currentZoneLabel}`, nowMs);
+      recordZoneEvent(`离开 ${zoneState.currentZoneLabel}`, nowMs);
     }
     if (nextZoneId !== null) {
-      recordZoneEvent(`Enter ${nextZoneLabel}`, nowMs);
+      recordZoneEvent(`进入 ${nextZoneLabel}`, nowMs);
       zoneState.enteredAtMs = nowMs;
     } else {
       zoneState.enteredAtMs = 0;
-      recordZoneEvent("Moved to Outside", nowMs);
+      recordZoneEvent("移动到室外", nowMs);
     }
     zoneState.currentZoneId = nextZoneId;
     zoneState.currentZoneLabel = nextZoneLabel;
@@ -606,15 +849,15 @@ function characterDepth(x, y) {
 
 function drawLabels() {
   const labels = {
-    registration: "Registration",
-    consultation: "Consultation",
-    triage: "Triage",
-    pharmacy: "Pharmacy",
-    ward: "Ward",
-    lab: "Lab",
+    registration: "挂号处",
+    consultation: "诊室",
+    triage: "分诊区",
+    pharmacy: "药房",
+    ward: "病房",
+    lab: "实验室",
     icu: "ICU",
-    office: "Office",
-    hall: "Lobby",
+    office: "办公室",
+    hall: "大厅",
   };
 
   ctx.fillStyle = palette.label;
@@ -639,7 +882,7 @@ function drawMinimap() {
 
   for (const room of rooms.filter((item) => item.floor === activeFloor)) {
     const rect = roomBounds(room);
-    ctx.fillStyle = room.kind === "hall" ? "#8a7188" : "#705970";
+    ctx.fillStyle = room.kind === "hall" ? "#a67ba6" : "#705970";
     ctx.fillRect(left + rect.x * scale, top + rect.y * scale, rect.w * scale, rect.h * scale);
   }
 
@@ -673,6 +916,30 @@ function drawHudHint(door) {
   ctx.fillText(label, point.x, point.y + 4);
 }
 
+function drawTriageHint() {
+  if (!canInteractWithTriageDesk()) return;
+  const point = project(triageInteractPoint.x, triageInteractPoint.y, 48, triageInteractPoint.floor);
+  const label = backendState.submitting ? "正在提交分诊..." : triageUi.open ? "填写分诊信息..." : "按 E 开始分诊";
+  const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
+  const boxWidth = 176;
+  const boxHeight = 28;
+  const boxLeft = point.x - boxWidth / 2;
+  const boxTop = point.y - boxHeight / 2;
+
+  ctx.fillStyle = "rgba(8, 20, 28, 0.94)";
+  ctx.fillRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.strokeStyle = backendState.submitting
+    ? `rgba(255, 198, 124, ${Math.min(0.95, pulse + 0.2)})`
+    : `rgba(112, 234, 255, ${Math.min(0.95, pulse + 0.22)})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+
+  ctx.fillStyle = backendState.submitting ? "#ffe4bd" : "#ecfbff";
+  ctx.font = "600 13px 'Segoe UI'";
+  ctx.textAlign = "center";
+  ctx.fillText(label, point.x, point.y + 5);
+}
+
 function drawTaskBoard() {
   const panelWidth = 430;
   const rowHeight = 20;
@@ -687,8 +954,11 @@ function drawTaskBoard() {
 
   ctx.textAlign = "left";
   ctx.font = "14px 'Segoe UI'";
-  ctx.fillStyle = "#fff4d9";
+  ctx.fillStyle = backendState.connected ? "#fff4d9" : "#ffd3d3";
   ctx.fillText(taskBoard.title, panelX + 12, panelY + 22);
+  ctx.font = "11px 'Segoe UI'";
+  ctx.fillStyle = backendState.connected ? "#8ef0be" : "#ff9f9f";
+  ctx.fillText(backendState.connected ? "API online" : `API offline (${backendState.lastError})`, panelX + panelWidth - 165, panelY + 22);
 
   ctx.font = "13px 'Segoe UI'";
   for (let index = 0; index < taskBoard.tasks.length; index += 1) {
@@ -702,7 +972,7 @@ function drawTaskBoard() {
 
 function drawZoneStatusPanel() {
   const panelWidth = 360;
-  const panelHeight = 116;
+  const panelHeight = 136;
   const panelX = 18;
   const panelY = canvas.height - panelHeight - 18;
   const nowMs = performance.now();
@@ -722,9 +992,11 @@ function drawZoneStatusPanel() {
   ctx.fillText(`Pos: (${Math.round(player.x)}, ${Math.round(player.y)})`, panelX + 12, panelY + 46);
   ctx.fillText(`Zone: ${zoneState.currentZoneLabel} (F${player.floor})`, panelX + 12, panelY + 68);
   ctx.fillText(`Stay: ${zoneState.currentZoneId ? zoneState.staySeconds.toFixed(1) : "0.0"}s`, panelX + 12, panelY + 90);
+  ctx.fillStyle = canInteractWithTriageDesk() ? "#8ef0be" : "#f2ebff";
+  ctx.fillText(`Triage: ${canInteractWithTriageDesk() ? "可交互" : "不可交互"}`, panelX + 12, panelY + 112);
 
   ctx.fillStyle = recentEventAge <= 1200 ? "#82ffd1" : "#cfc6db";
-  ctx.fillText(`Last: ${zoneState.lastEventText}`, panelX + 12, panelY + 108);
+  ctx.fillText(`Last: ${zoneState.lastEventText}`, panelX + 12, panelY + 130);
 }
 
 function drawFloorLayer(floor, activeDoor, dimmed) {
@@ -784,6 +1056,7 @@ function tryStairTransfer(nowMs) {
 }
 
 function update(delta, nowMs) {
+  pollBackendStatuses(false);
   updateDoors();
   let moveX = 0;
   let moveY = 0;
@@ -817,9 +1090,136 @@ function render() {
   drawFloorLayer(activeFloor, activeDoor, false);
   drawLabels();
   drawHudHint(activeDoor);
+  drawTriageHint();
   drawTaskBoard();
   drawMinimap();
   drawZoneStatusPanel();
+}
+
+function mapPatientStateToTask(patient) {
+  const activeStates = new Set(["正在分诊", "等待问诊", "问诊中", "待复诊"]);
+  const triageText = patient.triage?.level ? ` | L${patient.triage.level}` : "";
+  return {
+    text: `${patient.name} | ${patient.state} | ${patient.location ?? "-"}${triageText}`,
+    done: !activeStates.has(patient.state),
+  };
+}
+
+async function pollBackendStatuses(force = false) {
+  const now = performance.now();
+  if (!force && now - backendState.lastPollAt < 2200) return;
+  if (backendState.polling) return;
+
+  backendState.polling = true;
+  backendState.lastPollAt = now;
+  try {
+    const response = await fetch(`${backendState.baseUrl}/api/statuses`, {
+      headers: { "X-API-Key": backendState.apiKey },
+    });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    const data = await response.json();
+    const patients = Array.isArray(data.patients) ? data.patients.slice(0, 6) : [];
+    const selfPatient = patients.find((patient) => patient.id === "P-self");
+
+    taskBoard.title = "实时病人状态";
+    taskBoard.tasks = patients.map(mapPatientStateToTask);
+    if (taskBoard.tasks.length === 0) {
+      taskBoard.tasks = [{ text: "暂无病人状态", done: false }];
+    }
+    backendState.connected = true;
+    backendState.lastError = "";
+    syncTriageDialogue(selfPatient);
+  } catch (error) {
+    backendState.connected = false;
+    backendState.lastError = error?.message || "backend offline";
+    taskBoard.title = "实时病人状态（离线）";
+    taskBoard.tasks = [{ text: "后端未连接，显示本地占位状态", done: false }];
+  } finally {
+    backendState.polling = false;
+  }
+}
+
+function openTriageDialogue(initialPayload) {
+  if (!triageDialogueUi.modal) return;
+  triageDialogueUi.open = true;
+  triageDialogueUi.awaitingResult = true;
+  triageDialogueUi.lastRenderedAt = "";
+  triageDialogueUi.modal.classList.remove("hidden");
+  triageDialogueUi.modal.setAttribute("aria-hidden", "false");
+  if (triageDialogueUi.status) {
+    triageDialogueUi.status.textContent = "Triage card submitted. The triage agent is reviewing the case now.";
+  }
+  setDialogueBadge("", "", "");
+  renderDialogueEvidence([]);
+  renderDialogueMessages([
+    {
+      role: "user",
+      label: "Patient",
+      body: `Symptoms: ${initialPayload.symptoms}\nTemp: ${initialPayload.vitals.temp_c} C\nHeart rate: ${initialPayload.vitals.heart_rate} bpm\nPain: ${initialPayload.vitals.pain_score}/10`,
+    },
+    {
+      role: "assistant",
+      label: "Triage Agent",
+      body: "I have received the triage card and I am generating a recommendation based on the symptoms and rules.",
+    },
+  ]);
+  keys.clear();
+}
+
+function syncTriageDialogue(patient) {
+  if (!triageDialogueUi.open || !patient || !patient.triage) return;
+  const renderedAt = `${patient.updatedAt}|${patient.triage.level}|${patient.location}|${patient.triage.note}`;
+  if (triageDialogueUi.lastRenderedAt === renderedAt) return;
+
+  triageDialogueUi.lastRenderedAt = renderedAt;
+  triageDialogueUi.awaitingResult = false;
+  if (triageDialogueUi.status) {
+    triageDialogueUi.status.textContent = `Triage complete. Current recommendation: ${patient.location || "Pending department"}.`;
+  }
+  setDialogueBadge(patient.triage.level, patient.location, patient.priority);
+  const recentUserTurns = patient.memory?.short_term_memory?.turns
+    ?.filter((turn) => turn.role === "user")
+    .map((turn) => turn.content) || [];
+  renderDialogueMessages([
+    {
+      role: "user",
+      label: "Patient",
+      body: recentUserTurns.length > 0 ? `Recent symptoms: ${recentUserTurns.join("; ")}` : `${patient.name || "Patient"} has submitted triage information.`,
+    },
+    {
+      role: "assistant",
+      label: "Triage Agent",
+      body: `Recommended level: ${patient.triage.level}\nRecommended department: ${patient.location || "Pending department"}\nAdvice: ${patient.triage.note || "No additional note."}`,
+    },
+  ]);
+  renderDialogueEvidence(patient.triageEvidence || []);
+}
+
+async function submitTriageFromModal() {
+  if (backendState.submitting || !canInteractWithTriageDesk()) return;
+  backendState.submitting = true;
+  try {
+    const payload = buildTriagePayloadFromForm();
+    const response = await fetch(`${backendState.baseUrl}/api/triage/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": backendState.apiKey },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    closeTriageModal();
+    openTriageDialogue(payload);
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.connected = false;
+    backendState.lastError = error?.message || "triage submit failed";
+  } finally {
+    backendState.submitting = false;
+  }
+}
+
+function submitTriageRequest() {
+  if (backendState.submitting || triageUi.open || triageDialogueUi.open || !canInteractWithTriageDesk()) return;
+  openTriageModal();
 }
 
 let lastTime = performance.now();
@@ -833,7 +1233,29 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-window.addEventListener("keydown", (event) => keys.add(event.code));
+window.addEventListener("keydown", (event) => {
+  if (triageDialogueUi.open) {
+    if (event.code === "Escape" && !event.repeat) {
+      closeTriageDialogue();
+      event.preventDefault();
+    }
+    return;
+  }
+
+  if (triageUi.open) {
+    if (event.code === "Escape" && !event.repeat) {
+      closeTriageModal();
+      event.preventDefault();
+    }
+    return;
+  }
+
+  keys.add(event.code);
+  if (event.code === "KeyE" && !event.repeat) {
+    submitTriageRequest();
+    event.preventDefault();
+  }
+});
 
 window.addEventListener("keyup", (event) => keys.delete(event.code));
 
@@ -851,5 +1273,206 @@ window.addEventListener("resize", () => {
 });
 
 updateFloorHud();
+pollBackendStatuses(true);
 window.dispatchEvent(new Event("resize"));
+
+if (triageUi.form) {
+  triageUi.form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitTriageFromModal();
+  });
+}
+
+if (triageUi.cancelBtn) {
+  triageUi.cancelBtn.addEventListener("click", () => {
+    closeTriageModal();
+  });
+}
+
+if (triageUi.modal) {
+  triageUi.modal.addEventListener("click", (event) => {
+    if (event.target === triageUi.modal) closeTriageModal();
+  });
+}
+
+if (triageDialogueUi.closeBtn) {
+  triageDialogueUi.closeBtn.addEventListener("click", () => {
+    closeTriageDialogue();
+  });
+}
+
+if (triageDialogueUi.modal) {
+  triageDialogueUi.modal.addEventListener("click", (event) => {
+    if (event.target === triageDialogueUi.modal) closeTriageDialogue();
+  });
+}
+
+if (triageUi.fields.pain && triageUi.painDisplay) {
+  triageUi.painDisplay.textContent = triageUi.fields.pain.value;
+  triageUi.fields.pain.addEventListener("input", (event) => {
+    triageUi.painDisplay.textContent = event.target.value;
+  });
+}
+
 requestAnimationFrame(loop);
+
+triageDialogueUi.form = document.getElementById("triageDialogueForm");
+triageDialogueUi.input = document.getElementById("triageDialogueInput");
+triageDialogueUi.sendBtn = document.getElementById("triageDialogueSendBtn");
+
+const triageConversationState = {
+  patientId: "P-self",
+  sessionId: "session-main",
+  sending: false,
+};
+
+function escapeDialogueHtml(text) {
+  return String(text ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function renderDialogueMessages(messages) {
+  if (!triageDialogueUi.messages) return;
+  triageDialogueUi.messages.innerHTML = messages
+    .map(
+      (message) => `
+        <article class="triage-message triage-message--${message.role}">
+          <span class="triage-message__label">${escapeDialogueHtml(message.label)}</span>
+          <div class="triage-message__body">${escapeDialogueHtml(message.body)}</div>
+        </article>
+      `
+    )
+    .join("");
+  triageDialogueUi.messages.scrollTop = triageDialogueUi.messages.scrollHeight;
+}
+
+function openTriageDialogue(initialPayload) {
+  if (!triageDialogueUi.modal) return;
+  triageDialogueUi.open = true;
+  triageDialogueUi.awaitingResult = true;
+  triageDialogueUi.lastRenderedAt = "";
+  triageDialogueUi.modal.classList.remove("hidden");
+  triageDialogueUi.modal.setAttribute("aria-hidden", "false");
+  if (triageDialogueUi.status) {
+    triageDialogueUi.status.textContent = "分诊卡已提交，分诊 agent 正在先做初步判断，并准备继续追问。";
+  }
+  setDialogueBadge("", "", "");
+  renderDialogueEvidence([]);
+  renderDialogueMessages([
+    {
+      role: "user",
+      label: "患者",
+      body: `症状：${initialPayload.symptoms}\n体温：${initialPayload.vitals.temp_c}°C\n心率：${initialPayload.vitals.heart_rate} bpm\n疼痛：${initialPayload.vitals.pain_score}/10`,
+    },
+    {
+      role: "assistant",
+      label: "分诊 Agent",
+      body: "我先基于问诊卡做一个初步判断，接下来会继续追问还不够明确的信息。",
+    },
+  ]);
+  if (triageDialogueUi.input) triageDialogueUi.input.value = "";
+  keys.clear();
+}
+
+function syncTriageDialogue(patient) {
+  if (!triageDialogueUi.open || !patient) return;
+  const dialogue = patient.dialogue || {};
+  const triage = patient.triage || {};
+  const renderedAt = `${patient.updatedAt}|${dialogue.status || ""}|${triage.level || ""}|${triage.note || ""}`;
+  if (triageDialogueUi.lastRenderedAt === renderedAt) return;
+
+  triageDialogueUi.lastRenderedAt = renderedAt;
+  triageDialogueUi.awaitingResult = false;
+
+  if (triageDialogueUi.status) {
+    if (dialogue.status === "needs_more_info") {
+      triageDialogueUi.status.textContent = "分诊 agent 还需要补充一些信息，答得越具体，建议会越准确。";
+    } else if (dialogue.status === "triaged") {
+      triageDialogueUi.status.textContent = `分诊建议已更新：建议前往 ${patient.location || "待定科室"}。`;
+    } else {
+      triageDialogueUi.status.textContent = "正在同步最新分诊结果。";
+    }
+  }
+
+  setDialogueBadge(triage.level, patient.location, patient.priority);
+
+  const turns = patient.memory?.short_term_memory?.turns || [];
+  const messages = turns.map((turn) => ({
+    role: turn.role === "assistant" ? "assistant" : "user",
+    label: turn.role === "assistant" ? "分诊 Agent" : "患者",
+    body: turn.content || "",
+  }));
+
+  if (messages.length === 0 && dialogue.assistant_message) {
+    messages.push({ role: "assistant", label: "分诊 Agent", body: dialogue.assistant_message });
+  }
+
+  renderDialogueMessages(messages);
+  renderDialogueEvidence(patient.triageEvidence || []);
+}
+
+async function submitTriageFromModal() {
+  if (backendState.submitting || !canInteractWithTriageDesk()) return;
+  backendState.submitting = true;
+  try {
+    const payload = buildTriagePayloadFromForm();
+    payload.session_id = triageConversationState.sessionId;
+    const response = await fetch(`${backendState.baseUrl}/api/triage/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": backendState.apiKey },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    closeTriageModal();
+    openTriageDialogue(payload);
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.connected = false;
+    backendState.lastError = error?.message || "triage submit failed";
+  } finally {
+    backendState.submitting = false;
+  }
+}
+
+async function submitTriageDialogueReply() {
+  if (triageConversationState.sending || !triageDialogueUi.input) return;
+  const message = triageDialogueUi.input.value.trim();
+  if (!message) return;
+
+  triageConversationState.sending = true;
+  if (triageDialogueUi.sendBtn) triageDialogueUi.sendBtn.disabled = true;
+  try {
+    const response = await fetch(`${backendState.baseUrl}/api/triage/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": backendState.apiKey },
+      body: JSON.stringify({
+        patient_id: triageConversationState.patientId,
+        session_id: triageConversationState.sessionId,
+        name: "你(玩家)",
+        message,
+      }),
+    });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    triageDialogueUi.input.value = "";
+    const data = await response.json();
+    if (data.patient) syncTriageDialogue(data.patient);
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.lastError = error?.message || "triage chat failed";
+    if (triageDialogueUi.status) {
+      triageDialogueUi.status.textContent = `对话发送失败：${backendState.lastError}`;
+    }
+  } finally {
+    triageConversationState.sending = false;
+    if (triageDialogueUi.sendBtn) triageDialogueUi.sendBtn.disabled = false;
+  }
+}
+
+if (triageDialogueUi.form) {
+  triageDialogueUi.form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitTriageDialogueReply();
+  });
+}

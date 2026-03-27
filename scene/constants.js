@@ -26,7 +26,7 @@ export const WORLD = {
 export const palette = {
   void: "#120d16",
   roomFloor: "#705970",
-  hallFloor: "#8a7188",
+  hallFloor: "#a67ba6",
   floorLine: "rgba(255,255,255,0.05)",
   wallFront: "#593b56",
   wallSide: "#4a3047",

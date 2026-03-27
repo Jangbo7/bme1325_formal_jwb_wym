@@ -11,14 +11,14 @@ export const player = {
 
 // 房间定义
 export const rooms = [
-  { x: 3, y: 4, w: 11, h: 8, kind: "ward" },
-  { x: 15, y: 3, w: 10, h: 7, kind: "pharmacy" },
-  { x: 27, y: 4, w: 11, h: 9, kind: "office" },
-  { x: 3, y: 14, w: 13, h: 10, kind: "emergency" },
-  { x: 18, y: 13, w: 12, h: 11, kind: "hall" },
-  { x: 32, y: 15, w: 12, h: 10, kind: "rest" },
-  { x: 11, y: 26, w: 12, h: 7, kind: "lab" },
-  { x: 26, y: 27, w: 14, h: 6, kind: "icu" },
+  { x: 3, y: 4, w: 11, h: 8, kind: "病房" },
+  { x: 15, y: 3, w: 10, h: 7, kind: "药房" },
+  { x: 27, y: 4, w: 11, h: 9, kind: "办公室" },
+  { x: 3, y: 14, w: 13, h: 10, kind: "急诊室" },
+  { x: 18, y: 13, w: 12, h: 11, kind: "大厅" },
+  { x: 32, y: 15, w: 12, h: 10, kind: "休息室" },
+  { x: 11, y: 26, w: 12, h: 7, kind: "实验室" },
+  { x: 26, y: 27, w: 14, h: 6, kind: "重症室" },
 ];
 
 // 门的定义

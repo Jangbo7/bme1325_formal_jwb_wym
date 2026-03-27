@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "backend:start",
+      "type": "shell",
+      "command": "Set-Location backend; python server.py",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "frontend:start",
+      "type": "shell",
+      "command": "Set-Location scene; python -m http.server 8000",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "dev:start-all",
+      "dependsOn": [
+        "backend:start",
+        "frontend:start"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -52,7 +52,7 @@ export function drawRoomFloor(ctx, room, camera, canvas) {
     project(rect.x, rect.y + rect.h, 0, camera, canvas),
   ];
 
-  drawQuad(ctx, quad, room.kind === "hall" ? palette.hallFloor : palette.roomFloor, "rgba(255,255,255,0.08)");
+  drawQuad(ctx, quad, room.kind === "大厅" ? palette.hallFloor : palette.roomFloor, "rgba(255,255,255,0.08)");
 
   ctx.strokeStyle = palette.floorLine;
   ctx.lineWidth = 1;
@@ -187,14 +187,14 @@ export function drawPlayer(ctx, player, camera, canvas) {
 
 export function drawLabels(ctx, rooms, camera, canvas) {
   const labels = {
-    ward: "Ward",
-    pharmacy: "Pharmacy",
-    office: "Office",
-    emergency: "ER",
-    hall: "Lobby",
-    rest: "Rest",
-    lab: "Lab",
-    icu: "ICU",
+    "病房": "病房",
+    "药房": "药房",
+    "办公室": "办公室",
+    "急诊室": "急诊室",
+    "大厅": "大厅",
+    "休息室": "休息室",
+    "实验室": "实验室",
+    "重症室": "重症室",
   };
 
   ctx.fillStyle = palette.label;
@@ -231,7 +231,7 @@ export function drawMinimap(ctx, rooms, doors, player, canvas) {
       w: room.w * TILE,
       h: room.h * TILE,
     };
-    ctx.fillStyle = room.kind === "hall" ? "#8a7188" : "#705970";
+    ctx.fillStyle = room.kind === "大厅" ? "#a67ba6" : "#705970";
     ctx.fillRect(left + rect.x * scale, top + rect.y * scale, rect.w * scale, rect.h * scale);
   }
 

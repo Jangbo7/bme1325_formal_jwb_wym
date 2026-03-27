@@ -26,6 +26,24 @@ python -m http.server 8000
 
 然后访问 `http://localhost:8000`。
 
+## 前端私有 API 配置
+
+为避免将 API key 直接提交到仓库，前端改为从独立私有文件读取：
+
+1. 复制 `scene/api.private.example.js` 为 `scene/api.private.js`
+2. 在 `scene/api.private.js` 中填写本地配置
+
+```js
+window.HOS_PRIVATE_API = {
+	baseUrl: "http://127.0.0.1:8787",
+	apiKey: "mock-key-001",
+};
+```
+
+说明：
+- `scene/api.private.js` 已在仓库根目录 `.gitignore` 中忽略，不会被 push。
+- `scene/index.html` 会先加载 `api.private.js`，再加载 `main.js`。
+
 ## 项目结构
 
 ```
