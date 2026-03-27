@@ -1476,3 +1476,417 @@ if (triageDialogueUi.form) {
     submitTriageDialogueReply();
   });
 }
+
+// ===== Queue merge layer (ported from replace branch, adapted to current main flow) =====
+const QUEUE_DEPARTMENTS = {
+  internal: { id: "internal", name: "Internal" },
+  surgery: { id: "surgery", name: "Surgery" },
+  pediatrics: { id: "pediatrics", name: "Pediatrics" },
+  emergency: { id: "emergency", name: "Emergency", priority: true },
+  fever: { id: "fever", name: "Fever Clinic" },
+};
+
+function createQueueManager() {
+  const deptIds = Object.keys(QUEUE_DEPARTMENTS);
+  return {
+    queues: Object.fromEntries(deptIds.map((id) => [id, []])),
+    currentTicket: Object.fromEntries(deptIds.map((id) => [id, 0])),
+    calledTicket: Object.fromEntries(deptIds.map((id) => [id, null])),
+    calledUntil: Object.fromEntries(deptIds.map((id) => [id, 0])),
+    lastCallAt: Object.fromEntries(deptIds.map((id) => [id, 0])),
+    playerTicket: null,
+    history: [],
+  };
+}
+
+function generateTicketNumber(queueManager, departmentId) {
+  queueManager.currentTicket[departmentId] += 1;
+  return {
+    number: queueManager.currentTicket[departmentId],
+    departmentId,
+    departmentName: QUEUE_DEPARTMENTS[departmentId].name,
+    timestamp: Date.now(),
+    status: "waiting",
+  };
+}
+
+function addPlayerToQueue(queueManager, departmentId) {
+  if (!queueManager.queues[departmentId]) return null;
+  const existing = queueManager.playerTicket;
+  if (existing && existing.status === "waiting" && existing.departmentId === departmentId) {
+    return existing;
+  }
+  const ticket = generateTicketNumber(queueManager, departmentId);
+  ticket.patientId = "player";
+  queueManager.playerTicket = ticket;
+  queueManager.queues[departmentId].push(ticket);
+  return ticket;
+}
+
+function callNext(queueManager, departmentId) {
+  const queue = queueManager.queues[departmentId];
+  if (!queue || queue.length === 0) return null;
+
+  const emergencyQueue = queueManager.queues.emergency;
+  if (departmentId !== "emergency" && emergencyQueue && emergencyQueue.length > 0) {
+    return callNext(queueManager, "emergency");
+  }
+
+  const ticket = queue.shift();
+  ticket.status = "called";
+  queueManager.calledTicket[departmentId] = ticket;
+  const now = Date.now();
+  queueManager.calledUntil[departmentId] = now + (ticket.patientId === "player" ? 120000 : 5000);
+  queueManager.lastCallAt[departmentId] = now;
+  return ticket;
+}
+
+function completeTicket(queueManager, departmentId, ticket) {
+  if (!ticket) return;
+  ticket.status = "completed";
+  queueManager.calledTicket[departmentId] = null;
+  queueManager.history.push(ticket);
+  if (queueManager.playerTicket && queueManager.playerTicket.number === ticket.number) {
+    queueManager.playerTicket = null;
+  }
+}
+
+function updateQueueCalls(queueManager, nowMs) {
+  for (const deptId of Object.keys(QUEUE_DEPARTMENTS)) {
+    const called = queueManager.calledTicket[deptId];
+    if (called && nowMs >= queueManager.calledUntil[deptId]) {
+      completeTicket(queueManager, deptId, called);
+    }
+    if (!queueManager.calledTicket[deptId] && queueManager.queues[deptId].length > 0) {
+      if (nowMs - queueManager.lastCallAt[deptId] >= 5000) {
+        callNext(queueManager, deptId);
+      }
+    }
+  }
+}
+
+function getWaitingCount(queueManager, departmentId) {
+  return queueManager.queues[departmentId]?.length || 0;
+}
+
+function getQueuePosition(queueManager, ticket) {
+  if (!ticket || !queueManager.queues[ticket.departmentId]) return null;
+  const index = queueManager.queues[ticket.departmentId].findIndex(
+    (item) => item.number === ticket.number && item.patientId === ticket.patientId
+  );
+  return index >= 0 ? index + 1 : null;
+}
+
+function drawQueueBoard(ctx, canvas, queueManager) {
+  const panelWidth = 320;
+  const panelHeight = 236;
+  const panelX = canvas.width - panelWidth - 16;
+  const panelY = canvas.height - panelHeight - 16;
+
+  ctx.fillStyle = "rgba(14, 16, 28, 0.9)";
+  ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+  ctx.strokeStyle = "rgba(125, 233, 255, 0.74)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+
+  ctx.fillStyle = "#c9f4ff";
+  ctx.font = "bold 14px 'Segoe UI'";
+  ctx.textAlign = "center";
+  ctx.fillText("Queue Board", panelX + panelWidth / 2, panelY + 22);
+
+  let y = panelY + 50;
+  for (const dept of Object.values(QUEUE_DEPARTMENTS)) {
+    const waiting = getWaitingCount(queueManager, dept.id);
+    const called = queueManager.calledTicket[dept.id];
+    const calledNo = called ? called.number : "-";
+    const isPlayerDept = queueManager.playerTicket?.departmentId === dept.id;
+
+    if (isPlayerDept) {
+      ctx.fillStyle = "rgba(132, 255, 201, 0.14)";
+      ctx.fillRect(panelX + 6, y - 14, panelWidth - 12, 22);
+    }
+
+    ctx.fillStyle = dept.priority ? "#ff8f8f" : "#f0ecff";
+    ctx.font = "12px 'Segoe UI'";
+    ctx.textAlign = "left";
+    ctx.fillText(`${isPlayerDept ? "* " : ""}${dept.name}`, panelX + 12, y);
+
+    ctx.fillStyle = "#8ef0be";
+    ctx.textAlign = "right";
+    ctx.fillText(`Waiting ${waiting}`, panelX + panelWidth - 108, y);
+
+    ctx.fillStyle = "#ffe99c";
+    ctx.fillText(`Called ${calledNo}`, panelX + panelWidth - 12, y);
+    y += 28;
+  }
+
+  const playerTicket = queueManager.playerTicket;
+  const footerY = panelY + panelHeight - 26;
+  ctx.textAlign = "left";
+  ctx.font = "11px 'Segoe UI'";
+  if (playerTicket) {
+    const pos = getQueuePosition(queueManager, playerTicket);
+    const called = queueManager.calledTicket[playerTicket.departmentId];
+    if (called && called.patientId === "player") {
+      ctx.fillStyle = "#ffe1a8";
+      ctx.fillText(`Your ticket ${playerTicket.number}: called`, panelX + 12, footerY);
+    } else {
+      ctx.fillStyle = "#cfd8ff";
+      ctx.fillText(
+        `Ticket ${playerTicket.number} | ${playerTicket.departmentName} | Ahead ${pos ?? 0}`,
+        panelX + 12,
+        footerY
+      );
+    }
+  } else {
+    ctx.fillStyle = "#9fb0c0";
+    ctx.fillText("Not queued yet", panelX + 12, footerY);
+  }
+}
+
+function mapQueueDepartmentFromTriage(patient) {
+  const location = (patient?.location || "").toLowerCase();
+  const priority = patient?.priority;
+  if (location.includes("emergency") || priority === "H") return "emergency";
+  if (location.includes("fever")) return "fever";
+  if (location.includes("surgery")) return "surgery";
+  if (location.includes("pediatrics")) return "pediatrics";
+  return "internal";
+}
+
+const queueManager = createQueueManager();
+let queueSeeded = false;
+let lastAutoQueuedAt = 0;
+
+function seedQueueIfNeeded() {
+  if (queueSeeded) return;
+  queueSeeded = true;
+  const seedList = [
+    ["internal", 3],
+    ["surgery", 2],
+    ["pediatrics", 1],
+    ["fever", 1],
+    ["emergency", 1],
+  ];
+  for (const [deptId, count] of seedList) {
+    for (let i = 0; i < count; i += 1) {
+      const ticket = generateTicketNumber(queueManager, deptId);
+      ticket.patientId = `seed-${deptId}-${i + 1}`;
+      queueManager.queues[deptId].push(ticket);
+    }
+  }
+}
+
+function syncPlayerQueueFromPatient(patient) {
+  if (!patient || !patient.triage) return;
+  const dialogueStatus = patient.dialogue?.status;
+  const now = Date.now();
+  if (dialogueStatus !== "triaged" || now - lastAutoQueuedAt < 1200) return;
+  const targetDept = mapQueueDepartmentFromTriage(patient);
+  const current = queueManager.playerTicket;
+  if (current && current.status === "waiting" && current.departmentId === targetDept) return;
+  addPlayerToQueue(queueManager, targetDept);
+  lastAutoQueuedAt = now;
+}
+
+const __originalSyncTriageDialogue = syncTriageDialogue;
+syncTriageDialogue = function patchedSyncTriageDialogue(patient) {
+  __originalSyncTriageDialogue(patient);
+  syncPlayerQueueFromPatient(patient);
+};
+
+const __originalPollBackendStatuses = pollBackendStatuses;
+pollBackendStatuses = async function patchedPollBackendStatuses(force = false) {
+  seedQueueIfNeeded();
+  return __originalPollBackendStatuses(force);
+};
+
+const __originalUpdate = update;
+update = function patchedUpdate(delta, nowMs) {
+  __originalUpdate(delta, nowMs);
+  updateQueueCalls(queueManager, nowMs);
+};
+
+const __originalRender = render;
+render = function patchedRender() {
+  __originalRender();
+  drawQueueBoard(ctx, canvas, queueManager);
+};
+
+// ===== Random NPC generation layer (frontend-only merge) =====
+const MERGED_NPC_TYPES = {
+  PATIENT: "patient",
+  STAFF: "staff",
+};
+
+const MERGED_NPC_STATES = {
+  IDLE: "idle",
+  WALKING: "walking",
+  WAITING: "waiting",
+};
+
+function createMergedNpc(id, type, floor, x, y, options = {}) {
+  return {
+    id,
+    type,
+    floor,
+    x,
+    y,
+    state: options.state || MERGED_NPC_STATES.IDLE,
+    speed: options.speed || (type === MERGED_NPC_TYPES.PATIENT ? 42 : 48),
+    targetX: null,
+    targetY: null,
+    walkTimer: 0,
+    walkInterval: 2200 + Math.random() * 3500,
+    bodyColor: options.bodyColor || (type === MERGED_NPC_TYPES.PATIENT ? "#6ed3b1" : "#7bb2f0"),
+    headColor: options.headColor || "#f0c9b7",
+    name: options.name || (type === MERGED_NPC_TYPES.PATIENT ? "Patient" : "Staff"),
+  };
+}
+
+function getSpawnAreasForMergedNpcs() {
+  return rooms
+    .filter((room) => room.kind === "hall" || room.kind === "triage")
+    .map((room) => ({ room, bounds: roomBounds(room) }));
+}
+
+function randomPointInBounds(bounds, padding = 22) {
+  const minX = bounds.x + padding;
+  const minY = bounds.y + padding;
+  const maxX = bounds.x + bounds.w - padding;
+  const maxY = bounds.y + bounds.h - padding;
+  return {
+    x: minX + Math.random() * Math.max(1, maxX - minX),
+    y: minY + Math.random() * Math.max(1, maxY - minY),
+  };
+}
+
+function initMergedRandomNpcs(count = 10) {
+  const areas = getSpawnAreasForMergedNpcs();
+  const list = [];
+  for (let i = 0; i < count; i += 1) {
+    const area = areas[i % areas.length];
+    if (!area) break;
+    let point = randomPointInBounds(area.bounds);
+    let tries = 0;
+    while (!canMoveTo(point.x, point.y, area.room.floor) && tries < 20) {
+      point = randomPointInBounds(area.bounds);
+      tries += 1;
+    }
+    list.push(
+      createMergedNpc(`merged-npc-${i + 1}`, MERGED_NPC_TYPES.PATIENT, area.room.floor, point.x, point.y, {
+        name: `Patient-${i + 1}`,
+      })
+    );
+  }
+  return list;
+}
+
+function pickMergedNpcTarget(npc) {
+  const candidateRooms = rooms.filter((room) => room.floor === npc.floor && (room.kind === "hall" || room.kind === "triage"));
+  if (candidateRooms.length === 0) return;
+  const room = candidateRooms[Math.floor(Math.random() * candidateRooms.length)];
+  const bounds = roomBounds(room);
+  let point = randomPointInBounds(bounds);
+  let tries = 0;
+  while (!canMoveTo(point.x, point.y, npc.floor) && tries < 20) {
+    point = randomPointInBounds(bounds);
+    tries += 1;
+  }
+  npc.targetX = point.x;
+  npc.targetY = point.y;
+  npc.state = MERGED_NPC_STATES.WALKING;
+}
+
+function updateMergedNpc(npc, delta) {
+  npc.walkTimer += delta * 1000;
+
+  if (npc.state !== MERGED_NPC_STATES.WAITING && npc.walkTimer >= npc.walkInterval && npc.targetX === null) {
+    pickMergedNpcTarget(npc);
+    npc.walkTimer = 0;
+  }
+
+  if (npc.targetX === null || npc.targetY === null || npc.state !== MERGED_NPC_STATES.WALKING) return;
+
+  const dx = npc.targetX - npc.x;
+  const dy = npc.targetY - npc.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 3) {
+    npc.x = npc.targetX;
+    npc.y = npc.targetY;
+    npc.targetX = null;
+    npc.targetY = null;
+    npc.state = MERGED_NPC_STATES.IDLE;
+    npc.walkTimer = 0;
+    npc.walkInterval = 2200 + Math.random() * 3500;
+    return;
+  }
+
+  const vx = (dx / dist) * npc.speed * delta;
+  const vy = (dy / dist) * npc.speed * delta;
+  const nx = npc.x + vx;
+  const ny = npc.y + vy;
+  if (canMoveTo(nx, ny, npc.floor)) {
+    npc.x = nx;
+    npc.y = ny;
+  } else {
+    npc.targetX = null;
+    npc.targetY = null;
+    npc.state = MERGED_NPC_STATES.IDLE;
+    npc.walkTimer = 0;
+  }
+}
+
+function drawMergedNpc(npc, alpha = 1) {
+  const base = project(npc.x, npc.y, 0, npc.floor);
+  const top = project(npc.x, npc.y, CHARACTER_BODY_HEIGHT - 2, npc.floor);
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(base.x, base.y + 8, CHARACTER_FOOT_RADIUS + 3, CHARACTER_FOOT_RADIUS - 1, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = npc.bodyColor;
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(base.x, base.y - 1);
+  ctx.lineTo(top.x, top.y + 6);
+  ctx.stroke();
+
+  ctx.fillStyle = npc.headColor;
+  ctx.beginPath();
+  ctx.arc(top.x, top.y - 4, CHARACTER_HEAD_RADIUS - 1, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (npc.state === MERGED_NPC_STATES.WAITING) {
+    ctx.fillStyle = "#ffe99c";
+    ctx.font = "10px 'Segoe UI'";
+    ctx.textAlign = "center";
+    ctx.fillText("Waiting", top.x, top.y - 16);
+  }
+
+  ctx.restore();
+}
+
+const mergedRandomNpcs = initMergedRandomNpcs(10);
+
+const __originalDrawFloorLayer = drawFloorLayer;
+drawFloorLayer = function patchedDrawFloorLayerWithMergedNpcs(floor, activeDoor, dimmed) {
+  __originalDrawFloorLayer(floor, activeDoor, dimmed);
+  const alpha = dimmed ? 0.35 : 1;
+  for (const npcItem of mergedRandomNpcs) {
+    if (npcItem.floor !== floor) continue;
+    drawMergedNpc(npcItem, alpha);
+  }
+};
+
+const __queuePatchedUpdate = update;
+update = function patchedUpdateWithMergedNpcs(delta, nowMs) {
+  __queuePatchedUpdate(delta, nowMs);
+  for (const npcItem of mergedRandomNpcs) {
+    updateMergedNpc(npcItem, delta);
+  }
+};
