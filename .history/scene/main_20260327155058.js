@@ -1,4 +1,5 @@
-import {
+<<<<<<< HEAD
+﻿import {
   TILE,
   WALL_THICKNESS,
   DOOR_THICKNESS,
@@ -27,10 +28,40 @@ const imeInput = document.getElementById("dialog-ime");
 const modelSelect = document.getElementById("model-select");
 const imageInput = document.getElementById("image-input");
 const imageStatus = document.getElementById("image-status");
+=======
+
 
 const keys = new Set();
 const camera = { x: 0, y: 0 };
 
+<<<<<<< HEAD
+=======
+const palette = {
+  roomFloor: "#705970",
+  hallFloor: "#8a7188",
+  wallFront: "#593b56",
+  wallSide: "#4a3047",
+  wallTop: "#866783",
+  wallEdge: "rgba(255, 225, 255, 0.18)",
+  bed: "#7db1c4",
+  desk: "#6d4b35",
+  sofa: "#816b4b",
+  plant: "#6fa26b",
+  screen: "#7fe0dc",
+  cabinet: "#8b6b89",
+  reception: "#865c74",
+  doorFrame: "#8aa5b6",
+  doorGlass: "rgba(141, 233, 255, 0.32)",
+  doorSensor: "#4ce4ff",
+  playerBody: "#2f8fb0",
+  playerHead: "#f6d4c0",
+  playerLeg: "#28465a",
+  shadow: "rgba(0, 0, 0, 0.26)",
+  label: "rgba(248, 233, 252, 0.82)",
+  inactiveMask: "rgba(7, 7, 12, 0.62)",
+};
+
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 const player = {
   x: 8 * TILE,
   y: 10 * TILE,
@@ -40,6 +71,7 @@ const player = {
   speed: 180,
 };
 
+<<<<<<< HEAD
 let activeFloor = 1;
 let stairCooldownUntil = 0;
 let playerDeptId = null;
@@ -47,10 +79,18 @@ let isComposing = false;
 let playerCall = { active: false, deptId: null, until: 0, lastSeen: 0 };
 let currentImageData = null;
 
+=======
+const npc = { x: 21 * TILE, y: 16 * TILE, floor: 1 };
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 const floorSpawns = {
   1: { x: 8 * TILE, y: 10 * TILE },
   2: { x: 18 * TILE, y: 16 * TILE },
 };
+<<<<<<< HEAD
+=======
+let activeFloor = 1;
+let stairCooldownUntil = 0;
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 
 const stairs = [
   { id: "stair-1f", floor: 1, x: 22.4, y: 18.0, w: 2, h: 2, toFloor: 2, exitX: 22.9, exitY: 18.7 },
@@ -59,7 +99,13 @@ const stairs = [
 
 const npcHeadImage = new Image();
 let npcHeadReady = false;
+<<<<<<< HEAD
 npcHeadImage.onload = () => { npcHeadReady = true; };
+=======
+npcHeadImage.onload = () => {
+  npcHeadReady = true;
+};
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 npcHeadImage.src = "./img/head_photo-head@1x.png";
 
 const rooms = [
@@ -140,6 +186,7 @@ const ROOM_KIND_LABELS = {
   hall: "Lobby",
 };
 
+<<<<<<< HEAD
 const DEPT_TARGETS = {
   internal: { floor: 1, roomIndex: 1, label: "内科诊室" },
   surgery: { floor: 1, roomIndex: 2, label: "外科诊室" },
@@ -160,13 +207,115 @@ let nearbyNPC = null;
 let showRegistrationPanel = false;
 let registrationTargetNPC = null;
 
+=======
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 function roomBounds(room) {
   return { x: room.x * TILE, y: room.y * TILE, w: room.w * TILE, h: room.h * TILE };
 }
 
+<<<<<<< HEAD
 function roomCenter(room) {
   const rect = roomBounds(room);
   return { x: rect.x + rect.w * 0.5, y: rect.y + rect.h * 0.5 };
+=======
+const triggerZones = rooms.map((room, index) => {
+  const bounds = roomBounds(room);
+  return {
+    id: `zone-${index}`,
+    floor: room.floor,
+    label: ROOM_KIND_LABELS[room.kind] ?? room.kind,
+    x: bounds.x,
+    y: bounds.y,
+    w: bounds.w,
+    h: bounds.h,
+  };
+});
+
+const zoneState = {
+  currentZoneId: null,
+  currentZoneLabel: "Outside",
+  currentFloor: player.floor,
+  enteredAtMs: 0,
+  staySeconds: 0,
+  lastEventText: "No trigger yet",
+  lastEventAtMs: 0,
+};
+
+const taskBoard = {
+  title: "Hospital Tasks",
+  tasks: [
+    { text: "Check in at Registration", done: true },
+    { text: "Visit Consultation Room", done: false },
+    { text: "Go to Pharmacy and collect meds", done: false },
+    { text: "Take lab sample to 2F Lab", done: false },
+    { text: "Report status to Nurse Station", done: false },
+  ],
+};
+
+function pointInZone(x, y, zone) {
+  return x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h;
+}
+
+function findCurrentZone(x, y, floor) {
+  for (const zone of triggerZones) {
+    if (zone.floor !== floor) {
+      continue;
+    }
+    if (pointInZone(x, y, zone)) {
+      return zone;
+    }
+  }
+  return null;
+}
+
+function recordZoneEvent(text, nowMs) {
+  zoneState.lastEventText = text;
+  zoneState.lastEventAtMs = nowMs;
+  console.log(`[ZoneTrigger] ${text} @ (${Math.round(player.x)}, ${Math.round(player.y)}) F${player.floor}`);
+}
+
+function updateZoneTriggers(nowMs) {
+  const zone = findCurrentZone(player.x, player.y, player.floor);
+  const nextZoneId = zone ? zone.id : null;
+  const nextZoneLabel = zone ? zone.label : "Outside";
+
+  if (player.floor !== zoneState.currentFloor) {
+    zoneState.currentFloor = player.floor;
+    zoneState.currentZoneId = nextZoneId;
+    zoneState.currentZoneLabel = nextZoneLabel;
+    zoneState.enteredAtMs = nowMs;
+    zoneState.staySeconds = 0;
+    if (nextZoneId !== null) {
+      recordZoneEvent(`Enter ${nextZoneLabel}`, nowMs);
+    } else {
+      recordZoneEvent("Moved to Outside", nowMs);
+    }
+    return;
+  }
+
+  if (nextZoneId !== zoneState.currentZoneId) {
+    if (zoneState.currentZoneId !== null) {
+      recordZoneEvent(`Exit ${zoneState.currentZoneLabel}`, nowMs);
+    }
+    if (nextZoneId !== null) {
+      recordZoneEvent(`Enter ${nextZoneLabel}`, nowMs);
+      zoneState.enteredAtMs = nowMs;
+    } else {
+      zoneState.enteredAtMs = 0;
+      recordZoneEvent("Moved to Outside", nowMs);
+    }
+    zoneState.currentZoneId = nextZoneId;
+    zoneState.currentZoneLabel = nextZoneLabel;
+    zoneState.staySeconds = 0;
+    return;
+  }
+
+  if (zoneState.currentZoneId !== null) {
+    zoneState.staySeconds = Math.max(0, (nowMs - zoneState.enteredAtMs) / 1000);
+  } else {
+    zoneState.staySeconds = 0;
+  }
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 }
 
 function rectsIntersect(a, b) {
@@ -304,6 +453,13 @@ function doorCollidersForFloor(floor) {
   return doors.filter((door) => door.floor === floor && !door.open).map((door) => door.collider);
 }
 
+<<<<<<< HEAD
+=======
+function currentDoorColliders() {
+  return currentFloorDoors().filter((door) => !door.open).map((door) => door.collider);
+}
+
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 function canMoveTo(nextX, nextY, floor = activeFloor) {
   const rect = playerRect(nextX, nextY);
   if (rect.x < 0 || rect.y < 0 || rect.x + rect.w > WORLD.width || rect.y + rect.h > WORLD.height) return false;
@@ -374,12 +530,16 @@ function findNearestWalkable(x, y, floor) {
 
 function drawRoomFloor(room, dimmed) {
   const rect = roomBounds(room);
+<<<<<<< HEAD
   const quad = [
     project(rect.x, rect.y, 0, room.floor),
     project(rect.x + rect.w, rect.y, 0, room.floor),
     project(rect.x + rect.w, rect.y + rect.h, 0, room.floor),
     project(rect.x, rect.y + rect.h, 0, room.floor),
   ];
+=======
+  const quad = [project(rect.x, rect.y, 0, room.floor), project(rect.x + rect.w, rect.y, 0, room.floor), project(rect.x + rect.w, rect.y + rect.h, 0, room.floor), project(rect.x, rect.y + rect.h, 0, room.floor)];
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
   drawQuad(quad, room.kind === "hall" ? palette.hallFloor : palette.roomFloor, dimmed ? "rgba(0,0,0,0.12)" : "rgba(255,255,255,0.08)");
 }
 
@@ -459,7 +619,11 @@ function drawProp(prop) {
   drawQuad(prism.east, color.side);
 }
 
+<<<<<<< HEAD
 function drawCharacterBody(x, y, floor, bodyColor = palette.playerBody) {
+=======
+function drawCharacterBody(x, y, floor) {
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
   const base = project(x, y, 0, floor);
   const top = project(x, y, CHARACTER_BODY_HEIGHT, floor);
   ctx.fillStyle = palette.shadow;
@@ -474,7 +638,11 @@ function drawCharacterBody(x, y, floor, bodyColor = palette.playerBody) {
   ctx.moveTo(base.x + 4, base.y + 2);
   ctx.lineTo(base.x + 6, base.y + 14);
   ctx.stroke();
+<<<<<<< HEAD
   ctx.strokeStyle = bodyColor;
+=======
+  ctx.strokeStyle = palette.playerBody;
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
   ctx.lineWidth = 9;
   ctx.beginPath();
   ctx.moveTo(base.x, base.y - 2);
@@ -509,18 +677,45 @@ function drawPlayer() {
   drawTexturedHead(top);
 }
 
+<<<<<<< HEAD
+=======
+function drawNpc() {
+  const top = drawCharacterBody(npc.x, npc.y, npc.floor);
+  drawDefaultHead(top);
+}
+
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 function characterDepth(x, y) {
   return x + y + CHARACTER_FOOT_RADIUS;
 }
 
 function drawLabels() {
+<<<<<<< HEAD
+=======
+  const labels = {
+    registration: "Registration",
+    consultation: "Consultation",
+    triage: "Triage",
+    pharmacy: "Pharmacy",
+    ward: "Ward",
+    lab: "Lab",
+    icu: "ICU",
+    office: "Office",
+    hall: "Lobby",
+  };
+
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
   ctx.fillStyle = palette.label;
   ctx.font = "13px 'Segoe UI'";
   ctx.textAlign = "center";
   for (const room of rooms.filter((item) => item.floor === activeFloor)) {
     const rect = roomBounds(room);
     const point = project(rect.x + rect.w * 0.5, rect.y + rect.h * 0.5, 6, room.floor);
+<<<<<<< HEAD
     ctx.fillText(ROOM_KIND_LABELS[room.kind], point.x, point.y);
+=======
+    ctx.fillText(labels[room.kind], point.x, point.y);
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
   }
 }
 
@@ -550,6 +745,7 @@ function drawMinimap() {
     ctx.fillRect(left + stair.x * TILE * scale, top + stair.y * TILE * scale, stair.w * TILE * scale, stair.h * TILE * scale);
   }
 
+<<<<<<< HEAD
   for (const npc of npcs.filter((n) => n.floor === activeFloor)) {
     ctx.fillStyle = npc.type === NPC_TYPES.NURSE ? "#ff69b4" : npc.type === NPC_TYPES.DOCTOR ? "#4169e1" : "#32cd32";
     ctx.beginPath();
@@ -557,6 +753,8 @@ function drawMinimap() {
     ctx.fill();
   }
 
+=======
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
   ctx.fillStyle = "#4ed7ff";
   ctx.beginPath();
   ctx.arc(left + player.x * scale, top + player.y * scale, 4, 0, Math.PI * 2);
@@ -577,6 +775,7 @@ function drawHudHint(door) {
   ctx.fillText(label, point.x, point.y + 4);
 }
 
+<<<<<<< HEAD
 function drawNPCIndicator() {
   if (!nearbyNPC || dialogSystem.isOpen) return;
 
@@ -697,6 +896,60 @@ function drawPathGuidance(nowMs) {
   ctx.font = "12px 'Segoe UI'";
   ctx.textAlign = "center";
   ctx.fillText("目的地", targetPoint.x, targetPoint.y - 24 - pulse);
+=======
+function drawTaskBoard() {
+  const panelWidth = 430;
+  const rowHeight = 20;
+  const panelHeight = 38 + rowHeight * taskBoard.tasks.length;
+  const panelX = (canvas.width - panelWidth) / 2;
+  const panelY = 16;
+
+  ctx.fillStyle = "rgba(16, 11, 24, 0.86)";
+  ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+  ctx.strokeStyle = "rgba(255, 241, 184, 0.72)";
+  ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+
+  ctx.textAlign = "left";
+  ctx.font = "14px 'Segoe UI'";
+  ctx.fillStyle = "#fff4d9";
+  ctx.fillText(taskBoard.title, panelX + 12, panelY + 22);
+
+  ctx.font = "13px 'Segoe UI'";
+  for (let index = 0; index < taskBoard.tasks.length; index += 1) {
+    const task = taskBoard.tasks[index];
+    const y = panelY + 42 + index * rowHeight;
+    const marker = task.done ? "[x]" : "[ ]";
+    ctx.fillStyle = task.done ? "#83ffc9" : "#f2ebff";
+    ctx.fillText(`${marker} ${task.text}`, panelX + 12, y);
+  }
+}
+
+function drawZoneStatusPanel() {
+  const panelWidth = 360;
+  const panelHeight = 116;
+  const panelX = 18;
+  const panelY = canvas.height - panelHeight - 18;
+  const nowMs = performance.now();
+  const recentEventAge = nowMs - zoneState.lastEventAtMs;
+
+  ctx.fillStyle = "rgba(16, 11, 24, 0.86)";
+  ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+  ctx.strokeStyle = "rgba(110, 232, 255, 0.72)";
+  ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+
+  ctx.textAlign = "left";
+  ctx.font = "13px 'Segoe UI'";
+  ctx.fillStyle = "#a8f8ff";
+  ctx.fillText("Zone Trigger Debug", panelX + 12, panelY + 22);
+
+  ctx.fillStyle = "#f2ebff";
+  ctx.fillText(`Pos: (${Math.round(player.x)}, ${Math.round(player.y)})`, panelX + 12, panelY + 46);
+  ctx.fillText(`Zone: ${zoneState.currentZoneLabel} (F${player.floor})`, panelX + 12, panelY + 68);
+  ctx.fillText(`Stay: ${zoneState.currentZoneId ? zoneState.staySeconds.toFixed(1) : "0.0"}s`, panelX + 12, panelY + 90);
+
+  ctx.fillStyle = recentEventAge <= 1200 ? "#82ffd1" : "#cfc6db";
+  ctx.fillText(`Last: ${zoneState.lastEventText}`, panelX + 12, panelY + 108);
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 }
 
 function drawFloorLayer(floor, activeDoor, dimmed) {
@@ -717,12 +970,17 @@ function drawFloorLayer(floor, activeDoor, dimmed) {
   for (const prop of props.filter((item) => item.floor === floor)) {
     drawables.push({ depth: prop.x * TILE + prop.y * TILE + prop.w * TILE + prop.h * TILE + 8, draw: () => drawProp(prop) });
   }
+<<<<<<< HEAD
 
   for (const npc of npcs.filter((n) => n.floor === floor)) {
     drawables.push({ depth: characterDepth(npc.x, npc.y), draw: () => drawNPC(ctx, npc, project, drawQuad, makePrismFaces) });
   }
 
   if (player.floor === floor) drawables.push({ depth: characterDepth(player.x, player.y), draw: drawPlayer });
+=======
+  if (player.floor === floor) drawables.push({ depth: characterDepth(player.x, player.y), draw: drawPlayer });
+  if (npc.floor === floor) drawables.push({ depth: characterDepth(npc.x, npc.y), draw: drawNpc });
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 
   drawables.sort((a, b) => a.depth - b.depth);
   drawables.forEach((entry) => entry.draw());
@@ -759,6 +1017,7 @@ function tryStairTransfer(nowMs) {
   stairCooldownUntil = nowMs + STAIR_TRIGGER_COOLDOWN_MS;
 }
 
+<<<<<<< HEAD
 function findNearbyNPC() {
   const interactDistance = 50;
   let closest = null;
@@ -895,6 +1154,29 @@ function update(delta, nowMs) {
   if (playerCall.active && nowMs >= playerCall.until) {
     playerCall.active = false;
   }
+=======
+function update(delta, nowMs) {
+  updateDoors();
+  let moveX = 0;
+  let moveY = 0;
+  if (keys.has("ArrowUp") || keys.has("KeyW")) moveY -= 1;
+  if (keys.has("ArrowDown") || keys.has("KeyS")) moveY += 1;
+  if (keys.has("ArrowLeft") || keys.has("KeyA")) moveX -= 1;
+  if (keys.has("ArrowRight") || keys.has("KeyD")) moveX += 1;
+
+  if (moveX !== 0 || moveY !== 0) {
+    const length = Math.hypot(moveX, moveY);
+    const velocityX = (moveX / length) * player.speed * delta;
+    const velocityY = (moveY / length) * player.speed * delta;
+    if (canMoveTo(player.x + velocityX, player.y)) player.x += velocityX;
+    if (canMoveTo(player.x, player.y + velocityY)) player.y += velocityY;
+  }
+
+  camera.x += (player.x - camera.x - 180) * 0.08;
+  camera.y += (player.y - camera.y - 140) * 0.08;
+  tryStairTransfer(nowMs);
+  updateZoneTriggers(nowMs);
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 }
 
 function render() {
@@ -908,6 +1190,7 @@ function render() {
   drawFloorLayer(activeFloor, activeDoor, false);
   drawLabels();
   drawHudHint(activeDoor);
+<<<<<<< HEAD
   drawMinimap();
   drawNPCIndicator();
   drawHelpPanel();
@@ -993,6 +1276,28 @@ canvas.addEventListener("click", (event) => {
   }
 });
 
+=======
+  drawTaskBoard();
+  drawMinimap();
+  drawZoneStatusPanel();
+}
+
+let lastTime = performance.now();
+updateZoneTriggers(lastTime);
+
+function loop(now) {
+  const delta = Math.min((now - lastTime) / 1000, 1 / 30);
+  lastTime = now;
+  update(delta, now);
+  render();
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener("keydown", (event) => keys.add(event.code));
+
+window.addEventListener("keyup", (event) => keys.delete(event.code));
+
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 window.addEventListener("resize", () => {
   const ratio = 16 / 9;
   const width = Math.min(window.innerWidth, 1400);
@@ -1006,6 +1311,7 @@ window.addEventListener("resize", () => {
   }
 });
 
+<<<<<<< HEAD
 if (imeInput) {
   imeInput.addEventListener("compositionstart", () => {
     isComposing = true;
@@ -1057,3 +1363,8 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+=======
+>>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
+updateFloorHud();
+window.dispatchEvent(new Event("resize"));
+requestAnimationFrame(loop);
