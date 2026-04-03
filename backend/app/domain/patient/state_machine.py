@@ -27,10 +27,13 @@ PATIENT_TRANSITIONS = {
     },
     PatientLifecycleState.CALLED: {
         "start_consultation": PatientLifecycleState.IN_CONSULTATION,
+        "start_icu_consultation": PatientLifecycleState.IN_CONSULTATION,
         "mark_error": PatientLifecycleState.ERROR,
     },
     PatientLifecycleState.IN_CONSULTATION: {
         "finish": PatientLifecycleState.COMPLETED,
+        "icu_consultation_completed": PatientLifecycleState.COMPLETED,
+        "icu_followup_requested": PatientLifecycleState.WAITING_FOLLOWUP,
         "mark_error": PatientLifecycleState.ERROR,
     },
     PatientLifecycleState.COMPLETED: {"begin_triage": PatientLifecycleState.TRIAGING},

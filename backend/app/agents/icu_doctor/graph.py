@@ -71,18 +71,6 @@ class ICUDoctorGraph:
             current_dialogue_state = ICUDoctorDialogueState(session_row["dialogue_state"])
             dialogue_state = self.dialogue_state_machine.transition(current_dialogue_state, "receive_reply")
             self.service.session_repo.update_state(session_id, dialogue_state.value)
-            patient_row = self.service.patient_repo.get(patient_id)
-            current_patient_state = PatientLifecycleState(patient_row["lifecycle_state"])
-            next_patient_state = self.service.patient_state_machine.transition(current_patient_state, "resume_icu_consultation")
-            self.service.patient_repo.update_patient(
-                patient_id,
-                lifecycle_state=next_patient_state.value,
-                session_id=session_id,
-            )
-            self.service.bus.publish(
-                "patient.state_changed",
-                {"patient_id": patient_id, "lifecycle_state": next_patient_state.value},
-            )
 
         memory = self.service.prepare_context(payload, session_id, dialogue_state)
         if payload.get("message"):

@@ -1,0 +1,291 @@
+[
+  {
+    "id": "icu-rule-001",
+    "title": "Severe respiratory distress requiring immediate intervention",
+    "keywords": ["respiratory distress", "shortness of breath", "dyspnea", "respiratory failure", "呼吸困难", "呼吸衰竭", "ICU", "呼吸机", " ventilator"],
+    "conditions": {
+      "symptoms_any": ["respiratory distress", "shortness of breath", "dyspnea", "respiratory failure", "呼吸困难", "呼吸衰竭", "respiratory failure"],
+      "spo2_lte": 90
+    },
+    "result": {
+      "triage_level": 1,
+      "urgency": "CRITICAL",
+      "treatment_plan": "Immediate respiratory support with mechanical ventilation if needed. Airway management and oxygen therapy. ICU admission mandatory. Consider ARDS protocol.",
+      "note": "Patient presents with severe respiratory compromise requiring immediate life-saving intervention."
+    },
+    "source": "ICU Treatment Protocol v1"
+  },
+  {
+    "id": "icu-rule-002",
+    "title": "Cardiac emergency with hemodynamic instability",
+    "keywords": ["chest pain", "myocardial infarction", "cardiac arrest", "shock", "心梗", "心脏骤停", "心源性休克", "cardiac", "AMI", "STEMI"],
+    "conditions": {
+      "symptoms_any": ["chest pain", "myocardial infarction", "cardiac arrest", "shock", "心梗", "心脏骤停", "心源性休克", "cardiac arrest"],
+      "systolic_bp_lte": 90
+    },
+    "result": {
+      "triage_level": 1,
+      "urgency": "CRITICAL",
+      "treatment_plan": "Immediate cardiac resuscitation. Establish IV access, administer vasopressors if needed. Continuous cardiac monitoring. Emergency cardiology consultation. Prepare for defibrillation if needed.",
+      "note": "Patient presents with life-threatening cardiac emergency requiring immediate resuscitation."
+    },
+    "source": "ICU Treatment Protocol v1"
+  },
+  {
+    "id": "icu-rule-003",
+    "title": "Severe sepsis or septic shock",
+    "keywords": ["sepsis", "septic shock", "infection", "高热", "septic", "败血症", "感染性休克", "septicemia"],
+    "conditions": {
+      "symptoms_any": ["sepsis", "septic shock", "septic", "败血症", "感染性休克", "septicemia", "sepsis"],
+      "temp_c_gte": 39.0
+    },
+    "result": {
+      "triage_level": 1,
+      "urgency": "CRITICAL",
+      "treatment_plan": "Immediate broad-spectrum antibiotics within first hour. Fluid resuscitation with crystalloids (30ml/kg bolus). Vasopressors if hypotensive despite fluids. Source control. Lactate monitoring.",
+      "note": "Patient presents with severe sepsis or septic shock requiring immediate intervention according to Surviving Sepsis Campaign guidelines."
+    },
+    "source": "ICU Treatment Protocol v1 - Surviving Sepsis Campaign"
+  },
+  {
+    "id": "icu-rule-004",
+    "title": "Neurological emergency - decreased level of consciousness",
+    "keywords": ["coma", "unconscious", "stroke", "GCS", "脑卒中", "昏迷", "意识障碍", "seizure", "癫痫", "cerebral", "head injury", "脑损伤"],
+    "conditions": {
+      "symptoms_any": ["coma", "unconscious", "stroke", "GCS", "脑卒中", "昏迷", "意识障碍", "seizure", "癫痫", "unresponsive"]
+    },
+    "result": {
+      "triage_level": 1,
+      "urgency": "CRITICAL",
+      "treatment_plan": "Immediate neurological assessment. Secure airway if GCS < 8. CT head to rule out hemorrhage. Monitor for herniation signs. NPO status. Consider ICP monitoring.",
+      "note": "Patient presents with neurological emergency requiring immediate evaluation and possible neurosurgical intervention."
+    },
+    "source": "ICU Treatment Protocol v1 - Neurocritical Care"
+  },
+  {
+    "id": "icu-rule-005",
+    "title": "Trauma with hemodynamic instability",
+    "keywords": ["trauma", "injury", "bleeding", "fracture", "创伤", "骨折", "出血", "accident", "MVA", "motor vehicle"],
+    "conditions": {
+      "symptoms_any": ["trauma", "injury", "bleeding", "fracture", "创伤", "骨折", "出血", "hemorrhage"],
+      "systolic_bp_lte": 100
+    },
+    "result": {
+      "triage_level": 1,
+      "urgency": "CRITICAL",
+      "treatment_plan": "Immediate hemorrhage control. Massive transfusion protocol. Fluid resuscitation. Blood transfusion as needed. Surgical consultation for source control. Consider REBOA if appropriate.",
+      "note": "Patient presents with traumatic injury requiring immediate surgical evaluation and possible operative intervention."
+    },
+    "source": "ICU Treatment Protocol v1 - Trauma Care"
+  },
+  {
+    "id": "icu-rule-006",
+    "title": "Post-operative critical care required",
+    "keywords": ["post-op", "postoperative", "surgery", "术后", "手术后来", "operation recovery", "post-surgical"],
+    "conditions": {
+      "symptoms_any": ["post-op", "postoperative", "surgery", "术后", "手术后来", "operation recovery", "post-surgical"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "Close post-operative monitoring. Pain management with multimodal approach. Prevention of complications (DVT prophylaxis, antibiotic stewardship). Routine ICU care protocols. Wound care.",
+      "note": "Patient requires post-operative critical care monitoring following major surgery."
+    },
+    "source": "ICU Treatment Protocol v1 - Postoperative Care"
+  },
+  {
+    "id": "icu-rule-007",
+    "title": "Acute respiratory failure - non-critical",
+    "keywords": ["respiratory failure", "hypoxia", "pneumonia", "COPD exacerbation", "呼吸衰竭", "肺炎", "低氧血症", "asthma attack", "bronchospasm"],
+    "conditions": {
+      "symptoms_any": ["respiratory failure", "hypoxia", "pneumonia", "COPD exacerbation", "呼吸衰竭", "肺炎", "低氧血症", "hypoxemia"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "Oxygen therapy with target SpO2 88-92% for COPD, >94% for others. Consider non-invasive ventilation (BiPAP) if indicated. Treat underlying cause. Bronchodilators for COPD/Asthma. Chest physiotherapy.",
+      "note": "Patient presents with respiratory failure requiring close monitoring and supportive care with possible ventilatory support."
+    },
+    "source": "ICU Treatment Protocol v1 - Respiratory Care"
+  },
+  {
+    "id": "icu-rule-008",
+    "title": "Acute coronary syndrome - stable",
+    "keywords": ["ACS", "unstable angina", "coronary syndrome", "心绞痛", "不稳定心绞痛", "NSTEMI", "angina"],
+    "conditions": {
+      "symptoms_any": ["ACS", "unstable angina", "coronary syndrome", "心绞痛", "不稳定心绞痛", "NSTEMI", "angina", "chest discomfort"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "Dual antiplatelet therapy (Aspirin + P2Y12 inhibitor). Anticoagulation (Heparin). Beta-blockers for rate control. High-intensity statins. Cardiology consultation for urgent angiogram. Monitor for arrhythmias.",
+      "note": "Patient presents with acute coronary syndrome requiring urgent cardiac workup and possible revascularization."
+    },
+    "source": "ICU Treatment Protocol v1 - Cardiac Care"
+  },
+  {
+    "id": "icu-rule-009",
+    "title": "Diabetic emergency - DKA or HHS",
+    "keywords": ["DKA", "ketoacidosis", "diabetic", "hyperglycemia", "hypoglycemia", "血糖", "酮症", "糖尿病急症", "diabetic ketoacidosis"],
+    "conditions": {
+      "symptoms_any": ["DKA", "ketoacidosis", "diabetic emergency", "血糖", "酮症", "糖尿病急症", "hypoglycemia", "hyperglycemia", "diabetic ketoacidosis", "HHS"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "Fluid resuscitation with Normal Saline (0.9% NaCl). Insulin drip 0.1 units/kg/hr. Potassium replacement when K+ < 5.2. Monitor glucose q1h. Monitor anion gap. Treat underlying trigger.",
+      "note": "Patient presents with diabetic emergency requiring metabolic management and close electrolyte monitoring."
+    },
+    "source": "ICU Treatment Protocol v1 - Metabolic Emergencies"
+  },
+  {
+    "id": "icu-rule-010",
+    "title": "Gastrointestinal emergency - bleeding or perforation",
+    "keywords": ["GI bleed", "GI bleeding", "perforation", "hemorrhage", "消化道出血", "胃肠出血", "穿孔", "variceal", "ulcer"],
+    "conditions": {
+      "symptoms_any": ["GI bleed", "GI bleeding", "perforation", "hemorrhage", "消化道出血", "胃肠出血", "穿孔", "hematemesis", "melena"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "Fluid resuscitation. Blood transfusion if hemoglobin < 7 g/dL (or < 8 if cardiac). NPO status. IV proton pump inhibitor high dose. GI surgery consultation. Consider endoscopy within 24 hours.",
+      "note": "Patient presents with GI emergency requiring urgent intervention and possible surgical management."
+    },
+    "source": "ICU Treatment Protocol v1 - GI Emergencies"
+  },
+  {
+    "id": "icu-rule-011",
+    "title": "Renal failure requiring ICU monitoring",
+    "keywords": ["renal failure", "kidney injury", "AKI", "nephrology", "肾衰", "肾功能", "肾损伤", "透析", "hemodialysis", "uremia"],
+    "conditions": {
+      "symptoms_any": ["renal failure", "kidney injury", "AKI", "nephrology", "肾衰", "肾功能", "肾损伤", "透析", "acute kidney injury", "uremia"]
+    },
+    "result": {
+      "triage_level": 3,
+      "urgency": "URGENT",
+      "treatment_plan": "Fluid management balancing perfusion and overload. Avoid nephrotoxins (NSAIDs, contrast, aminoglycosides). Monitor electrolytes closely (K+, Na+, Ca++, phosphate). Consider renal replacement therapy if indicated (uremic symptoms, hyperkalemia, acidosis, volume overload).",
+      "note": "Patient requires ICU monitoring for acute kidney injury with possible need for dialysis."
+    },
+    "source": "ICU Treatment Protocol v1 - Nephrology"
+  },
+  {
+    "id": "icu-rule-012",
+    "title": "Drug overdose or toxicity",
+    "keywords": ["overdose", "toxicity", "poisoning", "drug", "toxin", "中毒", "药物过量", "intoxication", "ingestion"],
+    "conditions": {
+      "symptoms_any": ["overdose", "toxicity", "poisoning", "drug", "toxin", "中毒", "药物过量", "intoxication", "ingestion", "toxic"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "Supportive care (ABCs). Decontamination if appropriate (activated charcoal if within 1 hour of ingestion). Specific antidotes if known toxin (N-acetylcysteine for acetaminophen, naloxone for opioids, flumazenil for benzodiazepines). Monitor for complications. Consider hemodialysis for dialyzable toxins.",
+      "note": "Patient presents with possible overdose requiring toxicology workup, supportive care, and possible antidote administration."
+    },
+    "source": "ICU Treatment Protocol v1 - Toxicology"
+  },
+  {
+    "id": "icu-rule-013",
+    "title": "Electrolyte disturbance - severe",
+    "keywords": ["electrolyte", "hypokalemia", "hyperkalemia", "hyponatremia", "电解质紊乱", "钾", "钠", "hypocalcemia", "hypomagnesemia"],
+    "conditions": {
+      "symptoms_any": ["electrolyte disturbance", "hypokalemia", "hyperkalemia", "hyponatremia", "电解质紊乱", "hypernatremia", "hypocalcemia"]
+    },
+    "result": {
+      "triage_level": 3,
+      "urgency": "URGENT",
+      "treatment_plan": "Correct electrolyte abnormalities per protocol. Monitor cardiac rhythm continuously. Identify and treat underlying cause. For hyperkalemia: Calcium gluconate, Insulin+Glucose, Albuterol, Consider dialysis. For hyponatremia: Hypertonic saline if severe symptomatic.",
+      "note": "Patient presents with severe electrolyte disturbance requiring ICU monitoring and careful correction."
+    },
+    "source": "ICU Treatment Protocol v1 - Electrolyte Management"
+  },
+  {
+    "id": "icu-rule-014",
+    "title": "Pulmonary embolism",
+    "keywords": ["PE", "pulmonary embolism", "DVT", "blood clot", "肺栓塞", "深静脉血栓", "thromboembolism", "embolism"],
+    "conditions": {
+      "symptoms_any": ["PE", "pulmonary embolism", "DVT", "blood clot", "肺栓塞", "深静脉血栓", "thromboembolism", "embolism"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "Anticoagulation with heparin (UFH or LMWH). Consider thrombolysis (tPA) if hemodynamic unstable (systolic BP < 90). Investigate source of embolism with ultrasound. Consider IVC filter if contraindication to anticoagulation.",
+      "note": "Patient presents with pulmonary embolism requiring ICU monitoring and anticoagulation therapy."
+    },
+    "source": "ICU Treatment Protocol v1 - Venous Thromboembolism"
+  },
+  {
+    "id": "icu-rule-015",
+    "title": "Acute pancreatitis - severe",
+    "keywords": ["pancreatitis", "pancreatic", "胰炎", "abdominal pain", "淀粉酶", "脂肪酶"],
+    "conditions": {
+      "symptoms_any": ["pancreatitis", "pancreatic", "胰炎", "abdominal pain", "淀粉酶", "脂肪酶", "gallstone pancreatitis"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "NPO status. Aggressive fluid resuscitation with crystalloids. Pain management. Monitor for SIRS and organ dysfunction. Consider enteral nutrition if able. Antibiotics only if infected necrosis suspected. ERCP if biliary obstruction.",
+      "note": "Patient presents with acute pancreatitis requiring ICU monitoring for potential complications."
+    },
+    "source": "ICU Treatment Protocol v1 - GI Disorders"
+  },
+  {
+    "id": "icu-rule-016",
+    "title": "Hepatic encephalopathy or liver failure",
+    "keywords": ["liver failure", "hepatic", "encephalopathy", "肝衰", "肝性脑病", "jaundice", "cirrhosis", "黄疸", "ascites"],
+    "conditions": {
+      "symptoms_any": ["liver failure", "hepatic encephalopathy", "肝衰", "肝性脑病", "jaundice", "cirrhosis", "黄疸", "hepatorenal"]
+    },
+    "result": {
+      "triage_level": 2,
+      "urgency": "EMERGENT",
+      "treatment_plan": "Monitor mental status closely. Lactulose for hepatic encephalopathy. rifaximin. Correct electrolyte abnormalities. NPO if aspiration risk. Consider albumin dialysis (MARS) if indicated. Evaluate for liver transplantation.",
+      "note": "Patient presents with liver failure and possible hepatic encephalopathy requiring ICU monitoring."
+    },
+    "source": "ICU Treatment Protocol v1 - Hepatology"
+  },
+  {
+    "id": "icu-rule-017",
+    "title": "Anaphylaxis",
+    "keywords": ["anaphylaxis", "allergic reaction", "过敏性休克", "anaphylactic", "allergy", "过敏", "bronchospasm", "angioedema"],
+    "conditions": {
+      "symptoms_any": ["anaphylaxis", "allergic reaction", "过敏性休克", "anaphylactic", "过敏", "bronchospasm", "angioedema", "urticaria"]
+    },
+    "result": {
+      "triage_level": 1,
+      "urgency": "CRITICAL",
+      "treatment_plan": "Immediate IM Epinephrine 0.3-0.5 mg (1:1000). Call for help. Airway management (consider early intubation). IV fluids. Antihistamines. Corticosteroids. Monitor for biphasic reaction.",
+      "note": "Patient presents with anaphylaxis requiring immediate life-saving intervention."
+    },
+    "source": "ICU Treatment Protocol v1 - Allergy Emergency"
+  },
+  {
+    "id": "icu-rule-018",
+    "title": "Status epilepticus",
+    "keywords": ["seizure", "epilepsy", "癫痫持续", "convulsion", "癫痫", "status epilepticus", "fit"],
+    "conditions": {
+      "symptoms_any": ["seizure", "epilepsy", "癫痫持续", "convulsion", "癫痫", "status epilepticus", "fitting", "convulsing"]
+    },
+    "result": {
+      "triage_level": 1,
+      "urgency": "CRITICAL",
+      "treatment_plan": "Protect airway. IV Lorazepam 0.1 mg/kg or Diazepam. Load with Levetiracetam or Valproate. Consider phenytoin or phenobarbital if refractory. Maintain sedation if needed. EEG monitoring. Identify and treat underlying cause.",
+      "note": "Patient presents with status epilepticus requiring immediate seizure termination and ICU monitoring."
+    },
+    "source": "ICU Treatment Protocol v1 - Neurology"
+  },
+  {
+    "id": "icu-rule-019",
+    "title": "ICU observation - general",
+    "keywords": ["observation", "monitoring", "general", "观察", "ICU观察", "监护", "routine", "stable"],
+    "conditions": {
+      "default": true
+    },
+    "result": {
+      "triage_level": 3,
+      "urgency": "URGENT",
+      "treatment_plan": "Close monitoring of vital signs every 4 hours. Supportive care. Regular reassessment of patient condition. Treat underlying condition. Fall precautions. DVT prophylaxis.",
+      "note": "Patient requires ICU monitoring for ongoing evaluation and management of medical condition."
+    },
+    "source": "ICU Treatment Protocol v1 - General Observation"
+  }
+]

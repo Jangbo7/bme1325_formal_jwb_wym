@@ -18,7 +18,7 @@ from app.agents.icu_doctor.rules import (
     split_symptoms,
     validate_icu_triage_result,
 )
-from app.agents.icu_doctor.schemas import WorkingMemory
+from app.agents.icu_doctor.state import WorkingMemory
 from app.events.types import ICU_CONSULTATION_COMPLETED, PATIENT_STATE_CHANGED
 
 

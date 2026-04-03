@@ -7,10 +7,12 @@ from fastapi.responses import JSONResponse
 from app.agents.triage.graph import LANGGRAPH_AVAILABLE, TriageGraph
 from app.agents.triage.service import TriageService
 from app.agents.triage.state_machine import TriageDialogueStateMachine
+from app.agents.icu_doctor import create_icub_doctor_service
 from app.api.routes.health import router as health_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.queues import router as queues_router
 from app.api.routes.triage import router as triage_router
+from app.api.routes.icu import router as icu_router
 from app.config import get_settings
 from app.database import Database
 from app.domain.patient.state_machine import PatientStateMachine
@@ -64,6 +66,20 @@ def create_container():
     bus.subscribe(PATIENT_STATE_CHANGED, lambda payload: audit.write(PATIENT_STATE_CHANGED, payload))
     bus.subscribe(QUEUE_TICKET_CREATED, lambda payload: audit.write(QUEUE_TICKET_CREATED, payload))
 
+    icu_doctor_service = create_icub_doctor_service(
+        llm_settings={
+            "endpoint": settings["llm_endpoint"],
+            "model": settings["llm_model"],
+            "api_key": settings["llm_api_key"],
+        },
+        patient_repo=patient_repo,
+        session_repo=session_repo,
+        memory_repo=memory_repo,
+        queue_repo=queue_repo,
+        patient_state_machine=patient_state_machine,
+        bus=bus,
+    )
+
     return {
         "settings": settings,
         "db": db,
@@ -73,6 +89,7 @@ def create_container():
         "queue_repo": queue_repo,
         "event_bus": bus,
         "triage_service": triage_service,
+        "icu_doctor_service": icu_doctor_service,
         "langgraph_available": LANGGRAPH_AVAILABLE,
     }
 
@@ -105,6 +122,7 @@ def create_app() -> FastAPI:
     app.include_router(triage_router)
     app.include_router(patients_router)
     app.include_router(queues_router)
+    app.include_router(icu_router)
     return app
 
 
