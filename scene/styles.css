@@ -1,0 +1,357 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(102, 72, 111, 0.4), transparent 50%),
+    linear-gradient(180deg, #221826 0%, #130f17 100%);
+  font-family: "Segoe UI", "PingFang SC", sans-serif;
+  color: #f2e8f6;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hud {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 1;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(20, 15, 27, 0.72);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+.hud__title {
+  margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.hud__tips {
+  font-size: 12px;
+  color: #d8bfd8;
+}
+
+.hud__floor {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+#floor-state {
+  color: #f4def4;
+  min-width: 106px;
+}
+
+.hud__buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.hud__btn {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4def4;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.hud__btn.is-active {
+  background: rgba(153, 211, 255, 0.28);
+  border-color: rgba(153, 211, 255, 0.9);
+  color: #ffffff;
+}
+
+#game {
+  width: min(100vw, 1400px);
+  height: min(100vh, 800px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  image-rendering: pixelated;
+  background: #100d14;
+}
+
+.triage-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 8, 12, 0.78);
+  backdrop-filter: blur(2px);
+}
+
+.triage-modal.hidden {
+  display: none;
+}
+
+.triage-modal__content {
+  width: min(92vw, 460px);
+  max-height: 84vh;
+  overflow: auto;
+  border-radius: 14px;
+  border: 1.5px solid rgba(112, 234, 255, 0.62);
+  background: linear-gradient(180deg, rgba(34, 24, 38, 0.96) 0%, rgba(19, 15, 23, 0.98) 100%);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  padding: 18px;
+}
+
+.triage-modal__content h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: #ecfbff;
+}
+
+.triage-form {
+  display: grid;
+  gap: 10px;
+}
+
+.triage-form fieldset {
+  margin: 0;
+  border: none;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.triage-form label {
+  font-size: 12px;
+  color: #d8bfd8;
+}
+
+.triage-form input,
+.triage-form textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f2e8f6;
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.triage-form textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.triage-form input[type="range"] {
+  padding: 0;
+  accent-color: #70eaff;
+}
+
+.triage-form input:focus,
+.triage-form textarea:focus {
+  outline: 2px solid rgba(112, 234, 255, 0.55);
+  outline-offset: 1px;
+}
+
+#painDisplay {
+  color: #70eaff;
+  font-weight: 700;
+}
+
+.triage-form__actions {
+  margin-top: 6px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.triage-btn {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  padding: 7px 12px;
+  color: #f2e8f6;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.triage-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.triage-btn--primary {
+  border-color: rgba(112, 234, 255, 0.95);
+  color: #ecfbff;
+  background: rgba(112, 234, 255, 0.22);
+}
+
+.triage-btn--primary:hover {
+  background: rgba(112, 234, 255, 0.36);
+}
+
+.triage-dialogue {
+  width: min(92vw, 720px);
+  display: grid;
+  gap: 14px;
+}
+
+.triage-dialogue__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.triage-dialogue__status {
+  margin: 6px 0 0;
+  color: #d4ebf3;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.triage-dialogue__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.triage-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(112, 234, 255, 0.52);
+  background: rgba(112, 234, 255, 0.14);
+  color: #ecfbff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.triage-badge--high {
+  border-color: rgba(255, 153, 153, 0.7);
+  background: rgba(255, 112, 112, 0.2);
+  color: #ffe5e5;
+}
+
+.triage-badge--medium {
+  border-color: rgba(255, 210, 124, 0.72);
+  background: rgba(255, 210, 124, 0.16);
+  color: #fff1cf;
+}
+
+.triage-badge--low {
+  border-color: rgba(138, 238, 182, 0.72);
+  background: rgba(138, 238, 182, 0.14);
+  color: #ddffea;
+}
+
+.triage-badge--muted {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f2e8f6;
+}
+
+.triage-dialogue__messages {
+  min-height: 260px;
+  max-height: 42vh;
+  overflow: auto;
+  padding-right: 4px;
+  display: grid;
+  gap: 10px;
+}
+
+.triage-message {
+  max-width: 88%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  line-height: 1.6;
+  font-size: 13px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.triage-message--user {
+  margin-left: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5edf7;
+}
+
+.triage-message--assistant {
+  margin-right: auto;
+  border: 1px solid rgba(112, 234, 255, 0.3);
+  background: rgba(112, 234, 255, 0.1);
+  color: #ecfbff;
+}
+
+.triage-message__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+
+.triage-message__body {
+  white-space: pre-wrap;
+}
+
+.triage-dialogue__footer {
+  display: grid;
+  gap: 8px;
+}
+
+.triage-dialogue__composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.triage-dialogue__composer textarea {
+  min-height: 84px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f2e8f6;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.triage-dialogue__composer textarea:focus {
+  outline: 2px solid rgba(112, 234, 255, 0.55);
+  outline-offset: 1px;
+}
+
+.triage-dialogue__evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.triage-evidence-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 241, 184, 0.28);
+  background: rgba(255, 241, 184, 0.08);
+  color: #fff4d9;
+  font-size: 12px;
+}

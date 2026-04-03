@@ -1,0 +1,14 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code history artifacts
+.history/
+
+# Local private API and secret settings (do not commit)
+backend/.env
+scene/api.private.js
+
+# OS files
+.DS_Store
+Thumbs.db
