@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-﻿* {
-=======
 * {
->>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
   box-sizing: border-box;
 }
 
@@ -61,7 +57,6 @@ body {
   min-width: 106px;
 }
 
-<<<<<<< HEAD
 .hud__controls {
   margin-top: 10px;
   display: flex;
@@ -91,27 +86,6 @@ body {
 
 .hud__status {
   color: rgba(244, 222, 244, 0.7);
-=======
-.hud__buttons {
-  display: flex;
-  gap: 6px;
-}
-
-.hud__btn {
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.08);
-  color: #f4def4;
-  border-radius: 8px;
-  padding: 4px 8px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.hud__btn.is-active {
-  background: rgba(153, 211, 255, 0.28);
-  border-color: rgba(153, 211, 255, 0.9);
-  color: #ffffff;
->>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b
 }
 
 #game {
@@ -123,7 +97,6 @@ body {
   image-rendering: pixelated;
   background: #100d14;
 }
-<<<<<<< HEAD
 
 #dialog-ime {
   position: fixed;
@@ -147,5 +120,3 @@ body {
   opacity: 1;
   pointer-events: auto;
 }
-=======
->>>>>>> ee69a063f933718de53b3e2bbf4f7cb194ea800b

@@ -1,4 +1,4 @@
-﻿import { TILE, CHARACTER_FOOT_RADIUS, CHARACTER_BODY_HEIGHT, CHARACTER_HEAD_RADIUS, palette } from "./constants.js";
+import { TILE, CHARACTER_FOOT_RADIUS, CHARACTER_BODY_HEIGHT, CHARACTER_HEAD_RADIUS, palette } from "./constants.js";
 
 export const NPC_TYPES = {
   NURSE: "nurse",
@@ -166,6 +166,13 @@ export function drawNPC(ctx, npc, project, drawQuad, makePrismFaces) {
   const base = project(npc.x, npc.y, 0, npc.floor);
   const top = project(npc.x, npc.y, CHARACTER_BODY_HEIGHT, npc.floor);
 
+  if (npc.name === "内科医生") {
+    ctx.fillStyle = "rgba(255, 255, 0, 0.5)";
+    ctx.beginPath();
+    ctx.ellipse(base.x, base.y + 9, CHARACTER_FOOT_RADIUS + 10, CHARACTER_FOOT_RADIUS + 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.fillStyle = palette.shadow;
   ctx.beginPath();
   ctx.ellipse(base.x, base.y + 9, CHARACTER_FOOT_RADIUS + 4, CHARACTER_FOOT_RADIUS, 0, 0, Math.PI * 2);
@@ -220,8 +227,8 @@ export function initNPCs() {
   return [
     createNPC("nurse-1", NPC_TYPES.NURSE, 24.5, 16, 1, { name: "护士小李", state: NPC_STATES.IDLE }),
     createNPC("nurse-2", NPC_TYPES.NURSE, 7, 17.5, 1, { name: "护士小王", state: NPC_STATES.IDLE }),
-    createNPC("doctor-1", NPC_TYPES.DOCTOR, 20, 6, 1, { name: "内科医生", department: "内科", state: NPC_STATES.IDLE }),
-    createNPC("doctor-2", NPC_TYPES.DOCTOR, 33, 6, 1, { name: "外科医生", department: "外科", state: NPC_STATES.IDLE }),
+    createNPC("doctor-1", NPC_TYPES.DOCTOR, 20, 6, 1, { name: "内科医生", department: "internal", state: NPC_STATES.IDLE }),
+    createNPC("doctor-2", NPC_TYPES.DOCTOR, 33, 6, 1, { name: "外科医生", department: "surgery", state: NPC_STATES.IDLE }),
     createNPC("pharmacist-1", NPC_TYPES.PHARMACIST, 40, 17, 1, { name: "药师老张", state: NPC_STATES.IDLE }),
     createNPC("patient-1", NPC_TYPES.PATIENT, 25, 17, 1, { name: "患者甲", state: NPC_STATES.IDLE }),
     createNPC("patient-2", NPC_TYPES.PATIENT, 27, 18, 1, { name: "患者乙", state: NPC_STATES.IDLE }),

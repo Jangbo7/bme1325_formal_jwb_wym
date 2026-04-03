@@ -1,4 +1,4 @@
-import { NPC_TYPES } from "./npc.js";
+﻿import { NPC_TYPES } from "./npc.js";
 import { createUserMessage, createAssistantMessage, callChatAPI } from "./api.js";
 
 export const INTERNAL_MEDICINE_RAG = `
@@ -132,7 +132,7 @@ export async function sendMessage(dialogSystem, content, npc, apiCaller, options
   if (npc.type === NPC_TYPES.NURSE) {
     systemPrompt = getNurseSystemPrompt();
   } else if (npc.type === NPC_TYPES.DOCTOR) {
-    systemPrompt = getDoctorSystemPrompt(npc);
+    systemPrompt = getDoctorSystemPrompt();
   } else if (npc.type === NPC_TYPES.PHARMACIST) {
     systemPrompt = getPharmacistSystemPrompt();
   } else {

@@ -1,4 +1,4 @@
-import { NPC_TYPES } from "./npc.js";
+﻿import { NPC_TYPES } from "./npc.js";
 import { createUserMessage, createAssistantMessage, callChatAPI } from "./api.js";
 
 export const INTERNAL_MEDICINE_RAG = `

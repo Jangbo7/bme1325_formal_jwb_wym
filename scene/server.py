@@ -118,7 +118,7 @@ class APIProxyHandler(BaseHTTPRequestHandler):
                 if model == 'deepseek':
                     response_text = call_deepseek(message)
                 elif model == 'qwen':
-                    response_text = call_qwen(message, None, use_dashscope=False)
+                    response_text = call_qwen(message, None, use_dashscope=True)
                 elif model == 'qwen-vl':
                     response_text = call_qwen(message, image_data, use_dashscope=True)
                 else:

@@ -1,60 +1,5 @@
-import { NPC_TYPES } from "./npc.js";
+﻿import { NPC_TYPES } from "./npc.js";
 import { createUserMessage, createAssistantMessage, callChatAPI } from "./api.js";
-
-export const INTERNAL_MEDICINE_RAG = `
-## 内科医学知识库
-
-### 常见内科疾病及症状
-
-**1. 呼吸道感染**
-- 普通感冒：鼻塞、流涕、咽痛、咳嗽、发热
-- 流感：高热（39-40℃）、头痛、肌肉酸痛、乏力
-- 支气管炎：咳嗽、咳痰（黄痰或白痰）、喘息
-
-**2. 消化系统疾病**
-- 急性胃炎：上腹疼痛、恶心、呕吐、食欲不振
-- 慢性胃炎：上腹隐痛、反酸、嗳气、腹胀
-- 胃溃疡：周期性上腹疼痛、餐后痛、黑便
-- 急性肠炎：腹泻（稀水便）、腹痛、恶心、发热
-
-**3. 心血管疾病**
-- 高血压：头痛、头晕、耳鸣、视力模糊，常无症状
-- 冠心病：胸痛（心绞痛）、胸闷、气短
-- 心律失常：心悸、心跳不规则、乏力、头晕
-
-**4. 内分泌疾病**
-- 糖尿病：多饮、多尿、多食、体重下降、皮肤瘙痒
-- 甲状腺功能亢进：心悸、多汗、消瘦、情绪激动、手抖
-- 甲状腺功能减退：乏力、嗜睡、怕冷、体重增加
-
-**5. 神经系统疾病**
-- 头痛：偏头痛、紧张性头痛、丛集性头痛
-- 眩晕：良性阵发性位置性眩晕、梅尼埃病
-- 脑供血不足：头晕、记忆力下降、肢体麻木
-
-**6. 泌尿系统疾病**
-- 尿路感染：尿频、尿急、尿痛、下腹疼痛
-- 肾炎：血尿、蛋白尿、水肿、高血压
-- 前列腺炎：尿频、尿急、会阴部疼痛
-
-**7. 血液系统疾病**
-- 贫血：乏力、头晕、心悸、面色苍白
-- 白血病：发热、贫血、出血、肝脾肿大
-
-### 诊断流程
-
-1. 询问病史：症状起始时间、持续时间、严重程度、伴随症状
-2. 体格检查：体温、血压、心肺听诊、腹部触诊
-3. 辅助检查：血常规、尿常规、心电图、X光、超声等
-
-### 治疗原则
-
-1. 对症治疗：缓解症状
-2. 病因治疗：根治病因
-3. 一般治疗：休息、饮食调理
-4. 药物治疗：遵医嘱按时服药
-5. 随访复查：定期复查评估疗效
-`;
 
 export function createDialogSystem() {
   return {
@@ -132,7 +77,7 @@ export async function sendMessage(dialogSystem, content, npc, apiCaller, options
   if (npc.type === NPC_TYPES.NURSE) {
     systemPrompt = getNurseSystemPrompt();
   } else if (npc.type === NPC_TYPES.DOCTOR) {
-    systemPrompt = getDoctorSystemPrompt(npc);
+    systemPrompt = getDoctorSystemPrompt();
   } else if (npc.type === NPC_TYPES.PHARMACIST) {
     systemPrompt = getPharmacistSystemPrompt();
   } else {
@@ -201,30 +146,8 @@ function getNurseSystemPrompt() {
 - 急诊：紧急情况、危重病人`;
 }
 
-export function getDoctorSystemPrompt(npc = null) {
-  const isInternalDoctor = npc && npc.department === "internal";
-  const ragContext = isInternalDoctor ? INTERNAL_MEDICINE_RAG : "";
-
-  if (isInternalDoctor) {
-    return `你是一位内科医生，名字叫"Dr.林"，你在内科诊室工作。你是专业的内科医生，拥有丰富的内科医学知识。
-
-${ragContext}
-
-你需要：
-1. 礼貌地问候患者，询问症状
-2. 详细询问患者的症状和病史（包括症状起始时间、持续多久、严重程度、伴随症状等）
-3. 根据症状进行初步诊断和鉴别诊断
-4. 提供专业的医疗建议和治疗方案
-5. 如需进一步检查，建议患者做相应检查（如血常规、尿常规、心电图、X光等）
-6. 如需开药，说明药物名称、用法用量
-7. 保持专业、温和、耐心的态度
-8. 回答要专业但通俗易懂，让患者能够理解
-9. 如果患者情况紧急或严重，及时提醒患者去急诊
-
-注意：你只负责内科疾病，其他科室疾病请建议患者去相应科室。`;
-  }
-
-  return `你是一位专业的医生，名字叫"Dr.林"。你需要：
+function getDoctorSystemPrompt() {
+  return `你是一位专业的医生，名字叫“Dr.林”。你需要：
 1. 详细询问患者的症状和病史
 2. 提供专业的医疗建议
 3. 如需进一步检查，建议患者做相应检查
