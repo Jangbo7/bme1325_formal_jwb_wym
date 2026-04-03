@@ -89,6 +89,7 @@ class TriageGraph:
             self.service.patient_repo.get(patient_id)["updated_at"],
             metadata={"mode": work["mode"]},
         )
+        memory.short_term_turns = self.service.session_repo.list_turns(session_id)
         merged_payload = self.service.build_merged_payload(payload, memory.shared_memory)
         state = TriageGraphState(
             payload=payload,
@@ -107,13 +108,15 @@ class TriageGraph:
         memory = self.service.prepare_context(state.payload, state.payload["session_id"], state.dialogue_state)
         if state.payload.get("message"):
             self.service.apply_chat_updates(state.payload, memory)
-        final_result, evidence, missing_fields, assistant_message = self.service.evaluate(state.merged_payload, memory)
+        memory.short_term_turns = self.service.session_repo.list_turns(state.payload["session_id"])
+        state.merged_payload = self.service.build_merged_payload(state.payload, memory.shared_memory)
+        final_result, evidence, missing_fields, assistant_payload = self.service.evaluate(state.merged_payload, memory)
         state.shared_memory = memory.shared_memory
         state.private_memory = memory.private_memory
         state.final_result = final_result
         state.evidence = evidence
         state.missing_fields = missing_fields
-        state.assistant_message = assistant_message
+        state.assistant_payload = assistant_payload
         if missing_fields:
             state.dialogue_state = self.dialogue_state_machine.transition(state.dialogue_state, "need_followup")
             state.dialogue_state = self.dialogue_state_machine.transition(state.dialogue_state, "wait_for_reply")
@@ -123,9 +126,10 @@ class TriageGraph:
 
     def _persist_node(self, bundle: dict):
         state: TriageGraphState = bundle["state"]
-        memory = self.service.prepare_context(state.payload, state.payload["session_id"], state.dialogue_state)
-        if state.payload.get("message"):
-            self.service.apply_chat_updates(state.payload, memory)
+        memory = type("MemoryProxy", (), {})()
+        memory.shared_memory = state.shared_memory
+        memory.private_memory = state.private_memory
+        memory.short_term_turns = self.service.session_repo.list_turns(state.payload["session_id"])
         self.service.persist_result(
             patient_id=state.payload["patient_id"],
             session_id=state.payload["session_id"],
@@ -135,7 +139,7 @@ class TriageGraph:
             triage_result=state.final_result,
             evidence=state.evidence,
             missing_fields=state.missing_fields,
-            assistant_message=state.assistant_message,
+            assistant_payload=state.assistant_payload,
         )
         return bundle
 

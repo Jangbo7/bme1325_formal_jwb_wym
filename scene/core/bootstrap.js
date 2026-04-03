@@ -1,4 +1,4 @@
-﻿import { createBackendClient } from "../agent/client.js";
+import { createBackendClient } from "../agent/client.js";
 import { createAgentStore, buildDialogueMessages } from "../agent/store.js";
 import { buildTriagePayloadFromFormValues } from "../agent/triage-form.js";
 import { renderDialogueEvidence as renderDialogueEvidenceView, renderDialogueMessages as renderDialogueMessagesView, setDialogueBadges } from "../agent/triage-dialogue.js";
@@ -847,7 +847,9 @@ function drawTriageHint() {
     ? "Submitting triage..."
     : triageUi.open
       ? "Complete the triage form..."
-      : "Press E to start triage";
+      : hasStartedTriageConversation()
+        ? "Press E to continue triage chat"
+        : "Press E to start triage";
   const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
   const boxWidth = 176;
   const boxHeight = 28;
@@ -1042,6 +1044,30 @@ const triageConversationState = {
   sending: false,
 };
 
+function getCurrentSelfPatient() {
+  const patient = agentStore.lastPatient;
+  return patient && patient.id === triageConversationState.patientId ? patient : null;
+}
+
+function hasStartedTriageConversation(patient = getCurrentSelfPatient()) {
+  if (!patient) return false;
+  if (Array.isArray(patient?.dialogue?.turns) && patient.dialogue.turns.length > 0) return true;
+  if (patient?.dialogue?.status && patient.dialogue.status !== "idle") return true;
+  return patient?.state && patient.state !== "Untriaged";
+}
+
+function openExistingTriageDialogue(patient = getCurrentSelfPatient()) {
+  if (!triageDialogueUi.modal || !patient) return;
+  triageDialogueUi.open = true;
+  triageDialogueUi.awaitingResult = false;
+  triageDialogueUi.lastRenderedAt = "";
+  triageDialogueUi.modal.classList.remove("hidden");
+  triageDialogueUi.modal.setAttribute("aria-hidden", "false");
+  if (triageDialogueUi.input) triageDialogueUi.input.value = "";
+  keys.clear();
+  syncTriageDialogue(patient);
+}
+
 function openTriageDialogue(initialPayload) {
   if (!triageDialogueUi.modal) return;
   triageDialogueUi.open = true;
@@ -1113,6 +1139,7 @@ async function pollBackendStatuses(force = false) {
     agentStore.syncQueues(queueData.queues || []);
     queueRuntime.syncFromApi(queueData.queues || [], triageConversationState.patientId);
     taskBoardPresenter.syncPatients(patients);
+    if (selfPatient) agentStore.syncPatient(selfPatient);
     if (selfPatient) syncTriageDialogue(selfPatient);
     backendState.connected = true;
     backendState.lastError = "";
@@ -1180,6 +1207,10 @@ async function submitTriageDialogueReply() {
 
 function submitTriageRequest() {
   if (backendState.submitting || triageUi.open || triageDialogueUi.open || !canInteractWithTriageDesk()) return;
+  if (hasStartedTriageConversation()) {
+    openExistingTriageDialogue();
+    return;
+  }
   openTriageModal();
 }
 

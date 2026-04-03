@@ -61,7 +61,16 @@ class AgentMemoryRepository:
         try:
             row = conn.execute("SELECT data_json FROM agent_session_memory WHERE session_id = ?", (session_id,)).fetchone()
             if row:
-                return Database.decode_json(row["data_json"], {})
+                payload = Database.decode_json(row["data_json"], {})
+                payload.setdefault("asked_fields_history", [])
+                payload.setdefault("last_question_focus", None)
+                payload.setdefault("last_question_text", "")
+                payload.setdefault("last_question_style", None)
+                payload.setdefault("recommendation_snapshot", None)
+                payload.setdefault("recommendation_changed", False)
+                payload.setdefault("message_type", "followup")
+                payload.setdefault("latest_extraction", {})
+                return payload
             payload = {
                 "session_id": session_id,
                 "patient_id": patient_id,
@@ -72,6 +81,14 @@ class AgentMemoryRepository:
                 "expected_field": None,
                 "assistant_message": "",
                 "evidence": [],
+                "asked_fields_history": [],
+                "last_question_focus": None,
+                "last_question_text": "",
+                "last_question_style": None,
+                "recommendation_snapshot": None,
+                "recommendation_changed": False,
+                "message_type": "followup",
+                "latest_extraction": {},
             }
             conn.execute(
                 "INSERT INTO agent_session_memory (session_id, patient_id, agent_type, data_json) VALUES (?, ?, ?, ?)",

@@ -8,14 +8,15 @@ function escapeHtml(text) {
 export function renderDialogueMessages(messagesEl, messages) {
   if (!messagesEl) return;
   messagesEl.innerHTML = messages
-    .map(
-      (message) => `
-        <article class="triage-message triage-message--${message.role}">
+    .map((message) => {
+      const typeClass = message.type ? ` triage-message--${message.type}` : "";
+      return `
+        <article class="triage-message triage-message--${message.role}${typeClass}">
           <span class="triage-message__label">${escapeHtml(message.label)}</span>
           <div class="triage-message__body">${escapeHtml(message.body)}</div>
         </article>
-      `
-    )
+      `;
+    })
     .join("");
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -39,5 +40,6 @@ export function setDialogueBadges(levelEl, deptEl, level, department, priority) 
   else if (priority === "L") levelEl.classList.add("triage-badge--low");
   else levelEl.classList.add("triage-badge--muted");
   levelEl.textContent = level ? `Triage Level ${level}` : "Triage Pending";
-  deptEl.textContent = department ? `Department ${department}` : "Department Pending";
+  deptEl.textContent = department ? `\u5efa\u8bae\u79d1\u5ba4: ${department}` : "Department Pending";
 }
+

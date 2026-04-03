@@ -13,6 +13,10 @@ class DialogueSummary(BaseModel):
     assistant_message: str = ""
     missing_fields: list[str] = Field(default_factory=list)
     turns: list[dict] = Field(default_factory=list)
+    question_focus: str | None = None
+    message_type: str = "followup"
+    recommendation_changed: bool = False
+    asked_fields_history: list[str] = Field(default_factory=list)
 
 
 class EvidenceItem(BaseModel):
