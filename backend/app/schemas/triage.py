@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+from app.schemas.common import VisitLifecycleState
 from app.schemas.patient import DialogueSummary, PatientView
 
 
@@ -14,6 +15,7 @@ class VitalsPayload(BaseModel):
 class CreateTriageSessionRequest(BaseModel):
     patient_id: str = "P-self"
     session_id: str | None = None
+    visit_id: str | None = None
     name: str = "You (Player)"
     age: int | None = None
     sex: str | None = None
@@ -36,5 +38,7 @@ class TriageMessageRequest(BaseModel):
 class TriageSessionResponse(BaseModel):
     ok: bool = True
     session_id: str
+    visit_id: str | None = None
+    visit_state: VisitLifecycleState | None = None
     patient: PatientView
     dialogue: DialogueSummary

@@ -21,8 +21,10 @@ class QueueSubscriber:
         if patient["lifecycle_state"] not in {PatientLifecycleState.TRIAGED.value, PatientLifecycleState.QUEUED.value}:
             return
         department = map_department_from_triage(payload.get("department", ""), payload.get("priority", "M"))
+        visit_id = payload.get("visit_id") or patient.get("visit_id")
         ticket = self.queue_repo.create_ticket(
             patient_id=patient_id,
+            visit_id=visit_id,
             department_id=department["queue_department_id"],
             department_name=department["label"],
         )
@@ -32,6 +34,7 @@ class QueueSubscriber:
             patient_id,
             lifecycle_state=queued_state.value,
             location=department["label"],
+            visit_id=visit_id,
         )
         self.bus.publish(
             PATIENT_STATE_CHANGED,
@@ -44,6 +47,7 @@ class QueueSubscriber:
             QUEUE_TICKET_CREATED,
             {
                 "patient_id": patient_id,
+                "visit_id": visit_id,
                 "ticket": ticket,
             },
         )

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 class QueueTicketView(BaseModel):
     id: str
     patient_id: str
+    visit_id: str | None = None
     department_id: str
     department_name: str
     number: int

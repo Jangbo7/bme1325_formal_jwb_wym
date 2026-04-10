@@ -89,3 +89,94 @@
 2026-04-03T07:59:20.259599+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'waiting_followup'}
 2026-04-03T07:59:46.798488+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
 2026-04-03T07:59:56.327114+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'waiting_followup'}
+2026-04-10T06:49:31.817516+00:00 visit.state_changed {'visit_id': 'visit-0e2c94562c', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'begin_triage'}
+2026-04-10T06:49:31.823940+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T06:49:39.726905+00:00 visit.state_changed {'visit_id': 'visit-0e2c94562c', 'patient_id': 'P-self', 'state': 'waiting_followup', 'event': 'followup_requested'}
+2026-04-10T06:49:39.743756+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'waiting_followup'}
+2026-04-10T06:49:39.812335+00:00 visit.state_changed {'visit_id': 'visit-0e2c94562c', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'resume_triage'}
+2026-04-10T06:49:39.819448+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T06:49:42.895580+00:00 visit.state_changed {'visit_id': 'visit-0e2c94562c', 'patient_id': 'P-self', 'state': 'waiting_consultation', 'event': 'triage_completed'}
+2026-04-10T06:49:42.912339+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaged'}
+2026-04-10T06:49:42.937174+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'queued'}
+2026-04-10T06:49:42.937174+00:00 queue.ticket_created {'patient_id': 'P-self', 'visit_id': 'visit-0e2c94562c', 'ticket': {'id': 'QT-7ef2035b', 'patient_id': 'P-self', 'visit_id': 'visit-0e2c94562c', 'department_id': 'emergency', 'department_name': 'Emergency', 'number': 1, 'status': 'waiting', 'created_at': '2026-04-10T06:49:42.914799+00:00', 'updated_at': '2026-04-10T06:49:42.914799+00:00'}}
+2026-04-10T06:49:42.937174+00:00 triage.completed {'patient_id': 'P-self', 'session_id': 'session-f77cc8b3', 'visit_id': 'visit-0e2c94562c', 'department': 'Emergency', 'priority': 'H'}
+2026-04-10T06:49:54.142444+00:00 visit.state_changed {'visit_id': 'visit-d9e22c76fc', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'begin_triage'}
+2026-04-10T06:49:54.150281+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T06:49:57.358325+00:00 visit.state_changed {'visit_id': 'visit-d9e22c76fc', 'patient_id': 'P-self', 'state': 'waiting_consultation', 'event': 'triage_completed'}
+2026-04-10T06:49:57.371664+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaged'}
+2026-04-10T06:49:57.393703+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'queued'}
+2026-04-10T06:49:57.394707+00:00 queue.ticket_created {'patient_id': 'P-self', 'visit_id': 'visit-d9e22c76fc', 'ticket': {'id': 'QT-80ecfb32', 'patient_id': 'P-self', 'visit_id': 'visit-d9e22c76fc', 'department_id': 'fever', 'department_name': 'Fever Clinic', 'number': 1, 'status': 'waiting', 'created_at': '2026-04-10T06:49:57.373704+00:00', 'updated_at': '2026-04-10T06:49:57.373704+00:00'}}
+2026-04-10T06:49:57.394707+00:00 triage.completed {'patient_id': 'P-self', 'session_id': 'session-b662f1c1', 'visit_id': 'visit-d9e22c76fc', 'department': 'Fever Clinic', 'priority': 'M'}
+2026-04-10T07:23:05.010815+00:00 visit.state_changed {'visit_id': 'visit-a1736bbb69', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'begin_triage'}
+2026-04-10T07:23:05.024265+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T07:23:17.147122+00:00 visit.state_changed {'visit_id': 'visit-a1736bbb69', 'patient_id': 'P-self', 'state': 'waiting_followup', 'event': 'followup_requested'}
+2026-04-10T07:23:17.163857+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'waiting_followup'}
+2026-04-10T07:23:32.971534+00:00 visit.state_changed {'visit_id': 'visit-a1736bbb69', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'resume_triage'}
+2026-04-10T07:23:32.981895+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T07:23:41.106269+00:00 visit.state_changed {'visit_id': 'visit-a1736bbb69', 'patient_id': 'P-self', 'state': 'waiting_followup', 'event': 'followup_requested'}
+2026-04-10T07:23:41.123611+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'waiting_followup'}
+2026-04-10T07:24:23.329256+00:00 visit.state_changed {'visit_id': 'visit-a1736bbb69', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'resume_triage'}
+2026-04-10T07:24:23.343998+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T07:24:30.889437+00:00 visit.state_changed {'visit_id': 'visit-a1736bbb69', 'patient_id': 'P-self', 'state': 'waiting_consultation', 'event': 'triage_completed'}
+2026-04-10T07:24:30.909812+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaged'}
+2026-04-10T07:24:30.939501+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'queued'}
+2026-04-10T07:24:30.940506+00:00 queue.ticket_created {'patient_id': 'P-self', 'visit_id': 'visit-a1736bbb69', 'ticket': {'id': 'QT-17a64288', 'patient_id': 'P-self', 'visit_id': 'visit-a1736bbb69', 'department_id': 'emergency', 'department_name': 'Emergency', 'number': 1, 'status': 'waiting', 'created_at': '2026-04-10T07:24:30.912950+00:00', 'updated_at': '2026-04-10T07:24:30.912950+00:00'}}
+2026-04-10T07:24:30.940506+00:00 triage.completed {'patient_id': 'P-self', 'session_id': 'session-main', 'visit_id': 'visit-a1736bbb69', 'department': 'Emergency Department', 'priority': 'M'}
+2026-04-10T08:11:18.325982+00:00 visit.state_changed {'visit_id': 'visit-e5acb867fd', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'begin_triage'}
+2026-04-10T08:11:18.331855+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T08:11:22.361364+00:00 visit.state_changed {'visit_id': 'visit-e5acb867fd', 'patient_id': 'P-self', 'state': 'triaged', 'event': 'triage_completed'}
+2026-04-10T08:11:22.375926+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaged'}
+2026-04-10T08:11:22.375926+00:00 triage.completed {'patient_id': 'P-self', 'session_id': 'session-cab85d98', 'visit_id': 'visit-e5acb867fd', 'department': 'Emergency/General Medicine', 'priority': 'M'}
+2026-04-10T08:11:22.404895+00:00 visit.state_changed {'visit_id': 'visit-e5acb867fd', 'patient_id': 'P-self', 'state': 'registered', 'event': 'register_completed'}
+2026-04-10T08:11:22.429649+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'queued'}
+2026-04-10T08:11:22.469096+00:00 queue.ticket_called {'patient_id': 'P-self', 'visit_id': 'visit-e5acb867fd', 'ticket': {'id': 'QT-ed449fdf', 'patient_id': 'P-self', 'visit_id': 'visit-e5acb867fd', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 1, 'status': 'called', 'created_at': '2026-04-10T08:11:22.407404+00:00', 'updated_at': '2026-04-10T08:11:22.464539+00:00'}}
+2026-04-10T08:11:22.486140+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'called'}
+2026-04-10T08:11:22.492700+00:00 visit.state_changed {'visit_id': 'visit-e5acb867fd', 'patient_id': 'P-self', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-04-10T08:11:22.521008+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'in_consultation'}
+2026-04-10T08:11:22.529528+00:00 visit.state_changed {'visit_id': 'visit-e5acb867fd', 'patient_id': 'P-self', 'state': 'in_consultation', 'event': 'start_consultation'}
+2026-04-10T08:13:46.933492+00:00 visit.state_changed {'visit_id': 'visit-e132b2f78d', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'begin_triage'}
+2026-04-10T08:13:46.944004+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T08:13:57.092230+00:00 visit.state_changed {'visit_id': 'visit-e132b2f78d', 'patient_id': 'P-self', 'state': 'waiting_followup', 'event': 'followup_requested'}
+2026-04-10T08:13:57.105489+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'waiting_followup'}
+2026-04-10T08:14:24.538547+00:00 visit.state_changed {'visit_id': 'visit-e132b2f78d', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'resume_triage'}
+2026-04-10T08:14:24.548562+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T08:14:30.173409+00:00 visit.state_changed {'visit_id': 'visit-e132b2f78d', 'patient_id': 'P-self', 'state': 'triaged', 'event': 'triage_completed'}
+2026-04-10T08:14:30.191636+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaged'}
+2026-04-10T08:14:30.192141+00:00 triage.completed {'patient_id': 'P-self', 'session_id': 'session-main', 'visit_id': 'visit-e132b2f78d', 'department': 'General Medicine', 'priority': 'L'}
+2026-04-10T08:14:43.660832+00:00 visit.state_changed {'visit_id': 'visit-e132b2f78d', 'patient_id': 'P-self', 'state': 'registered', 'event': 'register_completed'}
+2026-04-10T08:14:43.690230+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'queued'}
+2026-04-10T08:14:54.737581+00:00 queue.ticket_called {'patient_id': 'P-self', 'visit_id': 'visit-e132b2f78d', 'ticket': {'id': 'QT-82444227', 'patient_id': 'P-self', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 1, 'status': 'called', 'created_at': '2026-04-10T08:14:43.664763+00:00', 'updated_at': '2026-04-10T08:14:54.732911+00:00', 'visit_id': 'visit-e132b2f78d'}}
+2026-04-10T08:14:54.757936+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'called'}
+2026-04-10T08:14:54.767588+00:00 visit.state_changed {'visit_id': 'visit-e132b2f78d', 'patient_id': 'P-self', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-04-10T08:15:47.103400+00:00 visit.state_changed {'visit_id': 'visit-f7df360d7b', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'begin_triage'}
+2026-04-10T08:15:47.114474+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T08:15:56.792220+00:00 visit.state_changed {'visit_id': 'visit-f7df360d7b', 'patient_id': 'P-self', 'state': 'waiting_followup', 'event': 'followup_requested'}
+2026-04-10T08:15:56.812009+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'waiting_followup'}
+2026-04-10T08:16:10.664549+00:00 visit.state_changed {'visit_id': 'visit-f7df360d7b', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'resume_triage'}
+2026-04-10T08:16:10.675372+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T08:16:15.635358+00:00 visit.state_changed {'visit_id': 'visit-f7df360d7b', 'patient_id': 'P-self', 'state': 'triaged', 'event': 'triage_completed'}
+2026-04-10T08:16:15.654156+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaged'}
+2026-04-10T08:16:15.655544+00:00 triage.completed {'patient_id': 'P-self', 'session_id': 'session-main', 'visit_id': 'visit-f7df360d7b', 'department': 'General Medicine', 'priority': 'L'}
+2026-04-10T08:16:29.582075+00:00 visit.state_changed {'visit_id': 'visit-f7df360d7b', 'patient_id': 'P-self', 'state': 'registered', 'event': 'register_completed'}
+2026-04-10T08:16:29.606105+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'queued'}
+2026-04-10T08:16:40.670469+00:00 queue.ticket_called {'patient_id': 'P-self', 'visit_id': 'visit-f7df360d7b', 'ticket': {'id': 'QT-3fb626d8', 'patient_id': 'P-self', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 1, 'status': 'called', 'created_at': '2026-04-10T08:16:29.584150+00:00', 'updated_at': '2026-04-10T08:16:40.665092+00:00', 'visit_id': 'visit-f7df360d7b'}}
+2026-04-10T08:16:40.688873+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'called'}
+2026-04-10T08:16:40.698055+00:00 visit.state_changed {'visit_id': 'visit-f7df360d7b', 'patient_id': 'P-self', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-04-10T08:16:45.573345+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'in_consultation'}
+2026-04-10T08:16:45.582671+00:00 visit.state_changed {'visit_id': 'visit-f7df360d7b', 'patient_id': 'P-self', 'state': 'in_consultation', 'event': 'start_consultation'}
+2026-04-10T08:39:39.577560+00:00 visit.state_changed {'visit_id': 'visit-9455f4f82a', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'begin_triage'}
+2026-04-10T08:39:39.590044+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T08:39:49.365765+00:00 visit.state_changed {'visit_id': 'visit-9455f4f82a', 'patient_id': 'P-self', 'state': 'waiting_followup', 'event': 'followup_requested'}
+2026-04-10T08:39:49.387105+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'waiting_followup'}
+2026-04-10T08:40:13.214946+00:00 visit.state_changed {'visit_id': 'visit-9455f4f82a', 'patient_id': 'P-self', 'state': 'triaging', 'event': 'resume_triage'}
+2026-04-10T08:40:13.230275+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaging'}
+2026-04-10T08:40:19.473946+00:00 visit.state_changed {'visit_id': 'visit-9455f4f82a', 'patient_id': 'P-self', 'state': 'triaged', 'event': 'triage_completed'}
+2026-04-10T08:40:19.494083+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'triaged'}
+2026-04-10T08:40:19.494083+00:00 triage.completed {'patient_id': 'P-self', 'session_id': 'session-main', 'visit_id': 'visit-9455f4f82a', 'department': 'General Medicine', 'priority': 'L'}
+2026-04-10T08:40:49.649308+00:00 visit.state_changed {'visit_id': 'visit-9455f4f82a', 'patient_id': 'P-self', 'state': 'registered', 'event': 'register_completed'}
+2026-04-10T08:40:49.679750+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'queued'}
+2026-04-10T08:41:00.758408+00:00 queue.ticket_called {'patient_id': 'P-self', 'visit_id': 'visit-9455f4f82a', 'ticket': {'id': 'QT-21d92705', 'patient_id': 'P-self', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 1, 'status': 'called', 'created_at': '2026-04-10T08:40:49.653317+00:00', 'updated_at': '2026-04-10T08:41:00.754312+00:00', 'visit_id': 'visit-9455f4f82a'}}
+2026-04-10T08:41:00.783677+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'called'}
+2026-04-10T08:41:00.792457+00:00 visit.state_changed {'visit_id': 'visit-9455f4f82a', 'patient_id': 'P-self', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-04-10T08:41:16.833158+00:00 patient.state_changed {'patient_id': 'P-self', 'lifecycle_state': 'in_consultation'}
+2026-04-10T08:41:16.841237+00:00 visit.state_changed {'visit_id': 'visit-9455f4f82a', 'patient_id': 'P-self', 'state': 'in_consultation', 'event': 'start_consultation'}

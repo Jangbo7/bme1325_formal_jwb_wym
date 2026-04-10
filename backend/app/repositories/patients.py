@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.database import Database
-from app.schemas.common import PatientLifecycleState
+from app.schemas.common import PatientLifecycleState, VisitLifecycleState
 from app.schemas.patient import DialogueSummary, EvidenceItem, PatientView, QueueTicketRef, TriageSummary
 
 
@@ -31,6 +31,7 @@ class PatientRepository:
                     "updated_at": now_iso(),
                     "triage": {"level": 3, "note": "Waiting for consultation."},
                     "session_id": None,
+                    "visit_id": None,
                 }
             )
         if self.get("P-203") is None:
@@ -45,6 +46,7 @@ class PatientRepository:
                     "updated_at": now_iso(),
                     "triage": {"level": 2, "note": "High-priority patient."},
                     "session_id": None,
+                    "visit_id": None,
                 }
             )
 
@@ -63,6 +65,7 @@ class PatientRepository:
                 "updated_at": now_iso(),
                 "triage": {"level": None, "note": ""},
                 "session_id": None,
+                "visit_id": None,
             }
         )
 
@@ -71,8 +74,8 @@ class PatientRepository:
         try:
             conn.execute(
                 """
-                INSERT INTO patients (id, name, lifecycle_state, display_state, priority, location, updated_at, triage_level, triage_note, session_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO patients (id, name, lifecycle_state, display_state, priority, location, updated_at, triage_level, triage_note, session_id, visit_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name=excluded.name,
                     lifecycle_state=excluded.lifecycle_state,
@@ -82,7 +85,8 @@ class PatientRepository:
                     updated_at=excluded.updated_at,
                     triage_level=excluded.triage_level,
                     triage_note=excluded.triage_note,
-                    session_id=excluded.session_id
+                    session_id=excluded.session_id,
+                    visit_id=excluded.visit_id
                 """,
                 (
                     payload["id"],
@@ -95,6 +99,7 @@ class PatientRepository:
                     payload["triage"]["level"],
                     payload["triage"]["note"],
                     payload.get("session_id"),
+                    payload.get("visit_id"),
                 ),
             )
             conn.commit()
@@ -134,6 +139,7 @@ class PatientRepository:
                 "note": kwargs.get("triage_note", existing["triage_note"] or ""),
             },
             "session_id": kwargs.get("session_id", existing["session_id"]),
+            "visit_id": kwargs.get("visit_id", existing.get("visit_id")),
         }
         self.save_view(payload)
         return self.get(patient_id)
@@ -144,7 +150,15 @@ class PatientRepository:
         dialogue: dict | None = None,
         evidence: list[dict] | None = None,
         queue_ticket: dict | None = None,
+        visit_row: dict | None = None,
     ) -> PatientView:
+        visit_id = patient_row.get("visit_id")
+        visit_state = None
+        if visit_row:
+            visit_id = visit_row.get("id")
+            state_value = visit_row.get("state")
+            visit_state = VisitLifecycleState(state_value) if state_value else None
+
         return PatientView(
             id=patient_row["id"],
             name=patient_row["name"],
@@ -153,6 +167,8 @@ class PatientRepository:
             priority=patient_row["priority"],
             location=patient_row["location"],
             updated_at=patient_row["updated_at"],
+            visit_id=visit_id,
+            visit_state=visit_state,
             triage=TriageSummary(level=patient_row["triage_level"], note=patient_row["triage_note"] or ""),
             dialogue=DialogueSummary(**dialogue) if dialogue else None,
             triage_evidence=[EvidenceItem(**item) for item in (evidence or [])],

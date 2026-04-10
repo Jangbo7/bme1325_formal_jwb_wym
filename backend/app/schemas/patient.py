@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from app.schemas.common import PatientLifecycleState
+from app.schemas.common import PatientLifecycleState, VisitLifecycleState
 
 
 class TriageSummary(BaseModel):
@@ -41,6 +41,8 @@ class PatientView(BaseModel):
     priority: str
     location: str
     updated_at: str
+    visit_id: str | None = None
+    visit_state: VisitLifecycleState | None = None
     triage: TriageSummary = Field(default_factory=TriageSummary)
     dialogue: DialogueSummary | None = None
     triage_evidence: list[EvidenceItem] = Field(default_factory=list)

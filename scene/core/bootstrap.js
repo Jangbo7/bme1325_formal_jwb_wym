@@ -153,7 +153,7 @@ const ROOM_KIND_LABELS = {
   registration: "Registration",
   consultation: "Consultation",
   triage: "Triage",
-  pharmacy: "Pharmacy",
+  pharmacy: "Doctor Entry",
   ward: "Ward",
   lab: "Lab",
   icu: "ICU",
@@ -199,39 +199,61 @@ const taskBoard = {
   ],
 };
 
-function deriveTriageInteractPoint() {
-  const triageRoom = rooms.find((room) => room.floor === 1 && room.kind === "triage");
-  if (!triageRoom) {
-    return { x: 10.6 * TILE, y: 17.4 * TILE, floor: 1, radius: 56 };
+function deriveRoomInteractPoint(roomKind, fallback, options = {}) {
+  const targetRoom = rooms.find((room) => room.floor === fallback.floor && room.kind === roomKind)
+    || rooms.find((room) => room.kind === roomKind);
+
+  if (!targetRoom) {
+    return { ...fallback };
   }
 
-  const triageRect = roomBounds(triageRoom);
-  const roomCenterX = triageRect.x + triageRect.w * 0.5;
-  const roomCenterY = triageRect.y + triageRect.h * 0.5;
+  const roomRect = roomBounds(targetRoom);
+  const roomCenterX = roomRect.x + roomRect.w * 0.5;
+  const roomCenterY = roomRect.y + roomRect.h * 0.5;
 
-  const desk = props
-    .filter((prop) => prop.floor === triageRoom.floor && prop.type === "reception")
-    .find((prop) => {
-      const x = prop.x * TILE;
-      const y = prop.y * TILE;
-      const w = prop.w * TILE;
-      const h = prop.h * TILE;
-      return x >= triageRect.x && x + w <= triageRect.x + triageRect.w && y >= triageRect.y && y + h <= triageRect.y + triageRect.h;
-    });
+  let interactX = roomCenterX;
+  let interactY = roomCenterY;
 
-  const interactX = desk ? (desk.x + desk.w * 0.5) * TILE : roomCenterX;
-  const interactY = desk ? (desk.y + desk.h * 0.5 + 0.6) * TILE : roomCenterY;
-  const radius = Math.min(92, Math.max(52, Math.round(Math.min(triageRect.w, triageRect.h) * 0.16)));
+  if (options.preferReception) {
+    const desk = props
+      .filter((prop) => prop.floor === targetRoom.floor && prop.type === "reception")
+      .find((prop) => {
+        const x = prop.x * TILE;
+        const y = prop.y * TILE;
+        const w = prop.w * TILE;
+        const h = prop.h * TILE;
+        return x >= roomRect.x && x + w <= roomRect.x + roomRect.w && y >= roomRect.y && y + h <= roomRect.y + roomRect.h;
+      });
+    if (desk) {
+      interactX = (desk.x + desk.w * 0.5) * TILE;
+      interactY = (desk.y + desk.h * 0.5 + 0.6) * TILE;
+    }
+  }
 
+  const radius = Math.min(92, Math.max(52, Math.round(Math.min(roomRect.w, roomRect.h) * 0.16)));
   return {
     x: interactX,
     y: interactY,
-    floor: triageRoom.floor,
+    floor: targetRoom.floor,
     radius,
   };
 }
 
+function deriveTriageInteractPoint() {
+  return deriveRoomInteractPoint("triage", { x: 10.6 * TILE, y: 17.4 * TILE, floor: 1, radius: 56 }, { preferReception: true });
+}
+
+function deriveRegistrationInteractPoint() {
+  return deriveRoomInteractPoint("registration", { x: 8.6 * TILE, y: 7.4 * TILE, floor: 1, radius: 56 }, { preferReception: true });
+}
+
+function deriveDoctorEntryInteractPoint() {
+  return deriveRoomInteractPoint("pharmacy", { x: 40.8 * TILE, y: 18.4 * TILE, floor: 1, radius: 56 }, {});
+}
+
 const triageInteractPoint = deriveTriageInteractPoint();
+const registrationInteractPoint = deriveRegistrationInteractPoint();
+const doctorEntryInteractPoint = deriveDoctorEntryInteractPoint();
 const privateApiConfig = window.HOS_PRIVATE_API || {};
 const backendState = {
   baseUrl: privateApiConfig.baseUrl || "http://127.0.0.1:8787",
@@ -289,6 +311,21 @@ async function legacyPollBackendStatuses() {
 function canInteractWithTriageDesk() {
   if (player.floor !== triageInteractPoint.floor) return false;
   return Math.hypot(player.x - triageInteractPoint.x, player.y - triageInteractPoint.y) <= triageInteractPoint.radius;
+}
+
+function canInteractWithRegistrationDesk() {
+  if (player.floor !== registrationInteractPoint.floor) return false;
+  return Math.hypot(player.x - registrationInteractPoint.x, player.y - registrationInteractPoint.y) <= registrationInteractPoint.radius;
+}
+
+function canInteractWithDoctorEntry() {
+  if (player.floor !== doctorEntryInteractPoint.floor) return false;
+  return Math.hypot(player.x - doctorEntryInteractPoint.x, player.y - doctorEntryInteractPoint.y) <= doctorEntryInteractPoint.radius;
+}
+
+function pushStatusHint(text) {
+  zoneState.lastEventText = text;
+  zoneState.lastEventAtMs = performance.now();
 }
 
 function openTriageModal() {
@@ -776,7 +813,7 @@ function drawLabels() {
     registration: "Registration",
     consultation: "Consultation",
     triage: "Triage",
-    pharmacy: "Pharmacy",
+    pharmacy: "Doctor Entry",
     ward: "Ward",
     lab: "Lab",
     icu: "ICU",
@@ -852,6 +889,81 @@ function drawTriageHint() {
         : "Press E to start triage";
   const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
   const boxWidth = 176;
+  const boxHeight = 28;
+  const boxLeft = point.x - boxWidth / 2;
+  const boxTop = point.y - boxHeight / 2;
+
+  ctx.fillStyle = "rgba(8, 20, 28, 0.94)";
+  ctx.fillRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.strokeStyle = backendState.submitting
+    ? `rgba(255, 198, 124, ${Math.min(0.95, pulse + 0.2)})`
+    : `rgba(112, 234, 255, ${Math.min(0.95, pulse + 0.22)})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+
+  ctx.fillStyle = backendState.submitting ? "#ffe4bd" : "#ecfbff";
+  ctx.font = "600 13px 'Segoe UI'";
+  ctx.textAlign = "center";
+  ctx.fillText(label, point.x, point.y + 5);
+}
+
+function drawRegistrationHint() {
+  if (!canInteractWithRegistrationDesk()) return;
+  const point = project(registrationInteractPoint.x, registrationInteractPoint.y, 48, registrationInteractPoint.floor);
+  const selfPatient = getCurrentSelfPatient();
+  const visitState = selfPatient?.visit_state || "";
+
+  let label = "Press E to register";
+  if (backendState.submitting) {
+    label = "Submitting registration...";
+  } else if (visitState === "registered" || visitState === "waiting_consultation" || visitState === "in_consultation") {
+    label = "Registration already completed";
+  } else if (visitState !== "triaged") {
+    label = "Finish triage before registration";
+  }
+
+  const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
+  const boxWidth = 220;
+  const boxHeight = 28;
+  const boxLeft = point.x - boxWidth / 2;
+  const boxTop = point.y - boxHeight / 2;
+
+  ctx.fillStyle = "rgba(8, 20, 28, 0.94)";
+  ctx.fillRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.strokeStyle = backendState.submitting
+    ? `rgba(255, 198, 124, ${Math.min(0.95, pulse + 0.2)})`
+    : `rgba(112, 234, 255, ${Math.min(0.95, pulse + 0.22)})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+
+  ctx.fillStyle = backendState.submitting ? "#ffe4bd" : "#ecfbff";
+  ctx.font = "600 13px 'Segoe UI'";
+  ctx.textAlign = "center";
+  ctx.fillText(label, point.x, point.y + 5);
+}
+
+function drawDoctorEntryHint() {
+  if (!canInteractWithDoctorEntry()) return;
+  const point = project(doctorEntryInteractPoint.x, doctorEntryInteractPoint.y, 48, doctorEntryInteractPoint.floor);
+  const selfPatient = getCurrentSelfPatient();
+  const visitState = selfPatient?.visit_state || "";
+  const lifecycle = selfPatient?.lifecycle_state || "";
+
+  let label = "Follow workflow: triage -> register -> wait";
+  if (backendState.submitting) {
+    label = "Entering consultation...";
+  } else if (visitState === "in_consultation" || lifecycle === "in_consultation") {
+    label = "Already in consultation";
+  } else if (visitState === "waiting_consultation" && lifecycle === "called") {
+    label = "Press E to enter consultation";
+  } else if (visitState === "registered" || lifecycle === "queued") {
+    label = "Waiting for queue call (10s)";
+  } else if (visitState === "triaged") {
+    label = "Complete registration first";
+  }
+
+  const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
+  const boxWidth = 232;
   const boxHeight = 28;
   const boxLeft = point.x - boxWidth / 2;
   const boxTop = point.y - boxHeight / 2;
@@ -1020,26 +1132,20 @@ function render() {
   drawFloorLayer(activeFloor, activeDoor, false);
   drawLabels();
   drawHudHint(activeDoor);
+  drawRegistrationHint();
   drawTriageHint();
+  drawDoctorEntryHint();
   drawTaskBoard();
   drawMinimap();
   drawZoneStatusPanel();
 }
-function mapPatientStateToTask(patient) {
-  const activeStates = new Set(["Triaging", "Waiting Follow-up", "Queued", "Called", "In Consultation"]);
-  const triageText = patient.triage?.level ? ` | L${patient.triage.level}` : "";
-  return {
-    text: `${patient.name} | ${patient.state} | ${patient.location ?? "-"}${triageText}`,
-    done: !activeStates.has(patient.state),
-  };
-}
-
 triageDialogueUi.form = document.getElementById("triageDialogueForm");
 triageDialogueUi.input = document.getElementById("triageDialogueInput");
 triageDialogueUi.sendBtn = document.getElementById("triageDialogueSendBtn");
 
 const triageConversationState = {
   patientId: "P-self",
+  visitId: null,
   sessionId: "session-main",
   sending: false,
 };
@@ -1096,6 +1202,98 @@ function openTriageDialogue(initialPayload) {
   keys.clear();
 }
 
+async function ensureVisitContext() {
+  if (triageConversationState.visitId) return triageConversationState.visitId;
+  const data = await backendClient.createVisit({
+    patient_id: triageConversationState.patientId,
+    name: "You (Player)",
+  });
+  const visitId = data?.visit?.id;
+  if (visitId) {
+    triageConversationState.visitId = visitId;
+  }
+  return triageConversationState.visitId;
+}
+
+
+async function submitRegistrationRequest() {
+  if (backendState.submitting || !canInteractWithRegistrationDesk()) return;
+  backendState.submitting = true;
+  try {
+    const visitId = await ensureVisitContext();
+    if (!visitId) {
+      pushStatusHint("Unable to start registration: visit session is missing.");
+      return;
+    }
+    const data = await backendClient.registerVisit(visitId);
+    if (data.patient) {
+      agentStore.syncPatient(data.patient);
+      syncTriageDialogue(data.patient);
+    }
+    pushStatusHint(data.ready_for_consultation ? "Registration done. You are already ready for doctor entry." : "Registration completed. Waiting queue countdown started (10s).");
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.connected = false;
+    backendState.lastError = error?.message || "registration failed";
+    if (backendState.lastError.includes("409")) {
+      pushStatusHint("Registration is locked: complete triage first.");
+    } else {
+      pushStatusHint(`Registration failed: ${backendState.lastError}`);
+    }
+  } finally {
+    backendState.submitting = false;
+  }
+}
+
+async function submitEnterConsultationRequest() {
+  if (backendState.submitting || !canInteractWithDoctorEntry()) return;
+  backendState.submitting = true;
+  try {
+    const visitId = await ensureVisitContext();
+    if (!visitId) {
+      pushStatusHint("Doctor entry unavailable: visit session is missing.");
+      return;
+    }
+    const data = await backendClient.enterConsultation(visitId);
+    if (data.patient) {
+      agentStore.syncPatient(data.patient);
+      syncTriageDialogue(data.patient);
+    }
+    pushStatusHint("Entered consultation stage.");
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.lastError = error?.message || "enter consultation failed";
+    if (backendState.lastError.includes("409")) {
+      pushStatusHint("Doctor entry locked: wait for queue call.");
+    } else {
+      pushStatusHint(`Doctor entry failed: ${backendState.lastError}`);
+    }
+  } finally {
+    backendState.submitting = false;
+  }
+}
+
+function submitEActionRequest() {
+  if (backendState.submitting || triageUi.open || triageDialogueUi.open) return;
+
+  if (canInteractWithRegistrationDesk()) {
+    submitRegistrationRequest();
+    return;
+  }
+
+  if (canInteractWithTriageDesk()) {
+    if (hasStartedTriageConversation()) {
+      openExistingTriageDialogue();
+      return;
+    }
+    openTriageModal();
+    return;
+  }
+
+  if (canInteractWithDoctorEntry()) {
+    submitEnterConsultationRequest();
+  }
+}
 function syncTriageDialogue(patient) {
   if (!triageDialogueUi.open || !patient) return;
   agentStore.syncPatient(patient);
@@ -1134,19 +1332,59 @@ async function pollBackendStatuses(force = false) {
       backendClient.listPatients(),
       backendClient.listQueues(),
     ]);
-    const patients = Array.isArray(patientData.patients) ? patientData.patients.slice(0, 6) : [];
-    const selfPatient = patients.find((patient) => patient.id === triageConversationState.patientId);
+    const patients = Array.isArray(patientData.patients) ? patientData.patients : [];
+    let selfPatient = patients.find((patient) => patient.id === triageConversationState.patientId) || null;
     agentStore.syncQueues(queueData.queues || []);
+    const visitIdForProgress = selfPatient?.visit_id || triageConversationState.visitId;
+    if (visitIdForProgress) {
+      try {
+        const progressData = await backendClient.progressVisit(visitIdForProgress);
+        if (progressData?.patient) {
+          selfPatient = progressData.patient;
+        }
+        if (progressData?.visit?.id) {
+          triageConversationState.visitId = progressData.visit.id;
+        }
+      } catch (_progressError) {
+        // keep polling resilient when progress endpoint is temporarily unavailable
+      }
+    }
     queueRuntime.syncFromApi(queueData.queues || [], triageConversationState.patientId);
-    taskBoardPresenter.syncPatients(patients);
-    if (selfPatient) agentStore.syncPatient(selfPatient);
-    if (selfPatient) syncTriageDialogue(selfPatient);
+
+    let visit = null;
+    if (selfPatient?.visit_id) {
+      try {
+        const visitData = await backendClient.getVisit(selfPatient.visit_id);
+        visit = visitData?.visit || null;
+      } catch (_visitError) {
+        visit = {
+          id: selfPatient.visit_id,
+          state: selfPatient.visit_state || null,
+          current_node: null,
+          current_department: selfPatient.location || null,
+          active_agent_type: null,
+        };
+      }
+    }
+
+    const queueTicket = selfPatient?.queue_ticket || queueRuntime.state.playerTicket || null;
+    taskBoardPresenter.syncVisitSession({
+      patient: selfPatient,
+      visit,
+      queueTicket,
+    });
+
+    if (selfPatient) {
+      agentStore.syncPatient(selfPatient);
+      if (selfPatient.visit_id) triageConversationState.visitId = selfPatient.visit_id;
+      syncTriageDialogue(selfPatient);
+    }
     backendState.connected = true;
     backendState.lastError = "";
   } catch (error) {
     backendState.connected = false;
     backendState.lastError = error?.message || "backend offline";
-    taskBoardPresenter.syncOffline("Backend unavailable, showing local placeholder state.");
+    taskBoardPresenter.syncOffline("Backend unavailable, visit session not synchronized.");
   } finally {
     backendState.polling = false;
   }
@@ -1156,10 +1394,13 @@ async function submitTriageFromModal() {
   if (backendState.submitting || !canInteractWithTriageDesk()) return;
   backendState.submitting = true;
   try {
+    const visitId = await ensureVisitContext();
     const payload = buildTriagePayloadFromForm();
     payload.session_id = triageConversationState.sessionId;
+    if (visitId) payload.visit_id = visitId;
     const data = await backendClient.createTriageSession(payload);
     triageConversationState.sessionId = data.session_id || triageConversationState.sessionId;
+    triageConversationState.visitId = data.visit_id || triageConversationState.visitId;
     closeTriageModal();
     openTriageDialogue(payload);
     if (data.patient) {
@@ -1189,6 +1430,7 @@ async function submitTriageDialogueReply() {
       message,
     });
     triageDialogueUi.input.value = "";
+    triageConversationState.visitId = data.visit_id || triageConversationState.visitId;
     if (data.patient) {
       agentStore.syncPatient(data.patient);
       syncTriageDialogue(data.patient);
@@ -1206,12 +1448,7 @@ async function submitTriageDialogueReply() {
 }
 
 function submitTriageRequest() {
-  if (backendState.submitting || triageUi.open || triageDialogueUi.open || !canInteractWithTriageDesk()) return;
-  if (hasStartedTriageConversation()) {
-    openExistingTriageDialogue();
-    return;
-  }
-  openTriageModal();
+  submitEActionRequest();
 }
 
 const npcRuntime = createNpcRuntime({
@@ -1343,3 +1580,13 @@ updateFloorHud();
 pollBackendStatuses(true);
 window.dispatchEvent(new Event("resize"));
 requestAnimationFrame(loop);
+
+
+
+
+
+
+
+
+
+

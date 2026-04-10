@@ -1,4 +1,5 @@
 TRIAGE_COMPLETED = "triage.completed"
 PATIENT_STATE_CHANGED = "patient.state_changed"
+VISIT_STATE_CHANGED = "visit.state_changed"
 QUEUE_TICKET_CREATED = "queue.ticket_created"
 QUEUE_TICKET_CALLED = "queue.ticket_called"

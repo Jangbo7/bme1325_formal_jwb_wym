@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -14,6 +15,26 @@ def create_test_client(tmp_path, monkeypatch):
 
 def headers():
     return {"X-API-Key": "mock-key-001"}
+
+
+def test_create_visit_returns_active_visit(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+
+    first = client.post(
+        "/api/v1/visits",
+        headers=headers(),
+        json={"patient_id": "P-self", "name": "Player"},
+    )
+    assert first.status_code == 200
+    visit_id = first.json()["visit"]["id"]
+
+    second = client.post(
+        "/api/v1/visits",
+        headers=headers(),
+        json={"patient_id": "P-self", "name": "Player"},
+    )
+    assert second.status_code == 200
+    assert second.json()["visit"]["id"] == visit_id
 
 
 def test_triage_session_and_followup_flow(tmp_path, monkeypatch):
@@ -33,6 +54,8 @@ def test_triage_session_and_followup_flow(tmp_path, monkeypatch):
     assert create_resp.status_code == 200
     create_data = create_resp.json()
     assert create_data["session_id"] == session_id
+    assert create_data["visit_id"] is not None
+    assert create_data["visit_state"] in {"triaging", "waiting_followup", "triaged"}
     assert create_data["dialogue"]["status"] in {"awaiting_patient_reply", "triaged"}
 
     reply_resp = client.post(
@@ -47,13 +70,31 @@ def test_triage_session_and_followup_flow(tmp_path, monkeypatch):
     assert reply_resp.status_code == 200
     reply_data = reply_resp.json()
     assert reply_data["patient"]["id"] == "P-self"
+    assert reply_data["visit_id"] == create_data["visit_id"]
     assert reply_data["dialogue"]["status"] in {"awaiting_patient_reply", "triaged"}
 
 
-def test_queue_created_after_triage_completion(tmp_path, monkeypatch):
+def test_register_requires_triaged_visit(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    visit_resp = client.post(
+        "/api/v1/visits",
+        headers=headers(),
+        json={"patient_id": "P-self", "name": "Player"},
+    )
+    visit_id = visit_resp.json()["visit"]["id"]
+
+    register_resp = client.post(
+        f"/api/v1/visits/{visit_id}/register",
+        headers=headers(),
+    )
+    assert register_resp.status_code == 409
+
+
+def test_strict_flow_triage_register_wait_call_enter(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     session_id = f"session-{uuid.uuid4().hex[:8]}"
-    client.post(
+
+    triage_resp = client.post(
         "/api/v1/triage-sessions",
         headers=headers(),
         json={
@@ -63,10 +104,45 @@ def test_queue_created_after_triage_completion(tmp_path, monkeypatch):
             "symptoms": "fever",
             "onset_time": "1 day",
             "allergies": [],
-            "vitals": {"heart_rate": 90, "temp_c": 38.9, "pain_score": 2},
+            "vitals": {"heart_rate": 90, "temp_c": 38.5, "pain_score": 2},
         },
     )
-    queues = client.get("/api/v1/queues", headers=headers())
-    assert queues.status_code == 200
-    all_waiting = [ticket for group in queues.json()["queues"] for ticket in group["waiting"]]
-    assert any(ticket["patient_id"] == "P-self" for ticket in all_waiting)
+    assert triage_resp.status_code == 200
+    triage_data = triage_resp.json()
+    visit_id = triage_data["visit_id"]
+    assert triage_data["visit_state"] == "triaged"
+
+    queues_after_triage = client.get("/api/v1/queues", headers=headers())
+    all_waiting_after_triage = [ticket for group in queues_after_triage.json()["queues"] for ticket in group["waiting"]]
+    assert not [ticket for ticket in all_waiting_after_triage if ticket["patient_id"] == "P-self"]
+
+    register_resp = client.post(f"/api/v1/visits/{visit_id}/register", headers=headers())
+    assert register_resp.status_code == 200
+    register_data = register_resp.json()
+    assert register_data["visit"]["state"] == "registered"
+    assert register_data["patient"]["lifecycle_state"] == "queued"
+    assert register_data["queue_ticket"]["status"] == "waiting"
+
+    progress_resp = client.post(f"/api/v1/visits/{visit_id}/progress", headers=headers())
+    assert progress_resp.status_code == 200
+    assert progress_resp.json()["ready_for_consultation"] is False
+
+    app = client.app
+    visit_repo = app.state.container["visit_repo"]
+    visit_row = visit_repo.get(visit_id)
+    data = visit_repo.to_view(visit_row).data
+    data["registration_completed_at"] = (datetime.now(timezone.utc) - timedelta(seconds=11)).isoformat()
+    visit_repo.update_visit(visit_id, data=data)
+
+    progress_resp_2 = client.post(f"/api/v1/visits/{visit_id}/progress", headers=headers())
+    assert progress_resp_2.status_code == 200
+    progress_data = progress_resp_2.json()
+    assert progress_data["visit"]["state"] == "waiting_consultation"
+    assert progress_data["patient"]["lifecycle_state"] == "called"
+    assert progress_data["ready_for_consultation"] is True
+
+    enter_resp = client.post(f"/api/v1/visits/{visit_id}/enter-consultation", headers=headers())
+    assert enter_resp.status_code == 200
+    enter_data = enter_resp.json()
+    assert enter_data["visit"]["state"] == "in_consultation"
+    assert enter_data["patient"]["lifecycle_state"] == "in_consultation"

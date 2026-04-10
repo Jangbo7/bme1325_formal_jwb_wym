@@ -35,3 +35,21 @@ class PriorityLevel(str, Enum):
     HIGH = "H"
     MEDIUM = "M"
     LOW = "L"
+
+
+class VisitLifecycleState(str, Enum):
+    ARRIVED = "arrived"
+    REGISTRATION_PENDING = "registration_pending"
+    REGISTERED = "registered"
+    TRIAGING = "triaging"
+    WAITING_FOLLOWUP = "waiting_followup"
+    TRIAGED = "triaged"
+    WAITING_CONSULTATION = "waiting_consultation"
+    IN_CONSULTATION = "in_consultation"
+    WAITING_PAYMENT = "waiting_payment"
+    WAITING_TEST = "waiting_test"
+    IN_TEST = "in_test"
+    WAITING_RETURN_CONSULTATION = "waiting_return_consultation"
+    WAITING_PHARMACY = "waiting_pharmacy"
+    COMPLETED = "completed"
+    ERROR = "error"

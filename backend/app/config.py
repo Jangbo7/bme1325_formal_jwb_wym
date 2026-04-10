@@ -8,6 +8,7 @@ DEFAULT_MOCK_API_KEY = "mock-key-001"
 DEFAULT_LLM_ENDPOINT = "https://genaiapi.shanghaitech.edu.cn/api/v1/start"
 DEFAULT_LLM_MODEL = "GPT-5.2"
 DEFAULT_DATABASE_URL = "sqlite:///backend/data/app.db"
+DEFAULT_RESET_ON_SERVER_START = True
 
 _DOTENV_LOADED = False
 
@@ -31,6 +32,19 @@ def _load_dotenv(dotenv_path: Path) -> None:
     _DOTENV_LOADED = True
 
 
+def _parse_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def get_settings() -> dict:
     base_dir = Path(__file__).resolve().parent.parent
     _load_dotenv(base_dir / ".env")
@@ -50,4 +64,9 @@ def get_settings() -> dict:
         "llm_model": os.getenv("LLM_MODEL", "").strip() or DEFAULT_LLM_MODEL,
         "llm_api_key": llm_api_key,
         "database_url": os.getenv("DATABASE_URL", "").strip() or DEFAULT_DATABASE_URL,
+        "reset_on_server_start": _parse_bool(
+            os.getenv("RESET_ON_SERVER_START"),
+            DEFAULT_RESET_ON_SERVER_START,
+        ),
     }
+

@@ -21,6 +21,16 @@ class Database:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @staticmethod
+    def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return any(row["name"] == column_name for row in rows)
+
+    @staticmethod
+    def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, column_sql: str) -> None:
+        if not Database._column_exists(conn, table_name, column_name):
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+
     def init_schema(self) -> None:
         with self.lock:
             conn = self.connect()
@@ -37,12 +47,26 @@ class Database:
                         updated_at TEXT NOT NULL,
                         triage_level INTEGER,
                         triage_note TEXT,
-                        session_id TEXT
+                        session_id TEXT,
+                        visit_id TEXT
+                    );
+
+                    CREATE TABLE IF NOT EXISTS visits (
+                        id TEXT PRIMARY KEY,
+                        patient_id TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        current_node TEXT,
+                        current_department TEXT,
+                        active_agent_type TEXT,
+                        data_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
                     );
 
                     CREATE TABLE IF NOT EXISTS triage_sessions (
                         id TEXT PRIMARY KEY,
                         patient_id TEXT NOT NULL,
+                        visit_id TEXT,
                         agent_type TEXT NOT NULL,
                         dialogue_state TEXT NOT NULL,
                         created_at TEXT NOT NULL,
@@ -74,6 +98,7 @@ class Database:
                     CREATE TABLE IF NOT EXISTS queue_tickets (
                         id TEXT PRIMARY KEY,
                         patient_id TEXT NOT NULL,
+                        visit_id TEXT,
                         department_id TEXT NOT NULL,
                         department_name TEXT NOT NULL,
                         number INTEGER NOT NULL,
@@ -91,6 +116,34 @@ class Database:
                     );
                     """
                 )
+                self._ensure_column(conn, "patients", "visit_id", "TEXT")
+                self._ensure_column(conn, "triage_sessions", "visit_id", "TEXT")
+                self._ensure_column(conn, "queue_tickets", "visit_id", "TEXT")
+                conn.commit()
+            finally:
+                conn.close()
+
+    def reset_runtime_data(self) -> None:
+        runtime_tables = [
+            "visits",
+            "triage_sessions",
+            "session_turns",
+            "patient_shared_memory",
+            "agent_session_memory",
+            "queue_tickets",
+            "triage_history",
+            "patients",
+        ]
+
+        with self.lock:
+            conn = self.connect()
+            try:
+                for table_name in runtime_tables:
+                    conn.execute(f"DELETE FROM {table_name}")
+                conn.execute(
+                    "DELETE FROM sqlite_sequence WHERE name IN (?, ?)",
+                    ("session_turns", "triage_history"),
+                )
                 conn.commit()
             finally:
                 conn.close()
@@ -104,3 +157,4 @@ class Database:
         if not payload:
             return default
         return json.loads(payload)
+
