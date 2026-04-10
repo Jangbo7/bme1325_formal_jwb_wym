@@ -1,0 +1,122 @@
+[
+  {
+    "id": "im-rule-001",
+    "title": "Hypertension - High blood pressure management",
+    "keywords": ["hypertension", "high blood pressure", "elevated bp", "高压", "高血压", "blood pressure", "bp", "140/90"],
+    "conditions": {
+      "symptoms_any": ["hypertension", "high blood pressure", "elevated bp", "高压", "高血压", "blood pressure"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "General Medicine",
+      "note": "Patient presents with hypertension. Recommend lifestyle modifications (low sodium diet, regular exercise, weight management) and possibly antihypertensive medication. Schedule follow-up BP monitoring."
+    },
+    "source": "Internal Medicine Guidelines v1 - Cardiovascular"
+  },
+  {
+    "id": "im-rule-002",
+    "title": "Type 2 Diabetes Mellitus management",
+    "keywords": ["diabetes", "type 2 diabetes", "high blood sugar", "血糖高", "糖尿病", "glucose", "prediabetes", "HbA1c"],
+    "conditions": {
+      "symptoms_any": ["diabetes", "type 2 diabetes", "high blood sugar", "血糖高", "糖尿病", "glucose", "prediabetes", "HbA1c"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "General Medicine",
+      "note": "Patient presents with symptoms suggestive of diabetes. Recommend HbA1c testing, fasting glucose, and dietary modifications. Consider metformin if diagnosed."
+    },
+    "source": "Internal Medicine Guidelines v1 - Endocrine"
+  },
+  {
+    "id": "im-rule-005",
+    "title": "Chronic Kidney Disease evaluation",
+    "keywords": ["kidney disease", "renal", "CKD", "kidney function", "肾", "肾功能", "nephrology", "creatinine", "eGFR", "蛋白尿"],
+    "conditions": {
+      "symptoms_any": ["kidney disease", "renal", "CKD", "kidney function", "肾", "肾功能", "creatinine", "eGFR", "蛋白尿"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "General Medicine",
+      "note": "Patient presents with signs of kidney disease. Recommend kidney function tests (creatinine, BUN, eGFR), urinalysis, and ultrasound if proteinuria present. Referral to nephrology if eGFR < 30."
+    },
+    "source": "Internal Medicine Guidelines v1 - Nephrology"
+  },
+  {
+    "id": "im-rule-006",
+    "title": "Anemia workup and management",
+    "keywords": ["anemia", "low hemoglobin", "fatigue", "tiredness", "贫血", "血红蛋白低", "weakness", "dizziness", "pallor", "iron deficiency"],
+    "conditions": {
+      "symptoms_any": ["anemia", "low hemoglobin", "fatigue", "tiredness", "贫血", "血红蛋白低", "weakness", "dizziness", "pallor", "iron deficiency"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "General Medicine",
+      "note": "Patient presents with symptoms of anemia. Recommend complete blood count (CBC), iron studies (Ferritin, TIBC), vitamin B12 and folate levels. Iron supplementation if iron deficiency confirmed."
+    },
+    "source": "Internal Medicine Guidelines v1 - Hematology"
+  },
+  {
+    "id": "im-rule-007",
+    "title": "Thyroid Disorder evaluation",
+    "keywords": ["thyroid", "hypothyroidism", "hyperthyroidism", "甲亢", "甲减", "甲状腺", "goiter", "TSH", "T3", "T4"],
+    "conditions": {
+      "symptoms_any": ["thyroid", "hypothyroidism", "hyperthyroidism", "甲亢", "甲减", "甲状腺", "goiter", "TSH", "T3", "T4"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "General Medicine",
+      "note": "Patient presents with thyroid symptoms. Recommend thyroid function tests (TSH, Free T4, Free T3). Consider thyroid antibodies if autoimmune suspected. Referral to endocrinology if abnormal."
+    },
+    "source": "Internal Medicine Guidelines v1 - Endocrine"
+  },
+  {
+    "id": "im-rule-008",
+    "title": "Asthma assessment and management",
+    "keywords": ["asthma", "wheezing", "shortness of breath", "bronchitis", "哮喘", "喘息", "呼吸困难", "chest tightness", "inhaler"],
+    "conditions": {
+      "symptoms_any": ["asthma", "wheezing", "shortness of breath", "bronchitis", "哮喘", "喘息", "呼吸困难", "chest tightness", "inhaler"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "General Medicine",
+      "note": "Patient presents with asthma symptoms. Recommend spirometry for diagnosis, bronchodilator therapy (SABA), and inhaled corticosteroids for maintenance. Create asthma action plan."
+    },
+    "source": "Internal Medicine Guidelines v1 - Pulmonology"
+  },
+  {
+    "id": "im-rule-009",
+    "title": "COPD evaluation and management",
+    "keywords": ["COPD", "chronic bronchitis", "emphysema", "慢阻肺", "慢性支气管炎", "肺气肿", "smoker", "FEV1", "lung function"],
+    "conditions": {
+      "symptoms_any": ["COPD", "chronic bronchitis", "emphysema", "慢阻肺", "慢性支气管炎", "肺气肿", "smoker", "FEV1"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "General Medicine",
+      "note": "Patient presents with COPD symptoms. Recommend pulmonary function tests (spirometry), chest X-ray, smoking cessation support. Consider bronchodilators, inhaled corticosteroids, and pulmonary rehab."
+    },
+    "source": "Internal Medicine Guidelines v1 - Pulmonology"
+  },
+  {
+    "id": "im-rule-010",
+    "title": "Gastritis and Peptic Ulcer Disease",
+    "keywords": ["gastritis", "stomach pain", "acid reflux", "GERD", "heartburn", "胃炎", "胃痛", "反酸", "ulcer", "dyspepsia", "H. pylori"],
+    "conditions": {
+      "symptoms_any": ["gastritis", "stomach pain", "acid reflux", "GERD", "heartburn", "胃炎", "胃痛", "反酸", "ulcer", "dyspepsia", "H. pylori"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "General Medicine",
+      "note": "Patient presents with GI symptoms. Recommend PPI therapy (omeprazole 20mg BID), H. pylori testing (breath test or stool antigen). Avoid NSAIDs, alcohol, and smoking. Endoscopy if alarm symptoms."
+    },
+    "source": "Internal Medicine Guidelines v1 - GI"
+  }
+]
