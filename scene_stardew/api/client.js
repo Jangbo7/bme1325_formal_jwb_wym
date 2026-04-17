@@ -1,8 +1,10 @@
 // 星露谷场景API客户端 - 对接现有后端API
 export function createBackendClient({ baseUrl, apiKey }) {
+  let currentApiKey = apiKey;
+
   const defaultHeaders = {
     'Content-Type': 'application/json',
-    'X-API-Key': apiKey,
+    'X-API-Key': currentApiKey,
   };
 
   async function request(path, options = {}) {
@@ -10,6 +12,7 @@ export function createBackendClient({ baseUrl, apiKey }) {
       ...options,
       headers: {
         ...defaultHeaders,
+        'X-API-Key': currentApiKey,
         ...(options.headers || {}),
       },
     });
@@ -20,12 +23,14 @@ export function createBackendClient({ baseUrl, apiKey }) {
   }
 
   return {
-    // 健康检查
+    updateApiKey(newKey) {
+      currentApiKey = newKey;
+    },
+
     health() {
       return request('/health', { headers: { 'Content-Type': undefined } });
     },
 
-    // 病人相关
     listPatients() {
       return request('/patients');
     },
@@ -33,7 +38,6 @@ export function createBackendClient({ baseUrl, apiKey }) {
       return request(`/patients/${patientId}`);
     },
 
-    // 队列相关
     listQueues() {
       return request('/queues');
     },
@@ -44,7 +48,6 @@ export function createBackendClient({ baseUrl, apiKey }) {
       });
     },
 
-    // 分诊会话
     createTriageSession(payload) {
       return request('/triage-sessions', {
         method: 'POST',
@@ -58,7 +61,6 @@ export function createBackendClient({ baseUrl, apiKey }) {
       });
     },
 
-    // 内科会话
     createInternalMedicineSession(payload) {
       return request('/internal-medicine-sessions', {
         method: 'POST',
@@ -72,7 +74,6 @@ export function createBackendClient({ baseUrl, apiKey }) {
       });
     },
 
-    // ICU会话
     createICUSession(payload) {
       return request('/icu-sessions', {
         method: 'POST',

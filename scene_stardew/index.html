@@ -18,6 +18,7 @@
       <div id="location-info">
         <span id="current-room">医院大厅</span>
       </div>
+      <button id="api-settings-btn" type="button">API设置</button>
     </div>
 
     <!-- 交互提示 -->
@@ -33,6 +34,18 @@
         <div id="dialogue-text"></div>
       </div>
       <div id="dialogue-options"></div>
+    </div>
+
+    <!-- 通用输入弹窗 -->
+    <div id="input-modal" class="hidden">
+      <div id="input-modal-card">
+        <div id="input-modal-title">请输入内容</div>
+        <textarea id="input-modal-field" rows="4"></textarea>
+        <div id="input-modal-actions">
+          <button id="input-modal-cancel" type="button">取消</button>
+          <button id="input-modal-confirm" type="button">确认</button>
+        </div>
+      </div>
     </div>
 
     <!-- 左侧NPC列表 -->

@@ -2,7 +2,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from app.agents.internal_medicine import create_internal_medicine_service
 from app.agents.triage.graph import LANGGRAPH_AVAILABLE, TriageGraph
@@ -127,14 +126,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def require_api_key(request: Request, call_next):
-        if request.method != "OPTIONS" and request.url.path != "/api/v1/health":
-            provided_key = (request.headers.get("X-API-Key") or "").strip()
-            if not provided_key:
-                auth = (request.headers.get("Authorization") or "").strip()
-                if auth.lower().startswith("bearer "):
-                    provided_key = auth[7:].strip()
-            if provided_key != container["settings"]["mock_api_key"]:
-                return JSONResponse({"detail": "invalid or missing api key"}, status_code=401)
+        # Disable frontend-to-backend API key verification in local dev.
+        # Backend model access still uses llm_api_key from backend/.env.
         return await call_next(request)
 
     app.include_router(health_router)

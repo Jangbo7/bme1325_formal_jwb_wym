@@ -37,7 +37,8 @@ class Database:
                         updated_at TEXT NOT NULL,
                         triage_level INTEGER,
                         triage_note TEXT,
-                        session_id TEXT
+                        session_id TEXT,
+                        visit_id TEXT
                     );
 
                     CREATE TABLE IF NOT EXISTS triage_sessions (
@@ -99,9 +100,18 @@ class Database:
                     );
                     """
                 )
+                # Backward-compatible lightweight migration for old local DB files.
+                self._ensure_column(conn, "patients", "visit_id", "TEXT")
                 conn.commit()
             finally:
                 conn.close()
+
+    @staticmethod
+    def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, column_def: str) -> None:
+        columns = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        existing = {row[1] for row in columns}
+        if column_name not in existing:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}")
 
     @staticmethod
     def encode_json(payload: dict) -> str:
