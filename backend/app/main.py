@@ -62,10 +62,8 @@ def create_container():
         session_repo=session_repo,
         memory_repo=memory_repo,
         queue_repo=queue_repo,
-        visit_repo=visit_repo,
         dialogue_state_machine=dialogue_state_machine,
         patient_state_machine=patient_state_machine,
-        visit_state_machine=visit_state_machine,
         bus=bus,
         graph=None,
     )

@@ -50,4 +50,5 @@ def get_settings() -> dict:
         "llm_model": os.getenv("LLM_MODEL", "").strip() or DEFAULT_LLM_MODEL,
         "llm_api_key": llm_api_key,
         "database_url": os.getenv("DATABASE_URL", "").strip() or DEFAULT_DATABASE_URL,
+        "reset_on_server_start": os.getenv("RESET_ON_SERVER_START", "").strip().lower() in ("1", "true", "yes"),
     }

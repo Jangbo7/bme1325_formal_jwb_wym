@@ -14,6 +14,27 @@ class PatientLifecycleState(str, Enum):
     ERROR = "error"
 
 
+class VisitLifecycleState(str, Enum):
+    ARRIVED = "arrived"
+    REGISTRATION_PENDING = "registration_pending"
+    REGISTERED = "registered"
+    WAITING_TRIAGE = "waiting_triage"
+    TRIAGING = "triaging"
+    IN_TRIAGE = "in_triage"
+    WAITING_FOLLOWUP = "waiting_followup"
+    TRIAGED = "triaged"
+    WAITING_CONSULTATION = "waiting_consultation"
+    IN_CONSULTATION = "in_consultation"
+    WAITING_PAYMENT = "waiting_payment"
+    WAITING_TEST = "waiting_test"
+    IN_TEST = "in_test"
+    WAITING_RETURN_CONSULTATION = "waiting_return_consultation"
+    WAITING_PHARMACY = "waiting_pharmacy"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    ERROR = "error"
+
+
 class TriageDialogueState(str, Enum):
     IDLE = "idle"
     COLLECTING_INITIAL_INFO = "collecting_initial_info"
