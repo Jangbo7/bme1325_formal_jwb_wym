@@ -40,6 +40,7 @@ VISIT_TRANSITIONS = {
         "mark_error": VisitLifecycleState.ERROR,
     },
     VisitLifecycleState.IN_CONSULTATION: {
+        "consultation_completed": VisitLifecycleState.WAITING_PAYMENT,
         "complete_visit": VisitLifecycleState.COMPLETED,
         "mark_error": VisitLifecycleState.ERROR,
     },

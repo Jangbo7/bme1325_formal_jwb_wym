@@ -167,6 +167,7 @@ class PatientRepository:
             priority=patient_row["priority"],
             location=patient_row["location"],
             updated_at=patient_row["updated_at"],
+            session_id=patient_row.get("session_id"),
             visit_id=visit_id,
             visit_state=visit_state,
             triage=TriageSummary(level=patient_row["triage_level"], note=patient_row["triage_note"] or ""),

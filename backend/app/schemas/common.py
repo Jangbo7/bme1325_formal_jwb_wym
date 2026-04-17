@@ -25,6 +25,19 @@ class TriageDialogueState(str, Enum):
     FAILED = "failed"
 
 
+class InternalMedicineDialogueState(str, Enum):
+    IDLE = "idle"
+    COLLECTING_INFO = "collecting_info"
+    EVALUATING = "evaluating"
+    NEEDS_FOLLOWUP = "needs_followup"
+    AWAITING_PATIENT_REPLY = "awaiting_patient_reply"
+    RE_EVALUATING = "re_evaluating"
+    DIAGNOSIS_COMPLETE = "diagnosis_complete"
+    TREATMENT_PLANNING = "treatment_planning"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class QueueTicketStatus(str, Enum):
     WAITING = "waiting"
     CALLED = "called"

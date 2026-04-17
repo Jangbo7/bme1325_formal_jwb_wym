@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hospital Sandbox Pseudo 3D Prototype</title>
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" type="image/png" href="./img/head_photo-head@1x.png" />
+  <link rel="shortcut icon" href="./img/head_photo-head@1x.png" />
 </head>
 <body>
   <div class="hud">
     <div class="hud__title">Hospital Pseudo 3D</div>
-    <div class="hud__tips">Move: WASD / Arrows, stairs switch floor, E submit triage at desk</div>
+    <div class="hud__tips">Move: WASD / Arrows, stairs switch floor, E interacts with triage, registration, and doctor entry.</div>
     <div class="hud__floor">
       <span id="floor-state">Current Floor: 1F</span>
     </div>
@@ -18,41 +20,41 @@
 
   <div id="triageModal" class="triage-modal hidden" aria-hidden="true">
     <div class="triage-modal__content" role="dialog" aria-modal="true" aria-labelledby="triageModalTitle">
-      <h2 id="triageModalTitle">分诊登记</h2>
+      <h2 id="triageModalTitle">Triage Card</h2>
       <form id="triageForm" class="triage-form">
         <fieldset>
-          <label for="symptoms">症状描述</label>
-          <textarea id="symptoms" placeholder="例如：头晕、胸闷、咳嗽" required></textarea>
+          <label for="symptoms">Symptoms</label>
+          <textarea id="symptoms" placeholder="Describe the main symptoms you are feeling." required></textarea>
         </fieldset>
 
         <fieldset>
-          <label for="temp_c">体温 (°C)</label>
+          <label for="temp_c">Temperature (C)</label>
           <input id="temp_c" type="number" min="35" max="42" step="0.1" value="37.8" required />
         </fieldset>
 
         <fieldset>
-          <label for="heart_rate">心率 (次/分)</label>
+          <label for="heart_rate">Heart Rate (bpm)</label>
           <input id="heart_rate" type="number" min="40" max="180" value="105" required />
         </fieldset>
 
         <fieldset>
-          <label for="systolic_bp">收缩压 (mmHg)</label>
+          <label for="systolic_bp">Systolic BP (mmHg)</label>
           <input id="systolic_bp" type="number" min="70" max="220" value="132" required />
         </fieldset>
 
         <fieldset>
-          <label for="diastolic_bp">舒张压 (mmHg)</label>
+          <label for="diastolic_bp">Diastolic BP (mmHg)</label>
           <input id="diastolic_bp" type="number" min="40" max="140" value="86" required />
         </fieldset>
 
         <fieldset>
-          <label for="pain_score">疼痛等级 (0-10) <span id="painDisplay">5</span></label>
+          <label for="pain_score">Pain Score (0-10) <span id="painDisplay">5</span></label>
           <input id="pain_score" type="range" min="0" max="10" value="5" />
         </fieldset>
 
         <div class="triage-form__actions">
-          <button type="button" id="triageCancelBtn" class="triage-btn triage-btn--ghost">取消</button>
-          <button type="submit" class="triage-btn triage-btn--primary">提交分诊</button>
+          <button type="button" id="triageCancelBtn" class="triage-btn triage-btn--ghost">Cancel</button>
+          <button type="submit" class="triage-btn triage-btn--primary">Submit Triage Card</button>
         </div>
       </form>
     </div>
@@ -62,15 +64,15 @@
     <div class="triage-modal__content triage-dialogue" role="dialog" aria-modal="true" aria-labelledby="triageDialogueTitle">
       <div class="triage-dialogue__header">
         <div>
-          <h2 id="triageDialogueTitle">分诊对话</h2>
-          <p id="triageDialogueStatus" class="triage-dialogue__status">分诊信息已提交，正在等待智能分诊建议。</p>
+          <h2 id="triageDialogueTitle">Triage Dialogue</h2>
+          <p id="triageDialogueStatus" class="triage-dialogue__status">The triage agent is ready.</p>
         </div>
-        <button type="button" id="triageDialogueCloseBtn" class="triage-btn triage-btn--ghost">关闭</button>
+        <button type="button" id="triageDialogueCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
       </div>
 
       <div id="triageDialogueMeta" class="triage-dialogue__meta">
-        <span id="triageLevelBadge" class="triage-badge">分级待定</span>
-        <span id="triageDeptBadge" class="triage-badge triage-badge--muted">科室待定</span>
+        <span id="triageLevelBadge" class="triage-badge">Triage Pending</span>
+        <span id="triageDeptBadge" class="triage-badge triage-badge--muted">Department Pending</span>
       </div>
 
       <div id="triageDialogueMessages" class="triage-dialogue__messages" aria-live="polite"></div>
@@ -78,8 +80,35 @@
       <div class="triage-dialogue__footer">
         <div id="triageEvidenceList" class="triage-dialogue__evidence"></div>
         <form id="triageDialogueForm" class="triage-dialogue__composer">
-          <textarea id="triageDialogueInput" placeholder="在这里回复分诊 agent，例如：症状是半小时前开始的，没有过敏，疼痛 6 分。"></textarea>
-          <button type="submit" id="triageDialogueSendBtn" class="triage-btn triage-btn--primary">发送</button>
+          <textarea id="triageDialogueInput" placeholder="Reply to the triage agent with more details."></textarea>
+          <button type="submit" id="triageDialogueSendBtn" class="triage-btn triage-btn--primary">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="doctorDialogueModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content triage-dialogue" role="dialog" aria-modal="true" aria-labelledby="doctorDialogueTitle">
+      <div class="triage-dialogue__header">
+        <div>
+          <h2 id="doctorDialogueTitle">Internal Medicine Consultation</h2>
+          <p id="doctorDialogueStatus" class="triage-dialogue__status">The doctor agent is waiting for your message.</p>
+        </div>
+        <button type="button" id="doctorDialogueCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+
+      <div id="doctorDialogueMeta" class="triage-dialogue__meta">
+        <span id="doctorAgentBadge" class="triage-badge">Doctor Agent</span>
+        <span id="doctorVisitBadge" class="triage-badge triage-badge--muted">Visit Pending</span>
+      </div>
+
+      <div id="doctorDialogueMessages" class="triage-dialogue__messages" aria-live="polite"></div>
+
+      <div class="triage-dialogue__footer">
+        <div id="doctorEvidenceList" class="triage-dialogue__evidence"></div>
+        <form id="doctorDialogueForm" class="triage-dialogue__composer">
+          <textarea id="doctorDialogueInput" placeholder="Describe symptoms, onset, concerns, or answer the doctor agent."></textarea>
+          <button type="submit" id="doctorDialogueSendBtn" class="triage-btn triage-btn--primary">Send</button>
         </form>
       </div>
     </div>

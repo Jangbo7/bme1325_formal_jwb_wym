@@ -41,6 +41,7 @@ class PatientView(BaseModel):
     priority: str
     location: str
     updated_at: str
+    session_id: str | None = None
     visit_id: str | None = None
     visit_state: VisitLifecycleState | None = None
     triage: TriageSummary = Field(default_factory=TriageSummary)
