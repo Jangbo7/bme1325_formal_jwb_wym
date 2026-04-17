@@ -3,17 +3,16 @@ from datetime import datetime, timezone
 from urllib import request as urlrequest
 
 from app.agents.internal_medicine.prompts import (
-    build_consultation_prompt,
-    build_diagnosis_prompt,
-    build_follow_up_message,
-    build_initial_prompt,
-    build_progress_follow_up,
-    build_step_aware_prompt,
-    build_treatment_plan_prompt,
+    build_consultation_system_prompt,
+    build_consultation_user_prompt,
+    build_final_message,
+    build_follow_up_question,
+    build_initial_message,
 )
 from app.agents.internal_medicine.rules import (
     build_missing_fields,
     derive_risk_flags,
+    extract_structured_updates,
     merge_unique,
     merge_vitals,
     retrieve_relevant_internal_medicine_rules,
@@ -22,11 +21,9 @@ from app.agents.internal_medicine.rules import (
     validate_internal_medicine_result,
 )
 from app.agents.internal_medicine.state import WorkingMemory
-from app.agents.internal_medicine.workflow import (
-    ConsultationProgress,
-    ConsultationStep,
-)
-from app.events.types import INTERNAL_MEDICINE_CONSULTATION_COMPLETED, PATIENT_STATE_CHANGED
+from app.agents.internal_medicine.workflow import ConsultationProgress
+from app.events.types import INTERNAL_MEDICINE_CONSULTATION_COMPLETED, VISIT_STATE_CHANGED
+from app.schemas.common import InternalMedicineDialogueState, PatientLifecycleState, VisitLifecycleState
 
 
 def now_iso() -> str:
@@ -41,8 +38,10 @@ class InternalMedicineService:
         session_repo,
         memory_repo,
         queue_repo,
+        visit_repo,
         dialogue_state_machine,
         patient_state_machine,
+        visit_state_machine,
         bus,
         graph,
     ):
@@ -51,74 +50,12 @@ class InternalMedicineService:
         self.session_repo = session_repo
         self.memory_repo = memory_repo
         self.queue_repo = queue_repo
+        self.visit_repo = visit_repo
         self.dialogue_state_machine = dialogue_state_machine
         self.patient_state_machine = patient_state_machine
+        self.visit_state_machine = visit_state_machine
         self.bus = bus
         self.graph = graph
-
-    def get_patient_view(self, patient_id: str):
-        patient = self.patient_repo.get(patient_id)
-        if not patient:
-            return None
-        session_id = patient.get("session_id")
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id) if session_id else None
-        dialogue = None
-        evidence = []
-        if private_memory:
-            dialogue = {
-                "status": private_memory.get("dialogue_state", "idle"),
-                "assistant_message": private_memory.get("assistant_message", ""),
-                "missing_fields": private_memory.get("missing_fields", []),
-                "turns": self.session_repo.list_turns(session_id),
-            }
-            evidence = private_memory.get("evidence", [])
-        queue_ticket = self.queue_repo.get_active_ticket_for_patient(patient_id)
-        patient_view = dict(patient)
-        patient_view["dialogue"] = dialogue
-        patient_view["evidence"] = evidence
-        patient_view["queue_ticket"] = queue_ticket
-        return patient_view
-
-    def list_patient_views(self):
-        return [self.get_patient_view(row["id"]) for row in self.patient_repo.list()]
-
-    def _determine_severity_level(self, payload: dict, clinical: dict) -> int:
-        symptoms_text = " ".join(clinical.get("symptoms", [])).lower()
-        chief_complaint = (clinical.get("chief_complaint") or "").lower()
-        text = symptoms_text + " " + chief_complaint
-
-        MODERATE_KEYWORDS = [
-            "fracture", "broken", "骨折",
-            "hand foot mouth", "手足口",
-            "infection", "感染", "发热", "高烧",
-            "pneumonia", "肺炎",
-            "appendicitis", "阑尾炎",
-            "gallbladder", "胆囊",
-            "kidney stone", "肾结石",
-            "stroke", "中风",
-            "heart attack", "心脏病",
-            "severe", "严重",
-            "blood", "血", "bleeding",
-            "x-ray", "xray", "拍片",
-            "test", "检验", "检查",
-        ]
-
-        for keyword in MODERATE_KEYWORDS:
-            if keyword.lower() in text:
-                return 2
-
-        risk_flags = clinical.get("risk_flags", [])
-        if any(flag in risk_flags for flag in ["fever", "infection_alert", "cardiac_alert", "neurological_alert"]):
-            return 2
-
-        if clinical.get("vitals"):
-            vitals = clinical.get("vitals", {})
-            if vitals.get("temp_c") and vitals["temp_c"] >= 38.5:
-                return 2
-            if vitals.get("systolic_bp") and (vitals["systolic_bp"] >= 160 or vitals["systolic_bp"] <= 80):
-                return 2
-
-        return 1
 
     def create_session(self, payload: dict):
         return self.graph.invoke({"mode": "create_session", "payload": payload})
@@ -126,11 +63,89 @@ class InternalMedicineService:
     def continue_session(self, session_id: str, payload: dict):
         return self.graph.invoke({"mode": "continue_session", "payload": payload, "session_id": session_id})
 
-    def prepare_context(self, payload: dict, session_id: str, dialogue_state) -> WorkingMemory:
+    def get_patient_view(self, patient_id: str):
+        patient = self.patient_repo.get(patient_id)
+        if not patient:
+            return None
+        session_id = patient.get("session_id")
+        private_memory = None
+        dialogue = None
+        evidence = []
+        if session_id:
+            private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="internal_medicine")
+        if private_memory:
+            dialogue = {
+                "status": private_memory.get("dialogue_state", InternalMedicineDialogueState.IDLE.value),
+                "assistant_message": private_memory.get("assistant_message", ""),
+                "missing_fields": private_memory.get("missing_fields", []),
+                "turns": self.session_repo.list_turns(session_id),
+                "message_type": private_memory.get("message_type", "followup"),
+            }
+            evidence = private_memory.get("evidence", [])
+        visit_id = patient.get("visit_id")
+        visit_row = self.visit_repo.get(visit_id) if visit_id else self.visit_repo.get_active_by_patient(patient_id)
+        queue_ticket = self.queue_repo.get_active_ticket_for_patient(patient_id, visit_id=visit_row["id"] if visit_row else None)
+        return self.patient_repo.to_view(patient, dialogue=dialogue, evidence=evidence, queue_ticket=queue_ticket, visit_row=visit_row)
+
+    def list_patient_views(self):
+        return [self.get_patient_view(row["id"]) for row in self.patient_repo.list()]
+
+    def prepare_create_session(self, payload: dict, session_id: str, dialogue_state: InternalMedicineDialogueState) -> None:
+        patient_id = payload["patient_id"]
+        visit_id = payload.get("visit_id")
+        patient_row = self.patient_repo.get(patient_id)
+        if not patient_row:
+            raise ValueError("patient not found")
+        visit_row = self.visit_repo.get(visit_id) if visit_id else None
+        if not visit_row or visit_row.get("patient_id") != patient_id:
+            raise ValueError("visit not found")
+        if VisitLifecycleState(visit_row["state"]) != VisitLifecycleState.IN_CONSULTATION:
+            raise ValueError("visit is not in consultation")
+        if PatientLifecycleState(patient_row["lifecycle_state"]) != PatientLifecycleState.IN_CONSULTATION:
+            raise ValueError("patient is not in consultation")
+        self.session_repo.create_or_update(
+            session_id,
+            patient_id,
+            dialogue_state.value,
+            agent_type="internal_medicine",
+            visit_id=visit_id,
+        )
+        self.patient_repo.update_patient(patient_id, session_id=session_id, visit_id=visit_id)
+        self._update_visit_agent_context(visit_row, session_id, active_agent_type="internal_medicine")
+
+    def validate_continue_session(self, session_id: str, payload: dict) -> dict:
+        session_row = self.session_repo.get(session_id)
+        if not session_row:
+            raise ValueError("session not found")
+        if session_row.get("agent_type") != "internal_medicine":
+            raise ValueError("session is not an internal medicine session")
+        payload["visit_id"] = payload.get("visit_id") or session_row.get("visit_id")
+        patient_id = payload.get("patient_id") or session_row.get("patient_id")
+        payload["patient_id"] = patient_id
+        if patient_id != session_row.get("patient_id"):
+            raise ValueError("patient does not match session")
+        visit_row = self.visit_repo.get(payload["visit_id"]) if payload.get("visit_id") else None
+        if not visit_row or visit_row.get("patient_id") != patient_id:
+            raise ValueError("visit does not match session")
+        return session_row
+
+    def append_user_turn(self, session_id: str, patient_id: str, message: str, mode: str) -> None:
+        if not message:
+            return
+        self.session_repo.append_turn(
+            session_id,
+            patient_id,
+            "user",
+            message,
+            now_iso(),
+            metadata={"mode": mode, "agent_type": "internal_medicine"},
+        )
+
+    def prepare_context(self, payload: dict, session_id: str, dialogue_state: InternalMedicineDialogueState) -> WorkingMemory:
         patient_id = payload["patient_id"]
         patient_name = payload.get("name", patient_id)
         shared_memory = self.memory_repo.get_shared_memory(patient_id, patient_name)
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id)
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="internal_medicine")
         turns = self.session_repo.list_turns(session_id)
 
         if payload.get("age") is not None:
@@ -138,9 +153,7 @@ class InternalMedicineService:
         if payload.get("sex"):
             shared_memory["profile"]["sex"] = payload["sex"]
         shared_memory["profile"]["name"] = patient_name
-        shared_memory["profile"]["allergies"] = merge_unique(
-            shared_memory["profile"].get("allergies"), payload.get("allergies") or []
-        )
+        shared_memory["profile"]["allergies"] = merge_unique(shared_memory["profile"].get("allergies"), payload.get("allergies") or [])
         if payload.get("allergies") is not None:
             shared_memory["profile"]["allergy_status"] = "known"
         shared_memory["profile"]["chronic_conditions"] = merge_unique(
@@ -150,147 +163,78 @@ class InternalMedicineService:
 
         clinical = shared_memory["clinical_memory"]
         clinical["symptoms"] = merge_unique(clinical.get("symptoms"), split_symptoms(payload.get("symptoms", "")))
-        clinical["chief_complaint"] = (
-            payload.get("chief_complaint") or clinical.get("chief_complaint") or payload.get("symptoms", "")
-        )
+        clinical["chief_complaint"] = payload.get("chief_complaint") or clinical.get("chief_complaint") or payload.get("symptoms", "")
         clinical["onset_time"] = payload.get("onset_time") or clinical.get("onset_time")
         clinical["vitals"] = merge_vitals(clinical.get("vitals") or {}, payload.get("vitals") or {})
         clinical["risk_flags"] = derive_risk_flags(clinical.get("symptoms") or [], clinical.get("vitals") or {})
 
-        if payload.get("registration_info"):
-            clinical["registration_info"] = payload["registration_info"]
-
+        private_memory.setdefault("message_type", "followup")
+        private_memory.setdefault("missing_fields", [])
+        private_memory.setdefault("assistant_message", "")
+        private_memory.setdefault("evidence", [])
+        private_memory.setdefault("latest_summary", {})
+        private_memory.setdefault("consultation_progress", {})
         private_memory["dialogue_state"] = dialogue_state.value
-        private_memory["latest_summary"] = {
-            "chief_complaint": clinical.get("chief_complaint"),
-            "risk_flags": clinical.get("risk_flags"),
-        }
 
-        progress_data = private_memory.get("consultation_progress")
-        if progress_data:
-            consultation_progress = ConsultationProgress.from_dict(progress_data)
-        else:
-            severity = self._determine_severity_level(payload, clinical)
-            consultation_progress = ConsultationProgress(
-                current_step=ConsultationStep.CHIEF_COMPLAINT,
-                severity_level=severity,
-            )
+        progress = ConsultationProgress.from_dict(private_memory.get("consultation_progress"))
 
         return WorkingMemory(
             short_term_turns=turns,
             shared_memory=shared_memory,
             private_memory=private_memory,
-            consultation_progress=consultation_progress,
+            consultation_progress=progress,
         )
 
     def apply_chat_updates(self, payload: dict, memory: WorkingMemory) -> None:
         message = (payload.get("message") or "").strip()
         if not message:
             return
-
-        symptoms_lower = message.lower()
-        symptom_keywords = {
-            "headache": ["headache", "头疼", "头痛"],
-            "cough": ["cough", "咳嗽"],
-            "fever": ["fever", "发热", "发烧"],
-            "fatigue": ["fatigue", "tiredness", "疲劳", "累"],
-            "nausea": ["nausea", "恶心", "vomiting", "呕吐"],
-        }
-
+        extracted = extract_structured_updates(message)
         clinical = memory.shared_memory["clinical_memory"]
-        for symptom_key, keywords in symptom_keywords.items():
-            if any(term in symptoms_lower for term in keywords):
-                if symptom_key not in clinical.get("symptoms", []) and symptom_key.title() not in clinical.get("symptoms", []):
-                    clinical["symptoms"] = merge_unique(clinical.get("symptoms"), [symptom_key.title()])
-
+        profile = memory.shared_memory["profile"]
+        if extracted.get("chief_complaint") and not clinical.get("chief_complaint"):
+            clinical["chief_complaint"] = extracted["chief_complaint"]
+        if extracted.get("symptoms"):
+            clinical["symptoms"] = merge_unique(clinical.get("symptoms"), extracted["symptoms"])
+        if extracted.get("onset_time"):
+            clinical["onset_time"] = extracted["onset_time"]
+        if extracted.get("allergy_status") == "known":
+            profile["allergy_status"] = "known"
+            profile["allergies"] = extracted.get("allergies") or []
         clinical["risk_flags"] = derive_risk_flags(clinical.get("symptoms") or [], clinical.get("vitals") or {})
-
-        from app.agents.internal_medicine.workflow import (
-            CONSULTATION_STEPS,
-            ConsultationStep,
-            detect_medication_feedback,
-            detect_test_completion,
-            should_advance_step,
-        )
-        progress = memory.consultation_progress
-
-        if progress.current_step == ConsultationStep.MEDICATION_FEEDBACK:
-            feedback = detect_medication_feedback(message)
-            if feedback:
-                progress.advance("medication_feedback", feedback)
-                if feedback == "ok":
-                    next_step = progress.get_next_step()
-                    if next_step:
-                        progress.current_step = next_step
-                else:
-                    progress.current_step = ConsultationStep.ADJUST_MEDICATION
-                    adjustment = {"original": "initial", "feedback": feedback, "action": "adjust"}
-                    progress.medication_adjustments.append(adjustment)
-                    next_step = progress.get_next_step()
-                    if next_step:
-                        progress.current_step = next_step
-                return
-
-        if progress.current_step == ConsultationStep.TESTS_PENDING:
-            if detect_test_completion(message):
-                progress.advance("tests_completed", "yes")
-                next_step = progress.get_next_step()
-                if next_step:
-                    progress.current_step = next_step
-                return
-
-        if should_advance_step(progress, message):
-            required_field = None
-            for s in CONSULTATION_STEPS:
-                if s["step"] == progress.current_step:
-                    required_field = s.get("required_field")
-                    break
-            if required_field and not progress.is_complete():
-                progress.advance(required_field, message)
-                next_step = progress.get_next_step()
-                if next_step:
-                    progress.current_step = next_step
+        memory.consultation_progress.patient_reply_count += 1
 
     def build_merged_payload(self, payload: dict, shared_memory: dict) -> dict:
         clinical = shared_memory["clinical_memory"]
         merged = dict(payload)
         merged["symptoms"] = payload.get("symptoms") or ", ".join(clinical.get("symptoms") or [])
+        merged["chief_complaint"] = payload.get("chief_complaint") or clinical.get("chief_complaint")
         merged["vitals"] = merge_vitals(clinical.get("vitals") or {}, payload.get("vitals") or {})
         merged["onset_time"] = payload.get("onset_time") or clinical.get("onset_time")
         merged["allergies"] = payload.get("allergies") or shared_memory["profile"].get("allergies") or []
-        merged["chronic_conditions"] = (
-            payload.get("chronic_conditions") or shared_memory["profile"].get("chronic_conditions") or []
-        )
-        merged["registration_info"] = payload.get("registration_info") or clinical.get("registration_info", {})
+        merged["visit_id"] = payload.get("visit_id")
         return merged
 
-    def request_consultation_from_llm(
-        self, payload: dict, evidence_rules: list[dict], memory_context: WorkingMemory
-    ):
+    def request_consultation_from_llm(self, payload: dict, shared_memory: dict, missing_fields: list[str]) -> dict | None:
         if not self.llm_settings.get("api_key"):
             return None
-
-        conversation_history = [
-            {"role": turn.get("role", "user"), "content": turn.get("message", "")}
-            for turn in memory_context.short_term_turns[-5:]
-        ]
-
-        if conversation_history:
-            prompt = build_step_aware_prompt(
-                payload,
-                conversation_history,
-                evidence_rules,
-                memory_context.consultation_progress,
-            )
-        else:
-            prompt = build_diagnosis_prompt(payload, evidence_rules)
-
         req = urlrequest.Request(
             self.llm_settings["endpoint"],
             data=json.dumps(
                 {
                     "model": self.llm_settings["model"],
-                    "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+                    "messages": [
+                        {"role": "system", "content": [{"type": "text", "text": build_consultation_system_prompt()}]},
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": build_consultation_user_prompt(shared_memory, payload.get("message", ""), missing_fields),
+                                }
+                            ],
+                        },
+                    ],
                     "temperature": 0,
                     "n": 1,
                     "stream": False,
@@ -317,7 +261,7 @@ class InternalMedicineService:
             end = text.rfind("}")
             if start >= 0 and end > start:
                 return json.loads(text[start : end + 1])
-            return {"note": text, "diagnosis_level": 1, "priority": "M", "department": "General Medicine"}
+            return None
 
     def extract_text_from_response(self, data):
         if isinstance(data, str):
@@ -340,31 +284,33 @@ class InternalMedicineService:
                 ).strip()
         return ""
 
-    def evaluate(self, merged_payload: dict, memory: WorkingMemory) -> tuple[dict, list[dict], list[str], str]:
-        retrieved_rules = retrieve_relevant_internal_medicine_rules(merged_payload, top_k=3)
-        fallback = rule_based_internal_medicine(merged_payload)
-        llm_text_response = None
-        try:
-            llm_result = self.request_consultation_from_llm(merged_payload, retrieved_rules, memory)
-            if llm_result and isinstance(llm_result, dict):
-                llm_text_response = llm_result.get("note") or llm_result.get("diagnosis", "")
-        except Exception:
-            llm_result = None
-
-        final_result = validate_internal_medicine_result(llm_result, fallback)
-        evidence = [{"id": rule.get("id"), "title": rule.get("title"), "source": rule.get("source")} for rule in retrieved_rules]
+    def evaluate(self, merged_payload: dict, memory: WorkingMemory, mode: str) -> tuple[dict, list[dict], list[str], str, bool]:
         missing_fields = build_missing_fields(memory.shared_memory)
+        rules = retrieve_relevant_internal_medicine_rules(merged_payload, top_k=3)
+        evidence = [{"id": rule.get("id"), "title": rule.get("title"), "source": rule.get("source")} for rule in rules]
+        fallback = rule_based_internal_medicine(merged_payload)
+        progress = memory.consultation_progress
 
-        if llm_text_response:
-            assistant_message = llm_text_response
-        elif final_result.get("note"):
-            assistant_message = final_result["note"]
-        elif memory.short_term_turns:
-            assistant_message = build_progress_follow_up(memory.consultation_progress, final_result)
-        else:
-            assistant_message = build_follow_up_message(missing_fields, final_result)
+        if mode == "create_session":
+            assistant_message = build_initial_message(memory.shared_memory, progress)
+            return fallback, evidence, missing_fields, assistant_message, False
 
-        return final_result, evidence, missing_fields, assistant_message
+        llm_result = None
+        if not missing_fields or progress.patient_reply_count >= 2:
+            try:
+                llm_result = self.request_consultation_from_llm(merged_payload, memory.shared_memory, missing_fields)
+            except Exception:
+                llm_result = None
+            final_result = validate_internal_medicine_result(llm_result, fallback)
+            assistant_message = (llm_result or {}).get("assistant_message") if isinstance(llm_result, dict) else None
+            assistant_message = assistant_message or build_final_message(final_result)
+            return final_result, evidence, [], assistant_message, True
+
+        question_focus = missing_fields[0]
+        progress.followup_count += 1
+        progress.asked_fields_history.append(question_focus)
+        assistant_message = build_follow_up_question(question_focus, memory.shared_memory)
+        return fallback, evidence, missing_fields, assistant_message, False
 
     def persist_result(
         self,
@@ -372,106 +318,162 @@ class InternalMedicineService:
         session_id: str,
         payload: dict,
         memory: WorkingMemory,
-        dialogue_state,
+        dialogue_state: InternalMedicineDialogueState,
         consultation_result: dict,
         evidence: list[dict],
         missing_fields: list[str],
         assistant_message: str,
+        complete: bool,
     ):
         timestamp = now_iso()
         shared = memory.shared_memory
         private_memory = memory.private_memory
+        progress = memory.consultation_progress
+        progress.completed = complete
 
         shared["clinical_memory"]["last_department"] = consultation_result.get("department")
-        shared["clinical_memory"]["last_diagnosis_level"] = consultation_result.get("diagnosis_level")
         private_memory["dialogue_state"] = dialogue_state.value
         private_memory["assistant_message"] = assistant_message
         private_memory["missing_fields"] = missing_fields
-        private_memory["expected_field"] = missing_fields[0] if missing_fields else None
         private_memory["evidence"] = evidence
-        private_memory["consultation_progress"] = memory.consultation_progress.to_dict()
+        private_memory["message_type"] = "final" if complete else "followup"
+        private_memory["consultation_progress"] = progress.to_dict()
         private_memory["latest_summary"] = {
-            "chief_complaint": shared["clinical_memory"].get("chief_complaint"),
-            "risk_flags": shared["clinical_memory"].get("risk_flags"),
-            "diagnosis_level": consultation_result.get("diagnosis_level"),
             "department": consultation_result.get("department"),
-            "missing_fields": missing_fields,
-            "expected_field": missing_fields[0] if missing_fields else None,
-            "severity_level": memory.consultation_progress.severity_level,
+            "priority": consultation_result.get("priority"),
+            "complete": complete,
         }
 
         self.memory_repo.save_shared_memory(patient_id, shared)
-        self.memory_repo.save_agent_session_memory(session_id, patient_id, private_memory)
-        self.memory_repo.append_internal_medicine_history(
-            patient_id,
-            session_id,
-            {
-                "time": timestamp,
-                "diagnosis_level": consultation_result.get("diagnosis_level"),
-                "priority": consultation_result.get("priority"),
-                "department": consultation_result.get("department"),
-                "note": consultation_result.get("note"),
-                "evidence_ids": [item.get("id") for item in evidence],
-            },
-            timestamp,
-        )
+        self.memory_repo.save_agent_session_memory(session_id, patient_id, private_memory, agent_type="internal_medicine")
+        self.session_repo.update_state(session_id, dialogue_state.value)
         self.session_repo.append_turn(
             session_id,
             patient_id,
             "assistant",
-            assistant_message or consultation_result.get("note", ""),
+            assistant_message,
             timestamp,
             metadata={
-                "diagnosis_level": consultation_result.get("diagnosis_level"),
+                "agent_type": "internal_medicine",
+                "message_type": "final" if complete else "followup",
                 "department": consultation_result.get("department"),
+                "priority": consultation_result.get("priority"),
+                "diagnosis_level": consultation_result.get("diagnosis_level"),
             },
         )
+        existing_patient = self.patient_repo.get(patient_id)
+        self.patient_repo.update_patient(
+            patient_id,
+            session_id=session_id,
+            visit_id=payload.get("visit_id"),
+            priority=consultation_result.get("priority", existing_patient["priority"]),
+        )
 
-        lifecycle_event = "internal_medicine_completed" if not missing_fields else "internal_medicine_followup_requested"
-        patient_row = self.patient_repo.get(patient_id)
-        if patient_row:
-            current_lifecycle = patient_row["lifecycle_state"]
-            if current_lifecycle not in ("completed", "cancelled", "error"):
-                current_state = self.patient_state_machine.transition(current_lifecycle, lifecycle_event)
-                self.patient_repo.update_patient(
-                    patient_id,
-                    name=payload.get("name", patient_row["name"]),
-                    lifecycle_state=current_state.value,
-                    priority=consultation_result.get("priority", "M"),
-                    location=consultation_result.get("department", "General Medicine"),
-                    session_id=session_id,
+        visit_row = self.visit_repo.get(payload.get("visit_id")) if payload.get("visit_id") else None
+        if visit_row:
+            if complete:
+                self._transition_visit(
+                    visit_row,
+                    "consultation_completed",
+                    current_node="payment_wait",
+                    current_department="Payment",
+                    active_agent_type=None,
+                    extra_data={"internal_medicine_session_id": session_id},
                 )
-                self.session_repo.update_state(session_id, dialogue_state.value)
                 self.bus.publish(
-                    PATIENT_STATE_CHANGED,
+                    INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
                     {
                         "patient_id": patient_id,
-                        "lifecycle_state": current_state.value,
+                        "session_id": session_id,
+                        "visit_id": visit_row["id"],
+                        "department": consultation_result.get("department"),
+                        "priority": consultation_result.get("priority"),
                     },
                 )
-                if not missing_fields:
-                    self.bus.publish(
-                        INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
-                        {
-                            "patient_id": patient_id,
-                            "session_id": session_id,
-                            "department": consultation_result.get("department"),
-                            "priority": consultation_result.get("priority"),
-                        },
-                    )
+            else:
+                self._update_visit_agent_context(visit_row, session_id, active_agent_type="internal_medicine")
 
     def build_response(self, patient_id: str, session_id: str):
         patient_view = self.get_patient_view(patient_id)
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id)
+        session_row = self.session_repo.get(session_id)
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="internal_medicine")
         dialogue = {
-            "status": private_memory.get("dialogue_state", "idle"),
+            "status": private_memory.get("dialogue_state", InternalMedicineDialogueState.IDLE.value),
             "assistant_message": private_memory.get("assistant_message", ""),
             "missing_fields": private_memory.get("missing_fields", []),
             "turns": self.session_repo.list_turns(session_id),
+            "message_type": private_memory.get("message_type", "followup"),
         }
         return {
             "ok": True,
             "session_id": session_id,
-            "patient": patient_view,
+            "visit_id": session_row.get("visit_id") if session_row else None,
+            "visit_state": patient_view.visit_state.value if patient_view and patient_view.visit_state else None,
+            "patient": patient_view.model_dump() if patient_view else None,
             "dialogue": dialogue,
         }
+
+    def _update_visit_agent_context(self, visit_row: dict, session_id: str, active_agent_type: str | None) -> dict:
+        data = self._get_visit_data(visit_row)
+        data["internal_medicine_session_id"] = session_id
+        updated = self.visit_repo.update_visit(
+            visit_row["id"],
+            current_node="internal_medicine_consultation",
+            current_department="Consultation",
+            active_agent_type=active_agent_type,
+            data=data,
+        )
+        self.bus.publish(
+            VISIT_STATE_CHANGED,
+            {
+                "visit_id": updated["id"],
+                "patient_id": updated["patient_id"],
+                "state": updated["state"],
+                "event": "agent_context_updated",
+            },
+        )
+        return updated
+
+    def _transition_visit(
+        self,
+        visit_row: dict,
+        event: str,
+        *,
+        current_node: str | None = None,
+        current_department: str | None = None,
+        active_agent_type: str | None = None,
+        extra_data: dict | None = None,
+    ) -> dict:
+        current_state = VisitLifecycleState(visit_row["state"])
+        next_state = self.visit_state_machine.transition(current_state, event)
+        data = self._get_visit_data(visit_row)
+        if extra_data:
+            data.update(extra_data)
+        updated = self.visit_repo.update_visit(
+            visit_row["id"],
+            state=next_state.value,
+            current_node=current_node if current_node is not None else visit_row.get("current_node"),
+            current_department=current_department if current_department is not None else visit_row.get("current_department"),
+            active_agent_type=active_agent_type if active_agent_type is not None else visit_row.get("active_agent_type"),
+            data=data,
+        )
+        self.bus.publish(
+            VISIT_STATE_CHANGED,
+            {
+                "visit_id": updated["id"],
+                "patient_id": updated["patient_id"],
+                "state": updated["state"],
+                "event": event,
+            },
+        )
+        return updated
+
+    @staticmethod
+    def _get_visit_data(visit_row: dict) -> dict:
+        data_json = visit_row.get("data_json")
+        if not data_json:
+            return {}
+        try:
+            return json.loads(data_json)
+        except Exception:
+            return {}

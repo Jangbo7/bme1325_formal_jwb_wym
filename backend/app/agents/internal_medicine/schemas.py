@@ -1,5 +1,8 @@
 from pydantic import BaseModel, Field
 
+from app.schemas.common import VisitLifecycleState
+from app.schemas.patient import DialogueSummary, PatientView
+
 
 class VitalsPayload(BaseModel):
     temp_c: float | None = None
@@ -11,6 +14,7 @@ class VitalsPayload(BaseModel):
 
 class CreateInternalMedicineSessionRequest(BaseModel):
     patient_id: str = "P-self"
+    visit_id: str
     session_id: str | None = None
     name: str = "You (Player)"
     age: int | None = None
@@ -21,13 +25,13 @@ class CreateInternalMedicineSessionRequest(BaseModel):
     vitals: VitalsPayload = Field(default_factory=VitalsPayload)
     allergies: list[str] = Field(default_factory=list)
     chronic_conditions: list[str] = Field(default_factory=list)
-    registration_info: dict = Field(default_factory=dict)
     location: str | None = None
     floor: int | None = None
 
 
 class InternalMedicineMessageRequest(BaseModel):
     patient_id: str | None = None
+    visit_id: str | None = None
     name: str | None = None
     message: str
 
@@ -35,5 +39,7 @@ class InternalMedicineMessageRequest(BaseModel):
 class InternalMedicineSessionResponse(BaseModel):
     ok: bool = True
     session_id: str
-    patient: dict
-    dialogue: dict
+    visit_id: str | None = None
+    visit_state: VisitLifecycleState | None = None
+    patient: PatientView
+    dialogue: DialogueSummary

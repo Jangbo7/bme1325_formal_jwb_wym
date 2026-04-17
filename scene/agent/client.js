@@ -43,5 +43,20 @@ export function createBackendClient({ baseUrl, apiKey }) {
         body: JSON.stringify(payload),
       });
     },
+    createInternalMedicineSession(payload) {
+      return request("/api/v1/internal-medicine-sessions", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    sendInternalMedicineMessage(sessionId, payload) {
+      return request(`/api/v1/internal-medicine-sessions/${sessionId}/messages`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    getInternalMedicineSession(sessionId) {
+      return request(`/api/v1/internal-medicine-sessions/${sessionId}`, { method: "GET" });
+    },
   };
 }
