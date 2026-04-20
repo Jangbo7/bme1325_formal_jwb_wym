@@ -63,11 +63,35 @@ class InternalMedicineService:
     def continue_session(self, session_id: str, payload: dict):
         return self.graph.invoke({"mode": "continue_session", "payload": payload, "session_id": session_id})
 
+    @staticmethod
+    def _decode_visit_data(visit_row: dict | None) -> dict:
+        if not visit_row:
+            return {}
+        payload = visit_row.get("data_json")
+        if not payload:
+            return {}
+        try:
+            return json.loads(payload)
+        except Exception:
+            return {}
+
     def get_patient_view(self, patient_id: str):
         patient = self.patient_repo.get(patient_id)
         if not patient:
             return None
-        session_id = patient.get("session_id")
+
+        visit_id = patient.get("visit_id")
+        visit_row = self.visit_repo.get(visit_id) if visit_id else self.visit_repo.get_active_by_patient(patient_id)
+        visit_data = self._decode_visit_data(visit_row)
+
+        session_id = visit_data.get("internal_medicine_session_id")
+        if not session_id:
+            latest_row = self.session_repo.get_latest_by_visit_and_agent(visit_row["id"], "internal_medicine") if visit_row else None
+            session_id = latest_row["id"] if latest_row else None
+        if not session_id:
+            patient_session = str(patient.get("session_id") or "")
+            session_id = patient_session if patient_session.startswith("im-session-") else None
+
         private_memory = None
         dialogue = None
         evidence = []
@@ -82,10 +106,22 @@ class InternalMedicineService:
                 "message_type": private_memory.get("message_type", "followup"),
             }
             evidence = private_memory.get("evidence", [])
-        visit_id = patient.get("visit_id")
-        visit_row = self.visit_repo.get(visit_id) if visit_id else self.visit_repo.get_active_by_patient(patient_id)
+
         queue_ticket = self.queue_repo.get_active_ticket_for_patient(patient_id, visit_id=visit_row["id"] if visit_row else None)
-        return self.patient_repo.to_view(patient, dialogue=dialogue, evidence=evidence, queue_ticket=queue_ticket, visit_row=visit_row)
+        session_refs = {
+            "triage_session_id": visit_data.get("triage_session_id"),
+            "internal_medicine_session_id": session_id,
+        }
+        return self.patient_repo.to_view(
+            patient,
+            dialogue=dialogue,
+            evidence=evidence,
+            queue_ticket=queue_ticket,
+            visit_row=visit_row,
+            active_agent_type="internal_medicine",
+            session_refs=session_refs,
+            dialogue_source_agent="internal_medicine" if dialogue else None,
+        )
 
     def list_patient_views(self):
         return [self.get_patient_view(row["id"]) for row in self.patient_repo.list()]

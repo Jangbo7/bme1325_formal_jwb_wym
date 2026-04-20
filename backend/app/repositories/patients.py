@@ -151,6 +151,9 @@ class PatientRepository:
         evidence: list[dict] | None = None,
         queue_ticket: dict | None = None,
         visit_row: dict | None = None,
+        active_agent_type: str | None = None,
+        session_refs: dict | None = None,
+        dialogue_source_agent: str | None = None,
     ) -> PatientView:
         visit_id = patient_row.get("visit_id")
         visit_state = None
@@ -158,6 +161,8 @@ class PatientRepository:
             visit_id = visit_row.get("id")
             state_value = visit_row.get("state")
             visit_state = VisitLifecycleState(state_value) if state_value else None
+            if active_agent_type is None:
+                active_agent_type = visit_row.get("active_agent_type")
 
         return PatientView(
             id=patient_row["id"],
@@ -170,6 +175,9 @@ class PatientRepository:
             session_id=patient_row.get("session_id"),
             visit_id=visit_id,
             visit_state=visit_state,
+            active_agent_type=active_agent_type,
+            session_refs=session_refs or {},
+            dialogue_source_agent=dialogue_source_agent,
             triage=TriageSummary(level=patient_row["triage_level"], note=patient_row["triage_note"] or ""),
             dialogue=DialogueSummary(**dialogue) if dialogue else None,
             triage_evidence=[EvidenceItem(**item) for item in (evidence or [])],

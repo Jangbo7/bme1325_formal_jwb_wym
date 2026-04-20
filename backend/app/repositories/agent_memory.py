@@ -56,12 +56,29 @@ class AgentMemoryRepository:
         finally:
             conn.close()
 
-    def get_agent_session_memory(self, session_id: str, patient_id: str, agent_type: str = "triage") -> dict:
+    def get_agent_session_memory(self, session_id: str, patient_id: str, agent_type: str) -> dict:
         conn = self.db.connect()
         try:
-            row = conn.execute("SELECT data_json FROM agent_session_memory WHERE session_id = ?", (session_id,)).fetchone()
+            row = conn.execute(
+                "SELECT patient_id, data_json FROM agent_session_memory WHERE session_id = ? AND agent_type = ?",
+                (session_id, agent_type),
+            ).fetchone()
             if row:
-                return Database.decode_json(row["data_json"], {})
+                if row["patient_id"] != patient_id:
+                    raise ValueError("session memory patient mismatch")
+                payload = Database.decode_json(row["data_json"], {})
+                payload.setdefault("asked_fields_history", [])
+                payload.setdefault("last_question_focus", None)
+                payload.setdefault("last_question_text", "")
+                payload.setdefault("last_question_style", None)
+                payload.setdefault("recommendation_snapshot", None)
+                payload.setdefault("recommendation_changed", False)
+                payload.setdefault("message_type", "followup")
+                payload.setdefault("latest_extraction", {})
+                payload["session_id"] = session_id
+                payload["patient_id"] = patient_id
+                payload["agent_type"] = agent_type
+                return payload
             payload = {
                 "session_id": session_id,
                 "patient_id": patient_id,
@@ -82,19 +99,23 @@ class AgentMemoryRepository:
         finally:
             conn.close()
 
-    def save_agent_session_memory(self, session_id: str, patient_id: str, payload: dict, agent_type: str = "triage") -> None:
+    def save_agent_session_memory(self, session_id: str, patient_id: str, payload: dict, agent_type: str) -> None:
         conn = self.db.connect()
         try:
+            safe_payload = dict(payload)
+            safe_payload["session_id"] = session_id
+            safe_payload["patient_id"] = patient_id
+            safe_payload["agent_type"] = agent_type
             conn.execute(
                 """
                 INSERT INTO agent_session_memory (session_id, patient_id, agent_type, data_json)
                 VALUES (?, ?, ?, ?)
-                ON CONFLICT(session_id) DO UPDATE SET
+                ON CONFLICT(session_id, agent_type) DO UPDATE SET
                     patient_id=excluded.patient_id,
                     agent_type=excluded.agent_type,
                     data_json=excluded.data_json
                 """,
-                (session_id, patient_id, agent_type, Database.encode_json(payload)),
+                (session_id, patient_id, agent_type, Database.encode_json(safe_payload)),
             )
             conn.commit()
         finally:

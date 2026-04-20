@@ -15,5 +15,5 @@ class TriageGraphState:
     final_result: dict | None = None
     evidence: list[dict] = field(default_factory=list)
     missing_fields: list[str] = field(default_factory=list)
-    assistant_message: str = ""
+    assistant_payload: dict = field(default_factory=dict)
     dialogue_state: TriageDialogueState = TriageDialogueState.IDLE

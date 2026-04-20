@@ -11,7 +11,14 @@ class SessionRepository:
     def __init__(self, db: Database):
         self.db = db
 
-    def create_or_update(self, session_id: str, patient_id: str, dialogue_state: str, agent_type: str = "triage") -> dict:
+    def create_or_update(
+        self,
+        session_id: str,
+        patient_id: str,
+        dialogue_state: str,
+        agent_type: str = "triage",
+        visit_id: str | None = None,
+    ) -> dict:
         timestamp = now_iso()
         conn = self.db.connect()
         try:
@@ -20,18 +27,18 @@ class SessionRepository:
                 conn.execute(
                     """
                     UPDATE triage_sessions
-                    SET patient_id = ?, dialogue_state = ?, updated_at = ?
+                    SET patient_id = ?, dialogue_state = ?, visit_id = COALESCE(?, visit_id), updated_at = ?
                     WHERE id = ?
                     """,
-                    (patient_id, dialogue_state, timestamp, session_id),
+                    (patient_id, dialogue_state, visit_id, timestamp, session_id),
                 )
             else:
                 conn.execute(
                     """
-                    INSERT INTO triage_sessions (id, patient_id, agent_type, dialogue_state, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO triage_sessions (id, patient_id, visit_id, agent_type, dialogue_state, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (session_id, patient_id, agent_type, dialogue_state, timestamp, timestamp),
+                    (session_id, patient_id, visit_id, agent_type, dialogue_state, timestamp, timestamp),
                 )
             conn.commit()
             return self.get(session_id)
@@ -54,6 +61,23 @@ class SessionRepository:
         conn = self.db.connect()
         try:
             row = conn.execute("SELECT * FROM triage_sessions WHERE id = ?", (session_id,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def get_latest_by_visit_and_agent(self, visit_id: str, agent_type: str) -> dict | None:
+        conn = self.db.connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM triage_sessions
+                WHERE visit_id = ? AND agent_type = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (visit_id, agent_type),
+            ).fetchone()
             return dict(row) if row else None
         finally:
             conn.close()

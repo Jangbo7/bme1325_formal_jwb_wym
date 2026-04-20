@@ -54,7 +54,7 @@ class ICUDoctorService:
         if not patient:
             return None
         session_id = patient.get("session_id")
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id) if session_id else None
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="icu") if session_id else None
         dialogue = None
         evidence = []
         if private_memory:
@@ -85,7 +85,7 @@ class ICUDoctorService:
         patient_id = payload["patient_id"]
         patient_name = payload.get("name", patient_id)
         shared_memory = self.memory_repo.get_shared_memory(patient_id, patient_name)
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id)
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="icu")
         turns = self.session_repo.list_turns(session_id)
 
         if payload.get("age") is not None:
@@ -283,7 +283,7 @@ class ICUDoctorService:
         }
 
         self.memory_repo.save_shared_memory(patient_id, shared)
-        self.memory_repo.save_agent_session_memory(session_id, patient_id, private_memory)
+        self.memory_repo.save_agent_session_memory(session_id, patient_id, private_memory, agent_type="icu")
         self.memory_repo.append_icu_consultation_history(
             patient_id,
             session_id,
@@ -356,7 +356,7 @@ class ICUDoctorService:
 
     def build_response(self, patient_id: str, session_id: str):
         patient_view = self.get_patient_view(patient_id)
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id)
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="icu")
         dialogue = {
             "status": private_memory.get("dialogue_state", "idle"),
             "assistant_message": private_memory.get("assistant_message", ""),

@@ -1209,10 +1209,15 @@ function hasStartedTriageConversation(patient = getCurrentSelfPatient()) {
 
 function getDoctorSessionIdFromContext(patient = getCurrentSelfPatient(), visit = getCurrentVisit()) {
   const patientSessionId = String(patient?.session_id || "");
-  return visit?.data?.internal_medicine_session_id
-    || (patientSessionId.startsWith("im-session-") ? patientSessionId : null)
-    || doctorConversationState.sessionId
-    || null;
+  const visitSessionId = visit?.data?.internal_medicine_session_id || null;
+  if (visitSessionId) return visitSessionId;
+
+  if (visit?.active_agent_type === "internal_medicine" && doctorConversationState.sessionId) {
+    return doctorConversationState.sessionId;
+  }
+
+  if (doctorConversationState.sessionId) return doctorConversationState.sessionId;
+  return patientSessionId.startsWith("im-session-") ? patientSessionId : null;
 }
 
 function hasStartedDoctorConversation(patient = getCurrentSelfPatient(), visit = getCurrentVisit()) {
@@ -1627,7 +1632,11 @@ async function pollBackendStatuses(force = false) {
         triageConversationState.visitId = selfPatient.visit_id;
         doctorConversationState.visitId = selfPatient.visit_id;
       }
-      const restoredDoctorSessionId = visit?.data?.internal_medicine_session_id || (String(selfPatient.session_id || "").startsWith("im-session-") ? selfPatient.session_id : null);
+      let restoredDoctorSessionId = visit?.data?.internal_medicine_session_id || null;
+      if (!restoredDoctorSessionId && !visit) {
+        const patientSessionId = String(selfPatient.session_id || "");
+        restoredDoctorSessionId = patientSessionId.startsWith("im-session-") ? patientSessionId : null;
+      }
       if (restoredDoctorSessionId) {
         doctorConversationState.sessionId = restoredDoctorSessionId;
       }
