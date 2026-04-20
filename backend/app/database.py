@@ -31,6 +31,46 @@ class Database:
         if not Database._column_exists(conn, table_name, column_name):
             conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
 
+    @staticmethod
+    def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        return bool(row)
+
+    @staticmethod
+    def _agent_session_memory_has_composite_pk(conn: sqlite3.Connection) -> bool:
+        if not Database._table_exists(conn, "agent_session_memory"):
+            return False
+        rows = conn.execute("PRAGMA table_info(agent_session_memory)").fetchall()
+        pk_rows = sorted((row for row in rows if row["pk"] > 0), key=lambda row: row["pk"])
+        pk_columns = [row["name"] for row in pk_rows]
+        return pk_columns == ["session_id", "agent_type"]
+
+    @staticmethod
+    def _migrate_agent_session_memory_to_composite_pk(conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS agent_session_memory_v2 (
+                session_id TEXT NOT NULL,
+                patient_id TEXT NOT NULL,
+                agent_type TEXT NOT NULL,
+                data_json TEXT NOT NULL,
+                PRIMARY KEY (session_id, agent_type)
+            );
+
+            DELETE FROM agent_session_memory_v2;
+
+            INSERT INTO agent_session_memory_v2 (session_id, patient_id, agent_type, data_json)
+            SELECT session_id, patient_id, COALESCE(agent_type, 'triage'), data_json
+            FROM agent_session_memory;
+
+            DROP TABLE agent_session_memory;
+            ALTER TABLE agent_session_memory_v2 RENAME TO agent_session_memory;
+            """
+        )
+
     def init_schema(self) -> None:
         with self.lock:
             conn = self.connect()
@@ -89,10 +129,11 @@ class Database:
                     );
 
                     CREATE TABLE IF NOT EXISTS agent_session_memory (
-                        session_id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL,
                         patient_id TEXT NOT NULL,
                         agent_type TEXT NOT NULL,
-                        data_json TEXT NOT NULL
+                        data_json TEXT NOT NULL,
+                        PRIMARY KEY (session_id, agent_type)
                     );
 
                     CREATE TABLE IF NOT EXISTS queue_tickets (
@@ -119,6 +160,8 @@ class Database:
                 self._ensure_column(conn, "patients", "visit_id", "TEXT")
                 self._ensure_column(conn, "triage_sessions", "visit_id", "TEXT")
                 self._ensure_column(conn, "queue_tickets", "visit_id", "TEXT")
+                if not self._agent_session_memory_has_composite_pk(conn):
+                    self._migrate_agent_session_memory_to_composite_pk(conn)
                 conn.commit()
             finally:
                 conn.close()

@@ -19,7 +19,7 @@ export function createQueueRuntime() {
 
   function draw(ctx, canvas) {
     const panelWidth = 320;
-    const panelHeight = 236;
+    const panelHeight = 268;
     const panelX = canvas.width - panelWidth - 16;
     const panelY = canvas.height - panelHeight - 16;
 
@@ -39,7 +39,7 @@ export function createQueueRuntime() {
       const isPlayerDept = state.playerTicket?.department_id === queue.department_id;
       if (isPlayerDept) {
         ctx.fillStyle = "rgba(132, 255, 201, 0.14)";
-        ctx.fillRect(panelX + 6, y - 14, panelWidth - 12, 22);
+        ctx.fillRect(panelX + 6, y - 14, panelWidth - 12, 36);
       }
       ctx.fillStyle = "#f0ecff";
       ctx.font = "12px 'Segoe UI'";
@@ -52,7 +52,23 @@ export function createQueueRuntime() {
 
       ctx.fillStyle = "#ffe99c";
       ctx.fillText(`Called ${queue.called?.number ?? "-"}`, panelX + panelWidth - 12, y);
-      y += 28;
+
+      const waitingNames = (queue.waiting || [])
+        .slice(0, 2)
+        .map((ticket) => ticket.patient_name || ticket.patient_id);
+      const calledName = queue.called ? (queue.called.patient_name || queue.called.patient_id) : null;
+      const details = [
+        waitingNames.length > 0 ? `Waiting: ${waitingNames.join(", ")}${(queue.waiting || []).length > 2 ? ", ..." : ""}` : "Waiting: -",
+        calledName ? `Called: ${calledName}` : null,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      ctx.fillStyle = "#9fb0c0";
+      ctx.font = "10px 'Segoe UI'";
+      ctx.textAlign = "left";
+      ctx.fillText(details, panelX + 12, y + 14);
+
+      y += 36;
     }
 
     ctx.textAlign = "left";

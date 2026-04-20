@@ -81,6 +81,7 @@ class TriageService:
         current_node: str | None = None,
         current_department: str | None = None,
         active_agent_type: str | None = None,
+        extra_data: dict | None = None,
     ) -> dict | None:
         if not visit_id:
             return None
@@ -91,13 +92,22 @@ class TriageService:
         current_state = VisitLifecycleState(visit_row["state"])
         next_state = self.visit_state_machine.transition(current_state, event)
 
+        visit_data = {}
+        if visit_row.get("data_json"):
+            try:
+                visit_data = json.loads(visit_row["data_json"])
+            except Exception:
+                visit_data = {}
+        if extra_data:
+            visit_data.update(extra_data)
+
         updated = self.visit_repo.update_visit(
             visit_id,
             state=next_state.value,
             current_node=current_node if current_node is not None else visit_row.get("current_node"),
             current_department=current_department if current_department is not None else visit_row.get("current_department"),
             active_agent_type=active_agent_type,
-            data=visit_row.get("data_json") and json.loads(visit_row["data_json"]) or {},
+            data=visit_data,
         )
         self.bus.publish(
             VISIT_STATE_CHANGED,
@@ -110,27 +120,59 @@ class TriageService:
         )
         return updated
 
+    @staticmethod
+    def _decode_visit_data(visit_row: dict | None) -> dict:
+        if not visit_row:
+            return {}
+        payload = visit_row.get("data_json")
+        if not payload:
+            return {}
+        try:
+            return json.loads(payload)
+        except Exception:
+            return {}
+
+    def _resolve_session_refs(self, patient: dict, visit_row: dict | None) -> dict:
+        visit_data = self._decode_visit_data(visit_row)
+        refs = {
+            "triage_session_id": visit_data.get("triage_session_id"),
+            "internal_medicine_session_id": visit_data.get("internal_medicine_session_id"),
+        }
+
+        patient_session_id = patient.get("session_id")
+        if patient_session_id:
+            session_text = str(patient_session_id)
+            if session_text.startswith("im-session-"):
+                refs["internal_medicine_session_id"] = refs["internal_medicine_session_id"] or session_text
+            else:
+                refs["triage_session_id"] = refs["triage_session_id"] or session_text
+
+        visit_id = visit_row.get("id") if visit_row else None
+        if visit_id and not refs["triage_session_id"]:
+            triage_row = self.session_repo.get_latest_by_visit_and_agent(visit_id, "triage")
+            if triage_row:
+                refs["triage_session_id"] = triage_row["id"]
+        if visit_id and not refs["internal_medicine_session_id"]:
+            internal_row = self.session_repo.get_latest_by_visit_and_agent(visit_id, "internal_medicine")
+            if internal_row:
+                refs["internal_medicine_session_id"] = internal_row["id"]
+
+        return refs
+
+    @staticmethod
+    def _resolve_active_agent_type(patient: dict, visit_row: dict | None, session_refs: dict) -> str:
+        visit_agent = visit_row.get("active_agent_type") if visit_row else None
+        if visit_agent in {"triage", "internal_medicine"}:
+            return visit_agent
+
+        if session_refs.get("internal_medicine_session_id") and patient.get("lifecycle_state") == PatientLifecycleState.IN_CONSULTATION.value:
+            return "internal_medicine"
+        return "triage"
+
     def get_patient_view(self, patient_id: str):
         patient = self.patient_repo.get(patient_id)
         if not patient:
             return None
-
-        session_id = patient.get("session_id")
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id) if session_id else None
-        dialogue = None
-        evidence = []
-        if private_memory and session_id:
-            dialogue = {
-                "status": private_memory.get("dialogue_state", TriageDialogueState.IDLE.value),
-                "assistant_message": private_memory.get("assistant_message", ""),
-                "missing_fields": private_memory.get("missing_fields", []),
-                "turns": self.session_repo.list_turns(session_id),
-                "question_focus": private_memory.get("last_question_focus"),
-                "message_type": private_memory.get("message_type", "followup"),
-                "recommendation_changed": private_memory.get("recommendation_changed", False),
-                "asked_fields_history": private_memory.get("asked_fields_history", []),
-            }
-            evidence = private_memory.get("evidence", [])
 
         visit_id = patient.get("visit_id")
         visit_row = self.visit_repo.get(visit_id) if visit_id else self.visit_repo.get_active_by_patient(patient_id)
@@ -138,11 +180,46 @@ class TriageService:
             self.patient_repo.update_patient(patient_id, visit_id=visit_row["id"])
             patient = self.patient_repo.get(patient_id)
 
+        session_refs = self._resolve_session_refs(patient, visit_row)
+        active_agent_type = self._resolve_active_agent_type(patient, visit_row, session_refs)
+        selected_session_id = session_refs.get("internal_medicine_session_id") if active_agent_type == "internal_medicine" else session_refs.get("triage_session_id")
+
+        private_memory = None
+        dialogue = None
+        evidence = []
+        if selected_session_id:
+            try:
+                private_memory = self.memory_repo.get_agent_session_memory(selected_session_id, patient_id, agent_type=active_agent_type)
+            except ValueError:
+                private_memory = None
+
+        if private_memory and selected_session_id:
+            dialogue = {
+                "status": private_memory.get("dialogue_state", TriageDialogueState.IDLE.value),
+                "assistant_message": private_memory.get("assistant_message", ""),
+                "missing_fields": private_memory.get("missing_fields", []),
+                "turns": self.session_repo.list_turns(selected_session_id),
+                "message_type": private_memory.get("message_type", "followup"),
+                "question_focus": private_memory.get("last_question_focus"),
+                "recommendation_changed": private_memory.get("recommendation_changed", False),
+                "asked_fields_history": private_memory.get("asked_fields_history", []),
+            }
+            evidence = private_memory.get("evidence", [])
+
         queue_ticket = self.queue_repo.get_active_ticket_for_patient(
             patient_id,
             visit_id=visit_row["id"] if visit_row else None,
         )
-        return self.patient_repo.to_view(patient, dialogue=dialogue, evidence=evidence, queue_ticket=queue_ticket, visit_row=visit_row)
+        return self.patient_repo.to_view(
+            patient,
+            dialogue=dialogue,
+            evidence=evidence,
+            queue_ticket=queue_ticket,
+            visit_row=visit_row,
+            active_agent_type=active_agent_type,
+            session_refs=session_refs,
+            dialogue_source_agent=active_agent_type if dialogue else None,
+        )
 
     def list_patient_views(self):
         return [self.get_patient_view(row["id"]) for row in self.patient_repo.list()]
@@ -161,7 +238,7 @@ class TriageService:
         patient_id = payload["patient_id"]
         patient_name = payload.get("name", patient_id)
         shared_memory = self.memory_repo.get_shared_memory(patient_id, patient_name)
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id)
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="triage")
         turns = self.session_repo.list_turns(session_id)
         if payload.get("age") is not None:
             shared_memory["profile"]["age"] = payload["age"]
@@ -490,7 +567,7 @@ class TriageService:
         }
 
         self.memory_repo.save_shared_memory(patient_id, shared)
-        self.memory_repo.save_agent_session_memory(session_id, patient_id, private_memory)
+        self.memory_repo.save_agent_session_memory(session_id, patient_id, private_memory, agent_type="triage")
         self.memory_repo.append_triage_history(
             patient_id,
             session_id,
@@ -547,6 +624,7 @@ class TriageService:
             current_node="triage" if missing_fields else "triage_done",
             current_department=triage_result.get("department"),
             active_agent_type="triage" if missing_fields else None,
+            extra_data={"triage_session_id": session_id},
         )
         if visit_state_row:
             self.patient_repo.update_patient(patient_id, visit_id=visit_state_row["id"])
@@ -572,7 +650,7 @@ class TriageService:
 
     def build_response(self, patient_id: str, session_id: str):
         patient_view = self.get_patient_view(patient_id)
-        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id)
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="triage")
         dialogue = {
             "status": private_memory.get("dialogue_state", TriageDialogueState.IDLE.value),
             "assistant_message": private_memory.get("assistant_message", ""),

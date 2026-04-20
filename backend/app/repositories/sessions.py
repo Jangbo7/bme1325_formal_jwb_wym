@@ -65,6 +65,23 @@ class SessionRepository:
         finally:
             conn.close()
 
+    def get_latest_by_visit_and_agent(self, visit_id: str, agent_type: str) -> dict | None:
+        conn = self.db.connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM triage_sessions
+                WHERE visit_id = ? AND agent_type = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (visit_id, agent_type),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
     def append_turn(self, session_id: str, patient_id: str, role: str, content: str, timestamp: str, metadata: dict | None = None) -> None:
         conn = self.db.connect()
         try:

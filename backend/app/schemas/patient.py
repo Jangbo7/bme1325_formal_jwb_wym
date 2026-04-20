@@ -44,6 +44,9 @@ class PatientView(BaseModel):
     session_id: str | None = None
     visit_id: str | None = None
     visit_state: VisitLifecycleState | None = None
+    active_agent_type: str | None = None
+    session_refs: dict = Field(default_factory=dict)
+    dialogue_source_agent: str | None = None
     triage: TriageSummary = Field(default_factory=TriageSummary)
     dialogue: DialogueSummary | None = None
     triage_evidence: list[EvidenceItem] = Field(default_factory=list)

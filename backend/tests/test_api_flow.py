@@ -9,6 +9,7 @@ from app.main import create_app
 def create_test_client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
     monkeypatch.setenv("MOCK_API_KEY", "mock-key-001")
+    monkeypatch.setenv("SIMULATOR_ENABLED", "false")
     app = create_app()
     return TestClient(app)
 
@@ -146,3 +147,92 @@ def test_strict_flow_triage_register_wait_call_enter(tmp_path, monkeypatch):
     enter_data = enter_resp.json()
     assert enter_data["visit"]["state"] == "in_consultation"
     assert enter_data["patient"]["lifecycle_state"] == "in_consultation"
+
+
+
+def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    session_id = f"session-{uuid.uuid4().hex[:8]}"
+
+    triage_resp = client.post(
+        "/api/v1/triage-sessions",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "session_id": session_id,
+            "name": "Player",
+            "symptoms": "fever",
+            "onset_time": "1 day",
+            "allergies": [],
+            "vitals": {"heart_rate": 90, "temp_c": 38.5, "pain_score": 2},
+        },
+    )
+    assert triage_resp.status_code == 200
+    visit_id = triage_resp.json()["visit_id"]
+
+    register_resp = client.post(f"/api/v1/visits/{visit_id}/register", headers=headers())
+    assert register_resp.status_code == 200
+
+    app = client.app
+    visit_repo = app.state.container["visit_repo"]
+    visit_row = visit_repo.get(visit_id)
+    data = visit_repo.to_view(visit_row).data
+    data["registration_completed_at"] = (datetime.now(timezone.utc) - timedelta(seconds=11)).isoformat()
+    visit_repo.update_visit(visit_id, data=data)
+
+    progress_resp = client.post(f"/api/v1/visits/{visit_id}/progress", headers=headers())
+    assert progress_resp.status_code == 200
+    assert progress_resp.json()["visit"]["state"] == "waiting_consultation"
+
+    blocked_doctor_resp = client.post(
+        "/api/v1/internal-medicine-sessions",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "name": "Player",
+            "visit_id": visit_id,
+        },
+    )
+    assert blocked_doctor_resp.status_code == 409
+
+    enter_resp = client.post(f"/api/v1/visits/{visit_id}/enter-consultation", headers=headers())
+    assert enter_resp.status_code == 200
+    assert enter_resp.json()["visit"]["state"] == "in_consultation"
+
+    doctor_create_resp = client.post(
+        "/api/v1/internal-medicine-sessions",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "name": "Player",
+            "visit_id": visit_id,
+        },
+    )
+    assert doctor_create_resp.status_code == 200
+    doctor_create_data = doctor_create_resp.json()
+    assert doctor_create_data["visit_id"] == visit_id
+    assert doctor_create_data["visit_state"] == "in_consultation"
+    assert doctor_create_data["session_id"].startswith("im-session-")
+
+    doctor_message_resp = client.post(
+        f"/api/v1/internal-medicine-sessions/{doctor_create_data['session_id']}/messages",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "visit_id": visit_id,
+            "name": "Player",
+            "message": "It started this morning, no allergies, mild cough and fever.",
+        },
+    )
+    assert doctor_message_resp.status_code == 200
+    doctor_message_data = doctor_message_resp.json()
+    assert doctor_message_data["visit_id"] == visit_id
+    assert doctor_message_data["session_id"] == doctor_create_data["session_id"]
+    assert doctor_message_data["dialogue"]["status"] in {"awaiting_patient_reply", "completed"}
+
+    patient_resp = client.get("/api/v1/patients/P-self", headers=headers())
+    assert patient_resp.status_code == 200
+    patient_view = patient_resp.json()["patient"]
+    assert patient_view["active_agent_type"] == "internal_medicine"
+    assert patient_view["dialogue_source_agent"] == "internal_medicine"
+    assert patient_view["session_refs"]["internal_medicine_session_id"] == doctor_create_data["session_id"]

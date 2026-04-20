@@ -9,6 +9,12 @@ DEFAULT_LLM_ENDPOINT = "https://genaiapi.shanghaitech.edu.cn/api/v1/start"
 DEFAULT_LLM_MODEL = "GPT-5.2"
 DEFAULT_DATABASE_URL = "sqlite:///backend/data/app.db"
 DEFAULT_RESET_ON_SERVER_START = True
+DEFAULT_SIMULATOR_ENABLED = True
+DEFAULT_SIMULATOR_TICK_SECONDS = 3.0
+DEFAULT_SIMULATOR_SPAWN_INTERVAL_SECONDS = 8.0
+DEFAULT_SIMULATOR_MAX_ACTIVE_PATIENTS = 2
+DEFAULT_SIMULATOR_QUEUE_WAIT_SECONDS = 6.0
+DEFAULT_SIMULATOR_CONSULT_SECONDS = 9.0
 
 _DOTENV_LOADED = False
 
@@ -45,6 +51,30 @@ def _parse_bool(value: str | None, default: bool) -> bool:
     return default
 
 
+def _parse_int(value: str | None, default: int) -> int:
+    if value is None:
+        return default
+    normalized = value.strip()
+    if not normalized:
+        return default
+    try:
+        return int(normalized)
+    except ValueError:
+        return default
+
+
+def _parse_float(value: str | None, default: float) -> float:
+    if value is None:
+        return default
+    normalized = value.strip()
+    if not normalized:
+        return default
+    try:
+        return float(normalized)
+    except ValueError:
+        return default
+
+
 def get_settings() -> dict:
     base_dir = Path(__file__).resolve().parent.parent
     _load_dotenv(base_dir / ".env")
@@ -67,6 +97,33 @@ def get_settings() -> dict:
         "reset_on_server_start": _parse_bool(
             os.getenv("RESET_ON_SERVER_START"),
             DEFAULT_RESET_ON_SERVER_START,
+        ),
+        "simulator_enabled": _parse_bool(
+            os.getenv("SIMULATOR_ENABLED"),
+            DEFAULT_SIMULATOR_ENABLED,
+        ),
+        "simulator_tick_seconds": _parse_float(
+            os.getenv("SIMULATOR_TICK_SECONDS"),
+            DEFAULT_SIMULATOR_TICK_SECONDS,
+        ),
+        "simulator_spawn_interval_seconds": _parse_float(
+            os.getenv("SIMULATOR_SPAWN_INTERVAL_SECONDS"),
+            DEFAULT_SIMULATOR_SPAWN_INTERVAL_SECONDS,
+        ),
+        "simulator_max_active_patients": max(
+            1,
+            _parse_int(
+                os.getenv("SIMULATOR_MAX_ACTIVE_PATIENTS"),
+                DEFAULT_SIMULATOR_MAX_ACTIVE_PATIENTS,
+            ),
+        ),
+        "simulator_queue_wait_seconds": _parse_float(
+            os.getenv("SIMULATOR_QUEUE_WAIT_SECONDS"),
+            DEFAULT_SIMULATOR_QUEUE_WAIT_SECONDS,
+        ),
+        "simulator_consult_seconds": _parse_float(
+            os.getenv("SIMULATOR_CONSULT_SECONDS"),
+            DEFAULT_SIMULATOR_CONSULT_SECONDS,
         ),
     }
 

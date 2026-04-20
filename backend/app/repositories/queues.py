@@ -102,7 +102,12 @@ class QueueRepository:
         conn = self.db.connect()
         try:
             rows = conn.execute(
-                "SELECT * FROM queue_tickets ORDER BY department_id ASC, number ASC"
+                """
+                SELECT qt.*, p.name AS patient_name
+                FROM queue_tickets qt
+                LEFT JOIN patients p ON p.id = qt.patient_id
+                ORDER BY qt.department_id ASC, qt.number ASC
+                """
             ).fetchall()
             grouped = {}
             for row in rows:

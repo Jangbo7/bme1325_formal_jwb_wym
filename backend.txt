@@ -1,8 +1,14 @@
-// 最小可行规划（不做 create_patient）
+Minimum backend notes
 
-// 前端交互触发：玩家走到分诊前台触发 E 交互。
-// 弹出分诊表单：主诉、症状时长、体温/心率/血压、疼痛等级、过敏史。
-// 提交分诊请求：调用后端 POST /triage/evaluate。
-// 护士 Agent 执行：后端调用 LLM，返回结构化分诊结果。
-// 前端展示结果：分级（如 ESI 1-5）、建议科室、等待优先级、风险提示。
-// 状态流转：玩家状态从 UNTRIAGED -> TRIAGED -> WAITING_DOCTOR。
+Current strict flow:
+- Triage completes first.
+- Registration is required before queue waiting.
+- Queue countdown promotes the patient to consultation.
+- Internal medicine doctor dialogue starts only after consultation has been entered.
+
+Current doctor agent merge target:
+- Reuse Visit Session as the top-level visit context.
+- Keep internal_medicine as the doctor agent package name.
+- Keep separate triage and doctor session ids.
+- Reuse shared memory for stable patient facts.
+- Reuse agent private memory for doctor dialogue progress.

@@ -34,6 +34,7 @@ from app.repositories.patients import PatientRepository
 from app.repositories.queues import QueueRepository
 from app.repositories.sessions import SessionRepository
 from app.repositories.visits import VisitRepository
+from app.services import NpcPatientSimulator
 
 
 def create_container():
@@ -88,6 +89,22 @@ def create_container():
         bus=bus,
     )
 
+    npc_simulator = NpcPatientSimulator(
+        patient_repo=patient_repo,
+        visit_repo=visit_repo,
+        queue_repo=queue_repo,
+        session_repo=session_repo,
+        patient_state_machine=patient_state_machine,
+        visit_state_machine=visit_state_machine,
+        bus=bus,
+        enabled=settings["simulator_enabled"],
+        tick_interval_seconds=settings["simulator_tick_seconds"],
+        spawn_interval_seconds=settings["simulator_spawn_interval_seconds"],
+        max_active_patients=settings["simulator_max_active_patients"],
+        queue_wait_seconds=settings["simulator_queue_wait_seconds"],
+        consult_seconds=settings["simulator_consult_seconds"],
+    )
+
     patient_projection = PatientProjectionSubscriber(patient_repo, patient_state_machine)
     audit = AuditSubscriber(Path(__file__).resolve().parents[2])
 
@@ -110,6 +127,7 @@ def create_container():
         "event_bus": bus,
         "triage_service": triage_service,
         "internal_medicine_service": internal_medicine_service,
+        "npc_simulator": npc_simulator,
         "visit_state_machine": visit_state_machine,
         "langgraph_available": LANGGRAPH_AVAILABLE,
     }
@@ -126,6 +144,14 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.on_event("startup")
+    async def start_npc_simulator():
+        container["npc_simulator"].start()
+
+    @app.on_event("shutdown")
+    async def stop_npc_simulator():
+        container["npc_simulator"].stop()
 
     @app.middleware("http")
     async def require_api_key(request: Request, call_next):
