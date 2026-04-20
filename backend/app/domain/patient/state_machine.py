@@ -2,7 +2,10 @@ from app.schemas.common import PatientLifecycleState
 
 
 PATIENT_TRANSITIONS = {
-    PatientLifecycleState.UNTRIAGED: {"begin_triage": PatientLifecycleState.TRIAGING},
+    PatientLifecycleState.UNTRIAGED: {
+        "begin_triage": PatientLifecycleState.TRIAGING,
+        "start_internal_medicine": PatientLifecycleState.IN_CONSULTATION,
+    },
     PatientLifecycleState.TRIAGING: {
         "begin_triage": PatientLifecycleState.TRIAGING,
         "followup_requested": PatientLifecycleState.WAITING_FOLLOWUP,
@@ -27,10 +30,16 @@ PATIENT_TRANSITIONS = {
     },
     PatientLifecycleState.CALLED: {
         "start_consultation": PatientLifecycleState.IN_CONSULTATION,
+        "start_icu_consultation": PatientLifecycleState.IN_CONSULTATION,
+        "start_internal_medicine": PatientLifecycleState.IN_CONSULTATION,
         "mark_error": PatientLifecycleState.ERROR,
     },
     PatientLifecycleState.IN_CONSULTATION: {
         "finish": PatientLifecycleState.COMPLETED,
+        "icu_consultation_completed": PatientLifecycleState.COMPLETED,
+        "internal_medicine_completed": PatientLifecycleState.COMPLETED,
+        "icu_followup_requested": PatientLifecycleState.WAITING_FOLLOWUP,
+        "internal_medicine_followup_requested": PatientLifecycleState.WAITING_FOLLOWUP,
         "mark_error": PatientLifecycleState.ERROR,
     },
     PatientLifecycleState.COMPLETED: {"begin_triage": PatientLifecycleState.TRIAGING},

@@ -126,4 +126,3 @@ def get_settings() -> dict:
             DEFAULT_SIMULATOR_CONSULT_SECONDS,
         ),
     }
-

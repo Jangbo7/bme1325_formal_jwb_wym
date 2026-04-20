@@ -45,10 +45,3 @@ Frontend URL:
 3. Triage agent evaluates the case and may ask follow-up questions.
 4. Triage completion triggers queue creation through EventBus subscribers.
 5. Frontend shows queue and dialogue updates.
-
-
-## Runtime Data Reset
-- Default behavior: every backend restart clears runtime tables (visits, triage sessions, dialogue turns, queue tickets, memories) and then reseeds default patients.
-- Disable this behavior before starting backend:
-  - PowerShell: `$env:RESET_ON_SERVER_START="false"`
-

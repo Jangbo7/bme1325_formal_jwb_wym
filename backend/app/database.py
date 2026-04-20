@@ -155,6 +155,14 @@ class Database:
                         created_at TEXT NOT NULL,
                         data_json TEXT NOT NULL
                     );
+
+                    CREATE TABLE IF NOT EXISTS icu_consultation_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        patient_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        data_json TEXT NOT NULL
+                    );
                     """
                 )
                 self._ensure_column(conn, "patients", "visit_id", "TEXT")

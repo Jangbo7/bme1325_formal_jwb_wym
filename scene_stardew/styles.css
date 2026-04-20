@@ -1,0 +1,387 @@
+/* 星露谷风格医院 - Stardew Valley Hospital Theme */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.hidden {
+  display: none !important;
+}
+
+body {
+  font-family: 'Courier New', monospace;
+  background: #5a4632;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+#game-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(180deg, #87CEEB 0%, #98D8AA 100%);
+}
+
+#game-canvas {
+  border: 4px solid #6B4423;
+  border-radius: 4px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.3);
+  background: #7EC8E3;
+  position: relative;
+  z-index: 1;
+}
+
+/* HUD 顶部信息栏 */
+#hud {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 20px;
+  background: rgba(139, 90, 43, 0.9);
+  padding: 8px 20px;
+  border-radius: 16px;
+  border: 3px solid #6B4423;
+  color: #FFF8DC;
+  font-size: 14px;
+  font-weight: bold;
+  text-shadow: 1px 1px 0 #3d2817;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+#player-info, #location-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#api-settings-btn {
+  background: #2e8b57;
+  color: #fff8dc;
+  border: 2px solid #1f5f3c;
+  border-radius: 10px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#api-settings-btn:hover {
+  background: #3ca86a;
+}
+
+/* 交互提示 */
+#interaction-prompt {
+  position: absolute;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(34, 139, 34, 0.95);
+  color: #FFF8DC;
+  padding: 10px 25px;
+  border-radius: 20px;
+  border: 3px solid #228B22;
+  font-size: 16px;
+  font-weight: bold;
+  text-shadow: 1px 1px 0 #006400;
+  animation: bounce 1s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-5px); }
+}
+
+/* 对话框 - 星露谷风格 */
+#dialogue-box {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+  max-width: 700px;
+  background: #FFF8DC;
+  border: 4px solid #6B4423;
+  border-radius: 8px;
+  padding: 15px;
+  display: flex;
+  gap: 15px;
+  box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+  z-index: 50;
+  pointer-events: auto;
+}
+
+#input-modal {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+}
+
+#input-modal-card {
+  width: min(640px, 88vw);
+  background: #fff8dc;
+  border: 4px solid #6b4423;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  padding: 14px;
+}
+
+#input-modal-title {
+  color: #8b4513;
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+#input-modal-field {
+  width: 100%;
+  resize: vertical;
+  min-height: 90px;
+  border: 2px solid #6b4423;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 14px;
+  color: #3d2817;
+  background: #fffdf4;
+}
+
+#input-modal-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#input-modal-actions button {
+  border: 2px solid #6b4423;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#input-modal-cancel {
+  background: #d3d3d3;
+  color: #3d2817;
+}
+
+#input-modal-confirm {
+  background: #228b22;
+  color: #fff8dc;
+  border-color: #006400;
+}
+
+#dialogue-portrait {
+  width: 80px;
+  height: 80px;
+  background: #DEB887;
+  border: 3px solid #6B4423;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 48px;
+}
+
+#dialogue-content {
+  flex: 1;
+}
+
+#dialogue-name {
+  color: #8B4513;
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 2px dashed #DEB887;
+}
+
+#dialogue-text {
+  color: #3d2817;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+#dialogue-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 120px;
+}
+
+.dialogue-option {
+  background: #228B22;
+  color: #FFF8DC;
+  border: 2px solid #006400;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dialogue-option:hover {
+  background: #32CD32;
+  transform: scale(1.05);
+}
+
+.dialogue-option:active {
+  transform: scale(0.95);
+}
+
+/* NPC面板 - 左侧 */
+#npc-panel {
+  position: absolute;
+  left: 10px;
+  top: 80px;
+  width: 180px;
+  background: rgba(139, 90, 43, 0.95);
+  border: 3px solid #6B4423;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+.panel-title {
+  color: #FFF8DC;
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 2px dashed #DEB887;
+  text-shadow: 1px 1px 0 #3d2817;
+}
+
+#npc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.npc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 248, 220, 0.2);
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.npc-item:hover {
+  background: rgba(255, 248, 220, 0.4);
+  transform: translateX(3px);
+}
+
+.npc-item:hover .npc-teleport-hint {
+  opacity: 1;
+}
+
+.npc-avatar {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.npc-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.npc-name {
+  color: #FFF8DC;
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.npc-location {
+  color: rgba(255, 248, 220, 0.7);
+  font-size: 10px;
+}
+
+.npc-teleport-hint {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #FFD700;
+  color: #3d2817;
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-weight: bold;
+}
+
+/* 右侧菜单 */
+#menu-panel {
+  position: absolute;
+  right: 10px;
+  top: 80px;
+  width: 160px;
+  background: rgba(139, 90, 43, 0.95);
+  border: 3px solid #6B4423;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+#menu-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-option {
+  background: rgba(255, 248, 220, 0.2);
+  color: #FFF8DC;
+  border: 2px solid #6B4423;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.menu-option:hover {
+  background: rgba(255, 248, 220, 0.4);
+}
+
+/* 底部状态栏 */
+#status-bar {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 20px;
+  background: rgba(139, 90, 43, 0.9);
+  padding: 8px 20px;
+  border-radius: 16px;
+  border: 3px solid #6B4423;
+  color: #FFF8DC;
+  font-size: 14px;
+  font-weight: bold;
+  text-shadow: 1px 1px 0 #3d2817;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}

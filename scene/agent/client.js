@@ -28,30 +28,6 @@ export function createBackendClient({ baseUrl, apiKey }) {
     getPatient(patientId) {
       return request(`/api/v1/patients/${patientId}`, { method: "GET" });
     },
-    createVisit(payload) {
-      return request("/api/v1/visits", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-    },
-    getVisit(visitId) {
-      return request(`/api/v1/visits/${visitId}`, { method: "GET" });
-    },
-    registerVisit(visitId) {
-      return request(`/api/v1/visits/${visitId}/register`, {
-        method: "POST",
-      });
-    },
-    progressVisit(visitId) {
-      return request(`/api/v1/visits/${visitId}/progress`, {
-        method: "POST",
-      });
-    },
-    enterConsultation(visitId) {
-      return request(`/api/v1/visits/${visitId}/enter-consultation`, {
-        method: "POST",
-      });
-    },
     listQueues() {
       return request("/api/v1/queues", { method: "GET" });
     },

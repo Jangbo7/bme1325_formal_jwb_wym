@@ -12,3 +12,5 @@ scene/api.private.js
 # OS files
 .DS_Store
 Thumbs.db
+.tmp_edge_profile/
+backend.txt

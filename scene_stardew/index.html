@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>星露谷医院 - Stardew Valley Hospital</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    
+    <!-- 顶部HUD -->
+    <div id="hud">
+      <div id="player-info">
+        <span id="player-name">村民</span>
+      </div>
+      <div id="location-info">
+        <span id="current-room">医院大厅</span>
+      </div>
+      <button id="api-settings-btn" type="button">API设置</button>
+    </div>
+
+    <!-- 交互提示 -->
+    <div id="interaction-prompt" class="hidden">
+      <span id="prompt-text">按 E 交互</span>
+    </div>
+
+    <!-- 对话框 -->
+    <div id="dialogue-box" class="hidden">
+      <div id="dialogue-portrait"></div>
+      <div id="dialogue-content">
+        <div id="dialogue-name"></div>
+        <div id="dialogue-text"></div>
+      </div>
+      <div id="dialogue-options"></div>
+    </div>
+
+    <!-- 通用输入弹窗 -->
+    <div id="input-modal" class="hidden">
+      <div id="input-modal-card">
+        <div id="input-modal-title">请输入内容</div>
+        <textarea id="input-modal-field" rows="4"></textarea>
+        <div id="input-modal-actions">
+          <button id="input-modal-cancel" type="button">取消</button>
+          <button id="input-modal-confirm" type="button">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 左侧NPC列表 -->
+    <div id="npc-panel">
+      <div class="panel-title">医院里的人</div>
+      <div id="npc-list"></div>
+    </div>
+
+    <!-- 右侧菜单 -->
+    <div id="menu-panel" class="hidden">
+      <div class="panel-title">菜单</div>
+      <div id="menu-options"></div>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <div id="status-bar">
+      <div id="time-display">第 1 天 - 上午 9:00</div>
+      <div id="weather-display">☀️ 晴天</div>
+    </div>
+  </div>
+
+  <!-- 加载游戏逻辑 -->
+  <script type="module" src="game.js"></script>
+</body>
+</html>

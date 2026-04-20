@@ -1,23 +1,20 @@
-from app.agents.triage.state import TriageGraphState
-from app.agents.triage.state_machine import TriageDialogueStateMachine
-
-from app.events.types import PATIENT_STATE_CHANGED
-
-from app.schemas.common import PatientLifecycleState, TriageDialogueState
+from app.agents.icu_doctor.state import ICUDoctorGraphState
+from app.agents.icu_doctor.state_machine import ICUDoctorDialogueStateMachine
+from app.schemas.common import PatientLifecycleState, ICUDoctorDialogueState
 
 try:
     from langgraph.graph import END, START, StateGraph
 
     LANGGRAPH_AVAILABLE = True
-except Exception:  # pragma: no cover
+except Exception:
     END = "__end__"
     START = "__start__"
     StateGraph = None
     LANGGRAPH_AVAILABLE = False
 
 
-class TriageGraph:
-    def __init__(self, service, dialogue_state_machine: TriageDialogueStateMachine):
+class ICUDoctorGraph:
+    def __init__(self, service, dialogue_state_machine: ICUDoctorDialogueStateMachine):
         self.service = service
         self.dialogue_state_machine = dialogue_state_machine
         self.graph = self._build_graph() if LANGGRAPH_AVAILABLE else None
@@ -47,90 +44,57 @@ class TriageGraph:
 
     def _load_context_node(self, work: dict):
         payload = dict(work["payload"])
-        session_id = work.get("session_id") or payload.get("session_id") or "session-main"
+        session_id = work.get("session_id") or payload.get("session_id") or f"icu-session-{payload.get('patient_id', 'unknown')}"
         payload["session_id"] = session_id
         patient_id = payload["patient_id"]
 
         self.service.patient_repo.upsert_basic(patient_id, payload.get("name", patient_id))
 
         if work["mode"] == "create_session":
-            visit_row = self.service.ensure_visit_for_payload(payload)
-            dialogue_state = self.dialogue_state_machine.transition(TriageDialogueState.IDLE, "start")
+            dialogue_state = self.dialogue_state_machine.transition(ICUDoctorDialogueState.IDLE, "start")
             dialogue_state = self.dialogue_state_machine.transition(dialogue_state, "evaluate")
-            self.service.session_repo.create_or_update(
-                session_id,
-                patient_id,
-                dialogue_state.value,
-                visit_id=visit_row["id"],
-            )
+            self.service.session_repo.create_or_update(session_id, patient_id, dialogue_state.value)
             patient_row = self.service.patient_repo.get(patient_id)
             current_patient_state = PatientLifecycleState(patient_row["lifecycle_state"])
-            next_patient_state = self.service.patient_state_machine.transition(current_patient_state, "begin_triage")
+            next_patient_state = self.service.patient_state_machine.transition(current_patient_state, "start_icu_consultation")
             self.service.patient_repo.update_patient(
                 patient_id,
                 lifecycle_state=next_patient_state.value,
                 session_id=session_id,
-                visit_id=visit_row["id"],
-            )
-            self.service.transition_visit_state(
-                visit_row["id"],
-                "begin_triage",
-                current_node="triage",
-                active_agent_type="triage",
             )
             self.service.bus.publish(
-                PATIENT_STATE_CHANGED,
+                "patient.state_changed",
                 {"patient_id": patient_id, "lifecycle_state": next_patient_state.value},
             )
         else:
             session_row = self.service.session_repo.get(session_id)
-            current_dialogue_state = TriageDialogueState(session_row["dialogue_state"])
+            current_dialogue_state = ICUDoctorDialogueState(session_row["dialogue_state"])
             dialogue_state = self.dialogue_state_machine.transition(current_dialogue_state, "receive_reply")
-            payload["visit_id"] = session_row.get("visit_id") or payload.get("visit_id")
-            visit_row = self.service.ensure_visit_for_payload(payload)
             self.service.session_repo.update_state(session_id, dialogue_state.value)
-            self.service.session_repo.create_or_update(
-                session_id,
-                patient_id,
-                dialogue_state.value,
-                visit_id=visit_row["id"],
-            )
-            patient_row = self.service.patient_repo.get(patient_id)
-            current_patient_state = PatientLifecycleState(patient_row["lifecycle_state"])
-            next_patient_state = self.service.patient_state_machine.transition(current_patient_state, "resume_triage")
-            self.service.patient_repo.update_patient(
-                patient_id,
-                lifecycle_state=next_patient_state.value,
-                session_id=session_id,
-                visit_id=visit_row["id"],
-            )
-            self.service.transition_visit_state(
-                visit_row["id"],
-                "resume_triage",
-                current_node="triage",
-                active_agent_type="triage",
-            )
-            self.service.bus.publish(
-                PATIENT_STATE_CHANGED,
-                {"patient_id": patient_id, "lifecycle_state": next_patient_state.value},
-            )
 
         memory = self.service.prepare_context(payload, session_id, dialogue_state)
         if payload.get("message"):
             self.service.apply_chat_updates(payload, memory)
 
-        user_message = payload.get("message") or payload.get("symptoms") or payload.get("chief_complaint") or "triage request"
+        user_message = (
+            payload.get("message")
+            or payload.get("symptoms")
+            or payload.get("chief_complaint")
+            or payload.get("registration_info", {})
+            or "ICU consultation request"
+        )
+        if isinstance(user_message, dict):
+            user_message = str(user_message)
         self.service.session_repo.append_turn(
             session_id,
             patient_id,
             "user",
             user_message,
             self.service.patient_repo.get(patient_id)["updated_at"],
-            metadata={"mode": work["mode"], "visit_id": payload.get("visit_id")},
+            metadata={"mode": work["mode"]},
         )
-        memory.short_term_turns = self.service.session_repo.list_turns(session_id)
         merged_payload = self.service.build_merged_payload(payload, memory.shared_memory)
-        state = TriageGraphState(
+        state = ICUDoctorGraphState(
             payload=payload,
             patient_row=self.service.patient_repo.get(patient_id),
             session_row=self.service.session_repo.get(session_id),
@@ -143,19 +107,19 @@ class TriageGraph:
         return {"work": work, "state": state}
 
     def _evaluate_node(self, bundle: dict):
-        state: TriageGraphState = bundle["state"]
+        state: ICUDoctorGraphState = bundle["state"]
         memory = self.service.prepare_context(state.payload, state.payload["session_id"], state.dialogue_state)
         if state.payload.get("message"):
             self.service.apply_chat_updates(state.payload, memory)
-        memory.short_term_turns = self.service.session_repo.list_turns(state.payload["session_id"])
-        state.merged_payload = self.service.build_merged_payload(state.payload, memory.shared_memory)
-        final_result, evidence, missing_fields, assistant_payload = self.service.evaluate(state.merged_payload, memory)
+        final_result, evidence, missing_fields, assistant_message = self.service.evaluate(
+            state.merged_payload, memory
+        )
         state.shared_memory = memory.shared_memory
         state.private_memory = memory.private_memory
         state.final_result = final_result
         state.evidence = evidence
         state.missing_fields = missing_fields
-        state.assistant_payload = assistant_payload
+        state.assistant_message = assistant_message
         if missing_fields:
             state.dialogue_state = self.dialogue_state_machine.transition(state.dialogue_state, "need_followup")
             state.dialogue_state = self.dialogue_state_machine.transition(state.dialogue_state, "wait_for_reply")
@@ -164,11 +128,10 @@ class TriageGraph:
         return bundle
 
     def _persist_node(self, bundle: dict):
-        state: TriageGraphState = bundle["state"]
-        memory = type("MemoryProxy", (), {})()
-        memory.shared_memory = state.shared_memory
-        memory.private_memory = state.private_memory
-        memory.short_term_turns = self.service.session_repo.list_turns(state.payload["session_id"])
+        state: ICUDoctorGraphState = bundle["state"]
+        memory = self.service.prepare_context(state.payload, state.payload["session_id"], state.dialogue_state)
+        if state.payload.get("message"):
+            self.service.apply_chat_updates(state.payload, memory)
         self.service.persist_result(
             patient_id=state.payload["patient_id"],
             session_id=state.payload["session_id"],
@@ -178,11 +141,13 @@ class TriageGraph:
             triage_result=state.final_result,
             evidence=state.evidence,
             missing_fields=state.missing_fields,
-            assistant_payload=state.assistant_payload,
+            assistant_message=state.assistant_message,
         )
         return bundle
 
     def _build_response_node(self, bundle: dict):
-        state: TriageGraphState = bundle["state"]
-        bundle["response"] = self.service.build_response(state.payload["patient_id"], state.payload["session_id"])
+        state: ICUDoctorGraphState = bundle["state"]
+        bundle["response"] = self.service.build_response(
+            state.payload["patient_id"], state.payload["session_id"]
+        )
         return bundle

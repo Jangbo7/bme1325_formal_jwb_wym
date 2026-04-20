@@ -89,14 +89,6 @@ class AgentMemoryRepository:
                 "expected_field": None,
                 "assistant_message": "",
                 "evidence": [],
-                "asked_fields_history": [],
-                "last_question_focus": None,
-                "last_question_text": "",
-                "last_question_style": None,
-                "recommendation_snapshot": None,
-                "recommendation_changed": False,
-                "message_type": "followup",
-                "latest_extraction": {},
             }
             conn.execute(
                 "INSERT INTO agent_session_memory (session_id, patient_id, agent_type, data_json) VALUES (?, ?, ?, ?)",
@@ -135,6 +127,34 @@ class AgentMemoryRepository:
             conn.execute(
                 """
                 INSERT INTO triage_history (patient_id, session_id, created_at, data_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (patient_id, session_id, created_at, Database.encode_json(payload)),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def append_icu_consultation_history(self, patient_id: str, session_id: str, payload: dict, created_at: str) -> None:
+        conn = self.db.connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO icu_consultation_history (patient_id, session_id, created_at, data_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (patient_id, session_id, created_at, Database.encode_json(payload)),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def append_internal_medicine_history(self, patient_id: str, session_id: str, payload: dict, created_at: str) -> None:
+        conn = self.db.connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO internal_medicine_history (patient_id, session_id, created_at, data_json)
                 VALUES (?, ?, ?, ?)
                 """,
                 (patient_id, session_id, created_at, Database.encode_json(payload)),
