@@ -4,7 +4,9 @@ import { buildTriagePayloadFromFormValues } from "../agent/triage-form.js";
 import { renderDialogueEvidence as renderDialogueEvidenceView, renderDialogueMessages as renderDialogueMessagesView, setDialogueBadges } from "../agent/triage-dialogue.js";
 import { createQueueRuntime } from "../queue/runtime.js";
 import { createNpcRuntime } from "../npc/runtime.js";
+import { createFixedNpcRuntime } from "../npc/fixed-runtime.js";
 import { createTaskBoardPresenter } from "../ui/task-board.js";
+import { renderNpcDialogue } from "../ui/npc-dialogue.js";
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -28,6 +30,7 @@ const FLOOR_BASE_Z = { 1: 0, 2: FLOOR_HEIGHT };
 
 const keys = new Set();
 const camera = { x: 0, y: 0 };
+let fixedNpcRuntime = null;
 
 const palette = {
   roomFloor: "#705970",
@@ -63,7 +66,6 @@ const player = {
   speed: 180,
 };
 
-const npc = { x: 21 * TILE, y: 16 * TILE, floor: 1 };
 const floorSpawns = {
   1: { x: 8 * TILE, y: 10 * TILE },
   2: { x: 18 * TILE, y: 16 * TILE },
@@ -722,14 +724,18 @@ function drawProp(prop) {
   drawQuad(prism.east, color.side);
 }
 
-function drawCharacterBody(x, y, floor) {
+function drawCharacterBody(x, y, floor, colors = {}) {
   const base = project(x, y, 0, floor);
   const top = project(x, y, CHARACTER_BODY_HEIGHT, floor);
-  ctx.fillStyle = palette.shadow;
+  const shadowColor = colors.shadowColor || palette.shadow;
+  const legColor = colors.legColor || palette.playerLeg;
+  const bodyColor = colors.bodyColor || palette.playerBody;
+
+  ctx.fillStyle = shadowColor;
   ctx.beginPath();
   ctx.ellipse(base.x, base.y + 9, CHARACTER_FOOT_RADIUS + 4, CHARACTER_FOOT_RADIUS, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = palette.playerLeg;
+  ctx.strokeStyle = legColor;
   ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.moveTo(base.x - 4, base.y + 2);
@@ -737,7 +743,7 @@ function drawCharacterBody(x, y, floor) {
   ctx.moveTo(base.x + 4, base.y + 2);
   ctx.lineTo(base.x + 6, base.y + 14);
   ctx.stroke();
-  ctx.strokeStyle = palette.playerBody;
+  ctx.strokeStyle = bodyColor;
   ctx.lineWidth = 9;
   ctx.beginPath();
   ctx.moveTo(base.x, base.y - 2);
@@ -746,8 +752,8 @@ function drawCharacterBody(x, y, floor) {
   return top;
 }
 
-function drawDefaultHead(top) {
-  ctx.fillStyle = palette.playerHead;
+function drawDefaultHead(top, fillColor = palette.playerHead) {
+  ctx.fillStyle = fillColor;
   ctx.beginPath();
   ctx.arc(top.x, top.y - 4, CHARACTER_HEAD_RADIUS, 0, Math.PI * 2);
   ctx.fill();
@@ -772,9 +778,44 @@ function drawPlayer() {
   drawTexturedHead(top);
 }
 
-function drawNpc() {
-  const top = drawCharacterBody(npc.x, npc.y, npc.floor);
-  drawDefaultHead(top);
+function drawFixedNpcLabel(npc, top) {
+  const name = npc.name || "Resident";
+  const role = npc.roleLabel || "";
+  const lines = role ? [name, role] : [name];
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(10, 10, 16, 0.84)";
+  ctx.strokeStyle = npc.accentColor || "#9ec8ff";
+  ctx.lineWidth = 1;
+  ctx.font = "600 11px 'Segoe UI'";
+  const nameWidth = ctx.measureText(lines[0]).width;
+  const roleWidth = role ? ctx.measureText(lines[1]).width : 0;
+  const boxWidth = Math.max(nameWidth, roleWidth) + 18;
+  const boxHeight = role ? 30 : 20;
+  const boxX = top.x - boxWidth / 2;
+  const boxY = top.y - 46;
+  ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+  ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+  ctx.fillStyle = "#f6eff8";
+  ctx.fillText(lines[0], top.x, boxY + 13);
+  if (role) {
+    ctx.font = "10px 'Segoe UI'";
+    ctx.fillStyle = npc.accentColor || "#9ec8ff";
+    ctx.fillText(lines[1], top.x, boxY + 25);
+  }
+  ctx.restore();
+}
+
+function drawFixedNpc(npc) {
+  ctx.save();
+  const top = drawCharacterBody(npc.x, npc.y, npc.floor, {
+    legColor: npc.bodyColor,
+    bodyColor: npc.accentColor,
+    shadowColor: "rgba(0, 0, 0, 0.24)",
+  });
+  drawDefaultHead(top, npc.headColor);
+  drawFixedNpcLabel(npc, top);
+  ctx.restore();
 }
 
 function characterDepth(x, y) {
@@ -936,6 +977,8 @@ function drawDoctorEntryHint() {
     label = "Waiting for queue call (10s)";
   } else if (visitState === "triaged") {
     label = "Complete registration first";
+  } else if (visitState === "waiting_test") {
+    label = "Consultation finished. Entering diagnostic stage";
   } else if (visitState === "waiting_payment") {
     label = "Consultation finished. Proceed to payment";
   }
@@ -958,6 +1001,32 @@ function drawDoctorEntryHint() {
   ctx.font = "600 13px 'Segoe UI'";
   ctx.textAlign = "center";
   ctx.fillText(label, point.x, point.y + 5);
+}
+
+function drawFixedNpcHint() {
+  if (!fixedNpcRuntime || npcDialogueUi.open || fixedNpcRuntime?.isDialogueOpen?.()) return;
+  const nearest = fixedNpcRuntime.getNearestInteractableNpc(player);
+  if (!nearest) return;
+
+  const point = project(nearest.x, nearest.y, 48, nearest.floor);
+  const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
+  const boxWidth = Math.max(220, Math.min(320, 160 + nearest.name.length * 8));
+  const boxHeight = 28;
+  const boxLeft = point.x - boxWidth / 2;
+  const boxTop = point.y - boxHeight / 2;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(10, 14, 22, 0.94)";
+  ctx.fillRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.strokeStyle = nearest.accentColor || "#9ec8ff";
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = Math.min(1, pulse + 0.28);
+  ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.fillStyle = "#f7eff8";
+  ctx.font = "600 13px 'Segoe UI'";
+  ctx.textAlign = "center";
+  ctx.fillText(`Press E to talk with ${nearest.name}`, point.x, point.y + 5);
+  ctx.restore();
 }
 
 function drawTaskBoard() {
@@ -1068,7 +1137,12 @@ function drawFloorLayer(floor, activeDoor, dimmed) {
     drawables.push({ depth: prop.x * TILE + prop.y * TILE + prop.w * TILE + prop.h * TILE + 8, draw: () => drawProp(prop) });
   }
   if (player.floor === floor) drawables.push({ depth: characterDepth(player.x, player.y), draw: drawPlayer });
-  if (npc.floor === floor) drawables.push({ depth: characterDepth(npc.x, npc.y), draw: drawNpc });
+  if (fixedNpcRuntime) {
+    for (const npc of fixedNpcRuntime.getNpcs()) {
+      if (npc.floor !== floor) continue;
+      drawables.push({ depth: characterDepth(npc.x, npc.y), draw: () => drawFixedNpc(npc) });
+    }
+  }
 
   drawables.sort((a, b) => a.depth - b.depth);
   drawables.forEach((entry) => entry.draw());
@@ -1108,6 +1182,13 @@ function tryStairTransfer(nowMs) {
 function update(delta, nowMs) {
   pollBackendStatuses(false);
   updateDoors();
+  fixedNpcRuntime?.update?.(delta);
+
+  if (npcDialogueUi.open || fixedNpcRuntime?.isDialogueOpen?.()) {
+    updateZoneTriggers(nowMs);
+    return;
+  }
+
   let moveX = 0;
   let moveY = 0;
   if (keys.has("ArrowUp") || keys.has("KeyW")) moveY -= 1;
@@ -1143,10 +1224,12 @@ function render() {
   drawRegistrationHint();
   drawTriageHint();
   drawDoctorEntryHint();
+  drawFixedNpcHint();
   drawTaskBoard();
   drawMinimap();
   drawRuntimeDebugPanel();
   drawZoneStatusPanel();
+  syncNpcDialogue();
   runtimeDebug.lastRenderAt = performance.now();
 }
 triageDialogueUi.form = document.getElementById("triageDialogueForm");
@@ -1165,6 +1248,21 @@ const doctorDialogueUi = {
   sendBtn: document.getElementById("doctorDialogueSendBtn"),
   agentBadge: document.getElementById("doctorAgentBadge"),
   visitBadge: document.getElementById("doctorVisitBadge"),
+  lastRenderedAt: "",
+};
+
+const npcDialogueUi = {
+  open: false,
+  modal: document.getElementById("npcDialogueModal"),
+  title: document.getElementById("npcDialogueTitle"),
+  status: document.getElementById("npcDialogueStatus"),
+  roleBadge: document.getElementById("npcDialogueRoleBadge"),
+  roomBadge: document.getElementById("npcDialogueRoomBadge"),
+  prompt: document.getElementById("npcDialoguePrompt"),
+  options: document.getElementById("npcDialogueOptions"),
+  hint: document.getElementById("npcDialogueHint"),
+  closeBtn: document.getElementById("npcDialogueCloseBtn"),
+  advanceBtn: document.getElementById("npcDialogueAdvanceBtn"),
   lastRenderedAt: "",
 };
 
@@ -1257,6 +1355,66 @@ function setDoctorDialogueBadges(visitState) {
   }
 }
 
+function syncNpcDialogue() {
+  if (!npcDialogueUi.modal || !npcDialogueUi.open) return;
+  if (!fixedNpcRuntime?.isDialogueOpen?.()) {
+    closeNpcDialogueModal();
+    return;
+  }
+  const snapshot = fixedNpcRuntime.getDialogueSnapshot();
+  const renderKey = [
+    snapshot.open ? "open" : "closed",
+    snapshot.npc?.id || "",
+    snapshot.node?.type || "",
+    snapshot.node?.text || "",
+    snapshot.selectedOptionIndex ?? 0,
+    snapshot.options.map((option) => option.label).join("|"),
+  ].join("::");
+  if (npcDialogueUi.lastRenderedAt === renderKey) return;
+  npcDialogueUi.lastRenderedAt = renderKey;
+  renderNpcDialogue(npcDialogueUi, snapshot);
+}
+
+function openNpcDialogueModal() {
+  if (!npcDialogueUi.modal) return;
+  npcDialogueUi.open = true;
+  npcDialogueUi.lastRenderedAt = "";
+  npcDialogueUi.modal.classList.remove("hidden");
+  npcDialogueUi.modal.setAttribute("aria-hidden", "false");
+  keys.clear();
+  syncNpcDialogue();
+}
+
+function closeNpcDialogueModal() {
+  if (!npcDialogueUi.modal) return;
+  npcDialogueUi.open = false;
+  npcDialogueUi.lastRenderedAt = "";
+  npcDialogueUi.modal.classList.add("hidden");
+  npcDialogueUi.modal.setAttribute("aria-hidden", "true");
+  keys.clear();
+  fixedNpcRuntime?.closeDialogue?.();
+}
+
+function advanceNpcDialogue() {
+  if (!fixedNpcRuntime?.isDialogueOpen?.()) return;
+  fixedNpcRuntime.advanceDialogue();
+  if (!fixedNpcRuntime.isDialogueOpen()) {
+    closeNpcDialogueModal();
+    return;
+  }
+  syncNpcDialogue();
+}
+
+function chooseNpcDialogueOption(index) {
+  if (!fixedNpcRuntime?.isDialogueOpen?.()) return;
+  fixedNpcRuntime.chooseOption(index);
+  if (!fixedNpcRuntime.isDialogueOpen()) {
+    closeNpcDialogueModal();
+    return;
+  }
+  syncNpcDialogue();
+}
+
 // Canonical triage dialogue lifecycle block. Keep one top-level definition per function name.
 function openExistingTriageDialogue(patient = getCurrentSelfPatient()) {
   if (!triageDialogueUi.modal || !patient) return;
@@ -1340,7 +1498,9 @@ function syncDoctorDialogue(data) {
   doctorDialogueUi.lastRenderedAt = renderKey;
 
   if (doctorDialogueUi.status) {
-    if (visitState === "waiting_payment" || dialogue.status === "completed") {
+    if (visitState === "waiting_test") {
+      doctorDialogueUi.status.textContent = "Consultation completed. You are now in the diagnostic stage.";
+    } else if (visitState === "waiting_payment" || dialogue.status === "completed") {
       doctorDialogueUi.status.textContent = "Consultation completed. Proceed to the payment step.";
     } else if (dialogue.status === "awaiting_patient_reply") {
       doctorDialogueUi.status.textContent = "The doctor agent needs one more detail from you.";
@@ -1358,7 +1518,7 @@ function syncDoctorDialogue(data) {
   );
   renderDialogueEvidenceView(doctorDialogueUi.evidenceList, patient?.triage_evidence || []);
 
-  const isClosed = visitState === "waiting_payment" || dialogue.status === "completed";
+  const isClosed = visitState === "waiting_test" || visitState === "waiting_payment" || dialogue.status === "completed";
   if (doctorDialogueUi.sendBtn) doctorDialogueUi.sendBtn.disabled = isClosed || doctorConversationState.sending;
   if (doctorDialogueUi.input) doctorDialogueUi.input.disabled = isClosed;
 }
@@ -1495,7 +1655,12 @@ async function submitCreateDoctorSessionRequest() {
 }
 
 function submitEActionRequest() {
-  if (backendState.submitting || triageUi.open || triageDialogueUi.open || doctorDialogueUi.open) return;
+  if (backendState.submitting || triageUi.open || triageDialogueUi.open || doctorDialogueUi.open || npcDialogueUi.open || fixedNpcRuntime?.isDialogueOpen?.()) return;
+
+  if (fixedNpcRuntime?.tryInteract?.(player)) {
+    openNpcDialogueModal();
+    return;
+  }
 
   if (canInteractWithRegistrationDesk()) {
     submitRegistrationRequest();
@@ -1534,6 +1699,10 @@ function submitEActionRequest() {
 
     if (visitState === "waiting_payment") {
       pushStatusHint("Consultation already completed. Proceed to payment.");
+      return;
+    }
+    if (visitState === "waiting_test") {
+      pushStatusHint("Consultation already completed. Proceed to diagnostic stage.");
       return;
     }
 
@@ -1760,7 +1929,8 @@ async function submitDoctorDialogueReply() {
     doctorConversationState.sending = false;
     if (doctorDialogueUi.sendBtn) {
       const patient = getCurrentSelfPatient();
-      const isClosed = (getCurrentVisit()?.state || patient?.visit_state) === "waiting_payment";
+      const visitState = getCurrentVisit()?.state || patient?.visit_state;
+      const isClosed = visitState === "waiting_test" || visitState === "waiting_payment";
       doctorDialogueUi.sendBtn.disabled = isClosed;
     }
   }
@@ -1769,6 +1939,12 @@ async function submitDoctorDialogueReply() {
 function submitTriageRequest() {
   submitEActionRequest();
 }
+
+fixedNpcRuntime = createFixedNpcRuntime({
+  rooms,
+  roomBounds,
+  canMoveTo,
+});
 
 const npcRuntime = createNpcRuntime({
   rooms,
@@ -1825,6 +2001,36 @@ function loop(now) {
 }
 
 window.addEventListener("keydown", (event) => {
+  if (npcDialogueUi.open) {
+    if (event.code === "Escape" && !event.repeat) {
+      closeNpcDialogueModal();
+      event.preventDefault();
+      return;
+    }
+
+    if (event.code === "ArrowUp" || event.code === "ArrowLeft") {
+      fixedNpcRuntime?.moveSelection?.(-1);
+      syncNpcDialogue();
+      event.preventDefault();
+      return;
+    }
+
+    if (event.code === "ArrowDown" || event.code === "ArrowRight") {
+      fixedNpcRuntime?.moveSelection?.(1);
+      syncNpcDialogue();
+      event.preventDefault();
+      return;
+    }
+
+    if ((event.code === "KeyE" || event.code === "Enter" || event.code === "Space") && !event.repeat) {
+      advanceNpcDialogue();
+      event.preventDefault();
+      return;
+    }
+
+    return;
+  }
+
   if (doctorDialogueUi.open) {
     if (event.code === "Escape" && !event.repeat) {
       closeDoctorDialogue();
@@ -1935,6 +2141,36 @@ if (doctorDialogueUi.form) {
   doctorDialogueUi.form.addEventListener("submit", (event) => {
     event.preventDefault();
     submitDoctorDialogueReply();
+  });
+}
+
+if (npcDialogueUi.closeBtn) {
+  npcDialogueUi.closeBtn.addEventListener("click", () => {
+    closeNpcDialogueModal();
+  });
+}
+
+if (npcDialogueUi.advanceBtn) {
+  npcDialogueUi.advanceBtn.addEventListener("click", () => {
+    advanceNpcDialogue();
+  });
+}
+
+if (npcDialogueUi.options) {
+  npcDialogueUi.options.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest("button[data-option-index]");
+    if (!button) return;
+    const index = Number(button.dataset.optionIndex);
+    chooseNpcDialogueOption(Number.isFinite(index) ? index : 0);
+  });
+}
+
+if (npcDialogueUi.modal) {
+  npcDialogueUi.modal.addEventListener("click", (event) => {
+    if (event.target === npcDialogueUi.modal) {
+      closeNpcDialogueModal();
+    }
   });
 }
 

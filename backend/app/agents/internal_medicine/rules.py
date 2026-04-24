@@ -19,37 +19,37 @@ def _default_rules() -> list[dict]:
     return [
         {
             "id": "im-rule-fever",
-            "title": "Fever or infection-like symptoms",
+            "title": "发热或感染样症状",
             "keywords": ["fever", "cough", "chills", "infection"],
             "result": {
                 "diagnosis_level": 2,
                 "priority": "M",
                 "department": "Internal Medicine",
-                "note": "Possible infection-related complaint. Continue outpatient evaluation.",
+                "note": "可能与感染或发热相关，请继续门诊评估。",
             },
             "source": "Internal medicine fallback rules",
         },
         {
             "id": "im-rule-gastro",
-            "title": "GI discomfort",
+            "title": "消化道不适",
             "keywords": ["stomach", "abdominal", "nausea", "vomit", "diarrhea"],
             "result": {
                 "diagnosis_level": 2,
                 "priority": "M",
                 "department": "Internal Medicine",
-                "note": "Possible gastrointestinal complaint. Continue outpatient evaluation.",
+                "note": "可能与消化道不适相关，请继续门诊评估。",
             },
             "source": "Internal medicine fallback rules",
         },
         {
             "id": "im-rule-general",
-            "title": "General outpatient follow-up",
+            "title": "普通门诊随访",
             "keywords": [],
             "result": {
                 "diagnosis_level": 1,
                 "priority": "L",
                 "department": "Internal Medicine",
-                "note": "General outpatient follow-up is recommended.",
+                "note": "建议继续普通内科门诊随访。",
             },
             "source": "Internal medicine fallback rules",
         },
@@ -57,7 +57,7 @@ def _default_rules() -> list[dict]:
 
 
 def split_symptoms(text: str) -> list[str]:
-    normalized = (text or "").replace(";", ",").replace("/", ",").replace(" and ", ",")
+    normalized = (text or "").replace(";", ",").replace("；", ",").replace("、", ",").replace("，", ",").replace("/", ",").replace(" and ", ",")
     return [item.strip() for item in normalized.split(",") if item.strip()]
 
 
@@ -125,6 +125,10 @@ def extract_structured_updates(message: str) -> dict:
         r"(today|this morning|this afternoon|tonight|yesterday)",
         r"(\d+\s*(minute|minutes|hour|hours|day|days|week|weeks))",
         r"(since\s+[a-zA-Z0-9\s:]+)",
+        r"(今天早上|今早|今天|昨晚|昨天|刚刚|刚才)",
+        r"(\d+\s*(分钟|小时|天|周|星期))",
+        r"(从.+?开始)",
+        r"(持续了?\s*\d+\s*(分钟|小时|天|周|星期))",
     ]
     for pattern in onset_patterns:
         match = re.search(pattern, lowered)
@@ -132,10 +136,12 @@ def extract_structured_updates(message: str) -> dict:
             extracted["onset_time"] = match.group(1)
             break
 
-    if any(token in lowered for token in ["no allergy", "no allergies", "none", "nkda"]):
+    if any(token in lowered for token in ["no allergy", "no allergies", "none", "nkda"]) or any(
+        token in text for token in ["没有过敏", "无过敏", "没有药物过敏", "无药物过敏", "以前没有发现过敏"]
+    ):
         extracted["allergies"] = []
         extracted["allergy_status"] = "known"
-    elif "allergy" in lowered or "allergic" in lowered:
+    elif "allergy" in lowered or "allergic" in lowered or "过敏" in text:
         extracted["allergies"] = [text]
         extracted["allergy_status"] = "known"
     return extracted

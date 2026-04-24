@@ -221,18 +221,58 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
             "patient_id": "P-self",
             "visit_id": visit_id,
             "name": "Player",
-            "message": "It started this morning, no allergies, mild cough and fever.",
+            "message": "今早开始，已经持续3小时，伴有轻微咳嗽和发热，没有药物过敏。",
         },
     )
     assert doctor_message_resp.status_code == 200
     doctor_message_data = doctor_message_resp.json()
     assert doctor_message_data["visit_id"] == visit_id
     assert doctor_message_data["session_id"] == doctor_create_data["session_id"]
-    assert doctor_message_data["dialogue"]["status"] in {"awaiting_patient_reply", "completed"}
+    assert doctor_message_data["visit_state"] == "in_consultation"
+    assert doctor_message_data["dialogue"]["status"] == "awaiting_patient_reply"
+
+    memory_repo = app.state.container["memory_repo"]
+    session_memory = memory_repo.get_agent_session_memory(doctor_create_data["session_id"], "P-self", agent_type="internal_medicine")
+    assert session_memory["consultation_progress"]["patient_reply_count"] == 1
+
+    second_message_resp = client.post(
+        f"/api/v1/internal-medicine-sessions/{doctor_create_data['session_id']}/messages",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "visit_id": visit_id,
+            "name": "Player",
+            "message": "我再补充一下，没有其他不适。",
+        },
+    )
+    assert second_message_resp.status_code == 200
+    second_message_data = second_message_resp.json()
+    assert second_message_data["visit_id"] == visit_id
+    assert second_message_data["visit_state"] == "waiting_test"
+    assert second_message_data["dialogue"]["status"] == "completed"
+
+    visit_after_consultation_resp = client.get(f"/api/v1/visits/{visit_id}", headers=headers())
+    assert visit_after_consultation_resp.status_code == 200
+    visit_after_consultation = visit_after_consultation_resp.json()["visit"]
+    assert visit_after_consultation["state"] == "waiting_test"
+    diagnostic_session = visit_after_consultation["data"].get("diagnostic_session")
+    assert isinstance(diagnostic_session, dict)
+    assert diagnostic_session["type"] == "imaging_lab"
+    assert diagnostic_session["status"] == "pending"
+    assert diagnostic_session["source_session_id"] == doctor_create_data["session_id"]
+    assert visit_after_consultation["data"]["internal_medicine_session_id"] == doctor_create_data["session_id"]
 
     patient_resp = client.get("/api/v1/patients/P-self", headers=headers())
     assert patient_resp.status_code == 200
     patient_view = patient_resp.json()["patient"]
+    assert patient_view["lifecycle_state"] == "in_test"
     assert patient_view["active_agent_type"] == "internal_medicine"
     assert patient_view["dialogue_source_agent"] == "internal_medicine"
     assert patient_view["session_refs"]["internal_medicine_session_id"] == doctor_create_data["session_id"]
+
+    ready_payment_resp = client.post(f"/api/v1/visits/{visit_id}/ready-payment", headers=headers())
+    assert ready_payment_resp.status_code == 200
+    assert ready_payment_resp.json()["visit"]["state"] == "waiting_payment"
+
+    duplicate_ready_payment_resp = client.post(f"/api/v1/visits/{visit_id}/ready-payment", headers=headers())
+    assert duplicate_ready_payment_resp.status_code == 409

@@ -37,9 +37,13 @@ PATIENT_TRANSITIONS = {
     PatientLifecycleState.IN_CONSULTATION: {
         "finish": PatientLifecycleState.COMPLETED,
         "icu_consultation_completed": PatientLifecycleState.COMPLETED,
-        "internal_medicine_completed": PatientLifecycleState.COMPLETED,
+        "internal_medicine_completed": PatientLifecycleState.IN_TEST,
         "icu_followup_requested": PatientLifecycleState.WAITING_FOLLOWUP,
         "internal_medicine_followup_requested": PatientLifecycleState.WAITING_FOLLOWUP,
+        "mark_error": PatientLifecycleState.ERROR,
+    },
+    PatientLifecycleState.IN_TEST: {
+        "finish": PatientLifecycleState.COMPLETED,
         "mark_error": PatientLifecycleState.ERROR,
     },
     PatientLifecycleState.COMPLETED: {"begin_triage": PatientLifecycleState.TRIAGING},
@@ -56,6 +60,7 @@ DISPLAY_STATE_LABELS = {
     PatientLifecycleState.QUEUED: "Queued",
     PatientLifecycleState.CALLED: "Called",
     PatientLifecycleState.IN_CONSULTATION: "In Consultation",
+    PatientLifecycleState.IN_TEST: "In Test",
     PatientLifecycleState.COMPLETED: "Completed",
     PatientLifecycleState.CANCELLED: "Cancelled",
     PatientLifecycleState.ERROR: "Error",

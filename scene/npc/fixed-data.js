@@ -1,0 +1,175 @@
+const DEFAULT_PROMPT = "What would you like to ask?";
+
+function createTalkBook({ intro, workAction, smallTalk, closing, prompt = DEFAULT_PROMPT }) {
+  return {
+    startNodeId: "intro",
+    nodes: {
+      intro: {
+        type: "line",
+        text: intro,
+        next: "choice",
+      },
+      choice: {
+        type: "choice",
+        text: prompt,
+        options: [
+          { label: "Ask about work", next: "work" },
+          { label: "Just chat", next: "chat" },
+          { label: "Say goodbye", next: "end" },
+        ],
+      },
+      work: {
+        type: "action",
+        text: workAction,
+        next: "end",
+      },
+      chat: {
+        type: "line",
+        text: smallTalk,
+        next: "end",
+      },
+      end: {
+        type: "end",
+        text: closing,
+      },
+    },
+  };
+}
+
+export const roomKindLabels = {
+  hall: "Hall",
+  consultation: "Consultation",
+  ward: "Ward",
+  lab: "Lab",
+  icu: "ICU",
+  office: "Office",
+  registration: "Registration",
+  triage: "Triage",
+  pharmacy: "Pharmacy",
+};
+
+export const fixedNpcDefinitions = [
+  {
+    id: "hall-clerk",
+    name: "Mara",
+    roleLabel: "Clerk",
+    floor: 1,
+    roomKind: "hall",
+    roomIndex: 0,
+    placement: { x: 0.36, y: 0.52 },
+    interactionRadius: 68,
+    bodyColor: "#6d8fe8",
+    headColor: "#f2d0bf",
+    accentColor: "#7ac7ff",
+    dialogueSetId: "hall-clerk",
+  },
+  {
+    id: "consultation-doc",
+    name: "Dr. Vale",
+    roleLabel: "Doctor",
+    floor: 1,
+    roomKind: "consultation",
+    roomIndex: 1,
+    placement: { x: 0.54, y: 0.55 },
+    interactionRadius: 68,
+    bodyColor: "#8c7af0",
+    headColor: "#f0cfbe",
+    accentColor: "#c6b3ff",
+    dialogueSetId: "consultation-doc",
+  },
+  {
+    id: "ward-nurse",
+    name: "Sera",
+    roleLabel: "Nurse",
+    floor: 2,
+    roomKind: "ward",
+    roomIndex: 0,
+    placement: { x: 0.42, y: 0.55 },
+    interactionRadius: 68,
+    bodyColor: "#66bfa2",
+    headColor: "#f4d1c4",
+    accentColor: "#8ef0be",
+    dialogueSetId: "ward-nurse",
+  },
+  {
+    id: "icu-nurse",
+    name: "Ivan",
+    roleLabel: "Nurse",
+    floor: 2,
+    roomKind: "icu",
+    roomIndex: 0,
+    placement: { x: 0.58, y: 0.52 },
+    interactionRadius: 68,
+    bodyColor: "#d46d8e",
+    headColor: "#f2ccb7",
+    accentColor: "#ff9db2",
+    dialogueSetId: "icu-nurse",
+  },
+  {
+    id: "lab-tech",
+    name: "Jun",
+    roleLabel: "Lab Tech",
+    floor: 2,
+    roomKind: "lab",
+    roomIndex: 0,
+    placement: { x: 0.56, y: 0.48 },
+    interactionRadius: 68,
+    bodyColor: "#9b87f5",
+    headColor: "#efcdb9",
+    accentColor: "#b8a0ff",
+    dialogueSetId: "lab-tech",
+  },
+  {
+    id: "office-admin",
+    name: "Nora",
+    roleLabel: "Admin",
+    floor: 2,
+    roomKind: "office",
+    roomIndex: 0,
+    placement: { x: 0.48, y: 0.52 },
+    interactionRadius: 68,
+    bodyColor: "#e0b65b",
+    headColor: "#f3d6be",
+    accentColor: "#f4c96a",
+    dialogueSetId: "office-admin",
+  },
+];
+
+export const fixedNpcDialogueBooks = {
+  "hall-clerk": createTalkBook({
+    intro: "Morning. Keep to the right if you are only passing through.",
+    workAction: "Mara taps the clipboard once. \"Forms first, then the rest of the day.\"",
+    smallTalk: "Some days the lobby feels like a river. Your job is to keep your balance.",
+    closing: "Come back if you need directions, or a quiet place to stand for a second.",
+  }),
+  "consultation-doc": createTalkBook({
+    intro: "The consultation rooms are at their best when the hallway stops arguing with itself.",
+    workAction: "Dr. Vale points toward the next room. \"Keep your notes short. Clarity saves time.\"",
+    smallTalk: "If you bring in good questions, the answers usually show up on time.",
+    closing: "Take it easy. Calm hands make better charts.",
+  }),
+  "ward-nurse": createTalkBook({
+    intro: "Ward shifts are mostly small things done well.",
+    workAction: "Sera checks the clipboard. \"Water, pillows, and patience. In that order.\"",
+    smallTalk: "The quiet here is not empty. It is just busy in a softer way.",
+    closing: "If you need me, I am usually one room away.",
+  }),
+  "icu-nurse": createTalkBook({
+    intro: "The ICU keeps its own pace. We just keep up with it.",
+    workAction: "Ivan lowers his voice. \"Short sentences. Clear notes. No wasted motion.\"",
+    smallTalk: "The best part of a calm shift is noticing it after it happens.",
+    closing: "Stay steady. That helps more than people think.",
+  }),
+  "lab-tech": createTalkBook({
+    intro: "If it glows, be gentle. If it hums, label it.",
+    workAction: "Jun nudges a tray of samples. \"Everything belongs somewhere. The trick is remembering where.\"",
+    smallTalk: "Machines can be picky, but they are honest.",
+    closing: "Bring clean notes next time. They save everyone's afternoon.",
+  }),
+  "office-admin": createTalkBook({
+    intro: "The office runs on lists, labels, and one stubborn kettle.",
+    workAction: "Nora slides a stack of papers back into order. \"A tidy desk is a kinder desk.\"",
+    smallTalk: "Some days are made of paperwork. Others are made of tiny victories.",
+    closing: "If you do not know where to go, the office usually does.",
+  }),
+};

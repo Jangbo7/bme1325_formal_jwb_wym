@@ -1,5 +1,6 @@
-from app.agents.internal_medicine.state import InternalMedicineGraphState
+from app.agents.internal_medicine.state import InternalMedicineGraphState, WorkingMemory
 from app.agents.internal_medicine.state_machine import InternalMedicineDialogueStateMachine
+from app.agents.internal_medicine.workflow import ConsultationProgress
 from app.schemas.common import InternalMedicineDialogueState
 
 try:
@@ -65,6 +66,7 @@ class InternalMedicineGraph:
         memory = self.service.prepare_context(payload, session_id, dialogue_state)
         if mode == "continue_session":
             self.service.apply_chat_updates(payload, memory)
+        memory.private_memory["consultation_progress"] = memory.consultation_progress.to_dict()
         merged_payload = self.service.build_merged_payload(payload, memory.shared_memory)
         state = InternalMedicineGraphState(
             payload=payload,
@@ -76,15 +78,25 @@ class InternalMedicineGraph:
             merged_payload=merged_payload,
             dialogue_state=dialogue_state,
         )
-        return {"work": work, "state": state}
+        return {"work": work, "state": state, "memory": memory}
+
+    @staticmethod
+    def _get_memory_from_bundle(bundle: dict, state: InternalMedicineGraphState) -> WorkingMemory:
+        memory = bundle.get("memory")
+        if memory is not None:
+            return memory
+        return WorkingMemory(
+            short_term_turns=state.turns,
+            shared_memory=state.shared_memory,
+            private_memory=state.private_memory,
+            consultation_progress=ConsultationProgress.from_dict(state.private_memory.get("consultation_progress")),
+        )
 
     def _evaluate_node(self, bundle: dict):
         if bundle.get("response"):
             return bundle
         state: InternalMedicineGraphState = bundle["state"]
-        memory = self.service.prepare_context(state.payload, state.payload["session_id"], state.dialogue_state)
-        if bundle["work"]["mode"] == "continue_session":
-            self.service.apply_chat_updates(state.payload, memory)
+        memory = self._get_memory_from_bundle(bundle, state)
         final_result, evidence, missing_fields, assistant_message, complete = self.service.evaluate(
             state.merged_payload,
             memory,
@@ -110,9 +122,7 @@ class InternalMedicineGraph:
         if bundle.get("response"):
             return bundle
         state: InternalMedicineGraphState = bundle["state"]
-        memory = self.service.prepare_context(state.payload, state.payload["session_id"], state.dialogue_state)
-        if bundle["work"]["mode"] == "continue_session":
-            self.service.apply_chat_updates(state.payload, memory)
+        memory = self._get_memory_from_bundle(bundle, state)
         self.service.persist_result(
             patient_id=state.payload["patient_id"],
             session_id=state.payload["session_id"],

@@ -20,6 +20,10 @@ body {
   justify-content: center;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .hud {
   position: fixed;
   top: 18px;
@@ -201,6 +205,15 @@ body {
   background: rgba(112, 234, 255, 0.36);
 }
 
+.triage-btn--ghost {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.triage-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .triage-dialogue {
   width: min(92vw, 720px);
   display: grid;
@@ -343,6 +356,128 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.npc-dialogue {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 8, 14, 0.76);
+  backdrop-filter: blur(3px);
+}
+
+.npc-dialogue__content {
+  width: min(92vw, 620px);
+  max-height: 84vh;
+  overflow: auto;
+  border-radius: 16px;
+  border: 1.5px solid rgba(244, 198, 106, 0.58);
+  background: linear-gradient(180deg, rgba(30, 22, 36, 0.98) 0%, rgba(15, 12, 20, 0.99) 100%);
+  box-shadow: 0 26px 72px rgba(0, 0, 0, 0.55);
+  padding: 18px;
+}
+
+.npc-dialogue__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.npc-dialogue__status {
+  margin: 6px 0 0;
+  color: #d8e0ff;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.npc-dialogue__meta {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.npc-dialogue__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 198, 106, 0.55);
+  background: rgba(244, 198, 106, 0.12);
+  color: #fff2cf;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.npc-dialogue__badge--muted {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f2e8f6;
+}
+
+.npc-dialogue__prompt {
+  min-height: 112px;
+  margin-top: 12px;
+  padding: 14px 15px;
+  border-radius: 14px;
+  border: 1px solid rgba(244, 198, 106, 0.34);
+  background: rgba(16, 11, 24, 0.88);
+  color: #f6eff8;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.npc-dialogue__options {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.npc-dialogue__option {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  border-color: rgba(244, 198, 106, 0.36);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f6eff8;
+}
+
+.npc-dialogue__option.is-selected {
+  background: rgba(244, 198, 106, 0.22);
+  border-color: rgba(244, 198, 106, 0.92);
+  box-shadow: 0 0 0 1px rgba(244, 198, 106, 0.18) inset;
+}
+
+.npc-dialogue__footer {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.npc-dialogue__hint {
+  margin: 0;
+  color: #d8bfd8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .npc-dialogue__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .npc-dialogue__footer .triage-btn {
+    width: 100%;
+  }
 }
 
 .triage-evidence-chip {

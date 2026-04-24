@@ -317,3 +317,28 @@ def enter_consultation(visit_id: str, request: Request):
     queue_repo.mark_completed(ticket["id"])
 
     return _build_action_response(container, patient_id, visit_row)
+
+
+@router.post("/api/v1/visits/{visit_id}/ready-payment")
+def ready_payment(visit_id: str, request: Request):
+    container = request.app.state.container
+    visit_repo = container["visit_repo"]
+
+    visit_row = visit_repo.get(visit_id)
+    if not visit_row:
+        raise HTTPException(status_code=404, detail="visit not found")
+
+    visit_state = VisitLifecycleState(visit_row["state"])
+    if visit_state != VisitLifecycleState.WAITING_TEST:
+        raise HTTPException(status_code=409, detail="visit is not in waiting_test")
+
+    visit_row = _transition_visit(
+        container,
+        visit_row,
+        "ready_payment",
+        current_node="payment_wait",
+        current_department="Payment",
+        active_agent_type=None,
+        data=_get_visit_data(visit_row),
+    )
+    return {"ok": True, "visit": visit_repo.to_view(visit_row).model_dump()}

@@ -11,7 +11,7 @@
 <body>
   <div class="hud">
     <div class="hud__title">Hospital Pseudo 3D</div>
-    <div class="hud__tips">Move: WASD / Arrows, stairs switch floor, E interacts with triage, registration, and doctor entry.</div>
+    <div class="hud__tips">Move: WASD / Arrows, stairs switch floor, E talks to nearby staff and interacts with triage, registration, and doctor entry.</div>
     <div class="hud__floor">
       <span id="floor-state">Current Floor: 1F</span>
     </div>
@@ -110,6 +110,31 @@
           <textarea id="doctorDialogueInput" placeholder="Describe symptoms, onset, concerns, or answer the doctor agent."></textarea>
           <button type="submit" id="doctorDialogueSendBtn" class="triage-btn triage-btn--primary">Send</button>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="npcDialogueModal" class="npc-dialogue hidden" aria-hidden="true">
+    <div class="npc-dialogue__content" role="dialog" aria-modal="true" aria-labelledby="npcDialogueTitle">
+      <div class="npc-dialogue__header">
+        <div>
+          <h2 id="npcDialogueTitle">Staff Conversation</h2>
+          <p id="npcDialogueStatus" class="npc-dialogue__status">A nearby staff member is waiting.</p>
+        </div>
+        <button type="button" id="npcDialogueCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+
+      <div class="npc-dialogue__meta">
+        <span id="npcDialogueRoleBadge" class="npc-dialogue__badge">Staff</span>
+        <span id="npcDialogueRoomBadge" class="npc-dialogue__badge npc-dialogue__badge--muted">Location pending</span>
+      </div>
+
+      <div id="npcDialoguePrompt" class="npc-dialogue__prompt"></div>
+      <div id="npcDialogueOptions" class="npc-dialogue__options" aria-live="polite"></div>
+
+      <div class="npc-dialogue__footer">
+        <p id="npcDialogueHint" class="npc-dialogue__hint">Press E to continue. Esc closes the conversation.</p>
+        <button type="button" id="npcDialogueAdvanceBtn" class="triage-btn triage-btn--primary">Continue</button>
       </div>
     </div>
   </div>

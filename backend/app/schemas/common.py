@@ -9,6 +9,7 @@ class PatientLifecycleState(str, Enum):
     QUEUED = "queued"
     CALLED = "called"
     IN_CONSULTATION = "in_consultation"
+    IN_TEST = "in_test"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     ERROR = "error"

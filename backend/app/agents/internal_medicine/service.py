@@ -8,6 +8,7 @@ from app.agents.internal_medicine.prompts import (
     build_final_message,
     build_follow_up_question,
     build_initial_message,
+    build_transition_follow_up_question,
 )
 from app.agents.internal_medicine.rules import (
     build_missing_fields,
@@ -22,12 +23,15 @@ from app.agents.internal_medicine.rules import (
 )
 from app.agents.internal_medicine.state import WorkingMemory
 from app.agents.internal_medicine.workflow import ConsultationProgress
-from app.events.types import INTERNAL_MEDICINE_CONSULTATION_COMPLETED, VISIT_STATE_CHANGED
+from app.events.types import INTERNAL_MEDICINE_CONSULTATION_COMPLETED, PATIENT_STATE_CHANGED, VISIT_STATE_CHANGED
 from app.schemas.common import InternalMedicineDialogueState, PatientLifecycleState, VisitLifecycleState
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+MIN_PATIENT_REPLY_COUNT_BEFORE_COMPLETE = 2
 
 
 class InternalMedicineService:
@@ -331,8 +335,18 @@ class InternalMedicineService:
             assistant_message = build_initial_message(memory.shared_memory, progress)
             return fallback, evidence, missing_fields, assistant_message, False
 
+        if missing_fields or progress.patient_reply_count < MIN_PATIENT_REPLY_COUNT_BEFORE_COMPLETE:
+            question_focus = missing_fields[0] if missing_fields else None
+            progress.followup_count += 1
+            if question_focus:
+                progress.asked_fields_history.append(question_focus)
+                assistant_message = build_follow_up_question(question_focus, memory.shared_memory)
+            else:
+                assistant_message = build_transition_follow_up_question(memory.shared_memory)
+            return fallback, evidence, missing_fields, assistant_message, False
+
         llm_result = None
-        if not missing_fields or progress.patient_reply_count >= 2:
+        if progress.patient_reply_count >= MIN_PATIENT_REPLY_COUNT_BEFORE_COMPLETE:
             try:
                 llm_result = self.request_consultation_from_llm(merged_payload, memory.shared_memory, missing_fields)
             except Exception:
@@ -341,12 +355,6 @@ class InternalMedicineService:
             assistant_message = (llm_result or {}).get("assistant_message") if isinstance(llm_result, dict) else None
             assistant_message = assistant_message or build_final_message(final_result)
             return final_result, evidence, [], assistant_message, True
-
-        question_focus = missing_fields[0]
-        progress.followup_count += 1
-        progress.asked_fields_history.append(question_focus)
-        assistant_message = build_follow_up_question(question_focus, memory.shared_memory)
-        return fallback, evidence, missing_fields, assistant_message, False
 
     def persist_result(
         self,
@@ -398,23 +406,56 @@ class InternalMedicineService:
             },
         )
         existing_patient = self.patient_repo.get(patient_id)
+        next_patient_state = None
+        if complete and existing_patient:
+            current_patient_state = PatientLifecycleState(existing_patient["lifecycle_state"])
+            next_patient_state = self.patient_state_machine.transition(current_patient_state, "internal_medicine_completed")
+
+        patient_update_payload = {
+            "session_id": session_id,
+            "visit_id": payload.get("visit_id"),
+            "priority": consultation_result.get("priority", existing_patient["priority"] if existing_patient else None),
+        }
+        if next_patient_state:
+            patient_update_payload["lifecycle_state"] = next_patient_state.value
+            patient_update_payload["location"] = "Imaging & Lab"
+
         self.patient_repo.update_patient(
             patient_id,
-            session_id=session_id,
-            visit_id=payload.get("visit_id"),
-            priority=consultation_result.get("priority", existing_patient["priority"]),
+            **patient_update_payload,
         )
+        if next_patient_state:
+            self.bus.publish(
+                PATIENT_STATE_CHANGED,
+                {
+                    "patient_id": patient_id,
+                    "lifecycle_state": next_patient_state.value,
+                },
+            )
 
         visit_row = self.visit_repo.get(payload.get("visit_id")) if payload.get("visit_id") else None
         if visit_row:
             if complete:
+                visit_data = self._get_visit_data(visit_row)
+                existing_diagnostic_session = visit_data.get("diagnostic_session")
+                existing_diagnostic_session = existing_diagnostic_session if isinstance(existing_diagnostic_session, dict) else {}
+                diagnostic_session = {
+                    "id": existing_diagnostic_session.get("id") or f"diag-session-{visit_row['id']}",
+                    "type": "imaging_lab",
+                    "status": "pending",
+                    "created_at": existing_diagnostic_session.get("created_at") or timestamp,
+                    "source_session_id": session_id,
+                }
                 self._transition_visit(
                     visit_row,
                     "consultation_completed",
-                    current_node="payment_wait",
-                    current_department="Payment",
+                    current_node="diagnostic_wait",
+                    current_department="Imaging & Lab",
                     active_agent_type=None,
-                    extra_data={"internal_medicine_session_id": session_id},
+                    extra_data={
+                        "internal_medicine_session_id": session_id,
+                        "diagnostic_session": diagnostic_session,
+                    },
                 )
                 self.bus.publish(
                     INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
