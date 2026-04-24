@@ -8,6 +8,8 @@ const CONFIG = {
   CAMERA_LERP: 0.1,
 };
 
+const API_RUNTIME_CONFIG = (typeof window !== 'undefined' && (window.HOS_STARDEW_API || window.HOS_PRIVATE_API)) || {};
+
 const COLORS = {
   SKY_BLUE: '#87CEEB',
   GRASS_GREEN: '#7EC850',
@@ -795,8 +797,8 @@ async function init() {
   gameLogic.init();
   
   backendClient = createBackendClient({
-    baseUrl: 'http://127.0.0.1:8799/api/v1',
-    apiKey: 'mock-key-001',
+    baseUrl: API_RUNTIME_CONFIG.baseUrl || 'http://127.0.0.1:8787/api/v1',
+    apiKey: API_RUNTIME_CONFIG.apiKey || 'mock-key-001',
   });
   
   try {

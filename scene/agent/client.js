@@ -22,6 +22,24 @@ export function createBackendClient({ baseUrl, apiKey }) {
     health() {
       return request("/api/v1/health", { headers: { "Content-Type": undefined } });
     },
+    createVisit(payload) {
+      return request("/api/v1/visits", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    getVisit(visitId) {
+      return request(`/api/v1/visits/${visitId}`, { method: "GET" });
+    },
+    registerVisit(visitId) {
+      return request(`/api/v1/visits/${visitId}/register`, { method: "POST" });
+    },
+    progressVisit(visitId) {
+      return request(`/api/v1/visits/${visitId}/progress`, { method: "POST" });
+    },
+    enterConsultation(visitId) {
+      return request(`/api/v1/visits/${visitId}/enter-consultation`, { method: "POST" });
+    },
     listPatients() {
       return request("/api/v1/patients", { method: "GET" });
     },
