@@ -1,4 +1,4 @@
-export function buildTriagePayloadFromFormValues({ fields, zoneLabel, floor }) {
+export function buildTriagePayloadFromFormValues({ fields, zoneLabel, floor, patientId }) {
   const symptoms = fields.symptoms?.value?.trim() || "unspecified symptoms";
   const temp = Number.parseFloat(fields.temp?.value ?? "37.8");
   const heartRate = Number.parseInt(fields.heartRate?.value ?? "105", 10);
@@ -7,7 +7,7 @@ export function buildTriagePayloadFromFormValues({ fields, zoneLabel, floor }) {
   const pain = Number.parseInt(fields.pain?.value ?? "5", 10);
 
   return {
-    patient_id: "P-self",
+    patient_id: patientId || "P-self",
     name: "You (Player)",
     symptoms,
     vitals: {

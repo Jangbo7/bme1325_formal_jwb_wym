@@ -46,10 +46,14 @@ VISIT_TRANSITIONS = {
     },
     VisitLifecycleState.WAITING_PAYMENT: {"mark_error": VisitLifecycleState.ERROR},
     VisitLifecycleState.WAITING_TEST: {
+        "begin_triage": VisitLifecycleState.TRIAGING,
         "ready_payment": VisitLifecycleState.WAITING_PAYMENT,
         "mark_error": VisitLifecycleState.ERROR,
     },
-    VisitLifecycleState.IN_TEST: {"mark_error": VisitLifecycleState.ERROR},
+    VisitLifecycleState.IN_TEST: {
+        "begin_triage": VisitLifecycleState.TRIAGING,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
     VisitLifecycleState.WAITING_RETURN_CONSULTATION: {"mark_error": VisitLifecycleState.ERROR},
     VisitLifecycleState.WAITING_PHARMACY: {"mark_error": VisitLifecycleState.ERROR},
     VisitLifecycleState.COMPLETED: {},

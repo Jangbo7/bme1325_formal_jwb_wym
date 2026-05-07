@@ -57,8 +57,6 @@ class InternalMedicineGraph:
         else:
             session_row = self.service.validate_continue_session(session_id, payload)
             current_dialogue_state = InternalMedicineDialogueState(session_row["dialogue_state"])
-            if current_dialogue_state == InternalMedicineDialogueState.COMPLETED:
-                return {"work": work, "response": self.service.build_response(patient_id, session_id)}
             dialogue_state = self.dialogue_state_machine.transition(current_dialogue_state, "receive_reply")
             self.service.session_repo.update_state(session_id, dialogue_state.value)
             self.service.append_user_turn(session_id, patient_id, payload.get("message", ""), mode)
@@ -97,7 +95,7 @@ class InternalMedicineGraph:
             return bundle
         state: InternalMedicineGraphState = bundle["state"]
         memory = self._get_memory_from_bundle(bundle, state)
-        final_result, evidence, missing_fields, assistant_message, complete = self.service.evaluate(
+        final_result, evidence, missing_fields, assistant_payload, complete = self.service.evaluate(
             state.merged_payload,
             memory,
             bundle["work"]["mode"],
@@ -107,7 +105,7 @@ class InternalMedicineGraph:
         state.final_result = final_result
         state.evidence = evidence
         state.missing_fields = missing_fields
-        state.assistant_message = assistant_message
+        state.assistant_message = assistant_payload
         state.complete = complete
         if complete:
             state.dialogue_state = self.dialogue_state_machine.transition(state.dialogue_state, "complete")
@@ -132,7 +130,7 @@ class InternalMedicineGraph:
             consultation_result=state.final_result,
             evidence=state.evidence,
             missing_fields=state.missing_fields,
-            assistant_message=state.assistant_message,
+            assistant_payload=state.assistant_message,
             complete=state.complete,
         )
         return bundle

@@ -11,15 +11,18 @@
 说明：
 - 本文描述的是“当前有效架构”，不是历史遗留结构。
 - `scene/.history/`、旧版扁平 JS 文件只视为历史残留，不是主要维护入口。
-- 当前主业务 Agent 只有一个：`triage agent`。
+- 当前主线 Agent 已扩展为 `triage`、`internal_medicine`、`icu_doctor`，另有 `test_simulator` 作为辅助检查仿真服务。
+- 前端仍以分诊场景为主，但已经能同步展示内科会话和仿真检查报告；辅助检查的独立操作页还没有完全成型。
 
 ---
 
 ## 2. 系统一句话概述
-当前系统是一个“医院分诊与排队模拟”的模块化单体应用：
+当前系统是一个“医院分诊 + 门诊内科问诊 + ICU 处理 + 辅助检查仿真”的模块化单体应用：
 - 前端使用原生 `HTML + CSS + Canvas + ES Modules`
+- 前端主要承担场景渲染、分诊对话、任务板、病历卡和状态同步
 - 后端使用 `FastAPI + LangGraph(可用) + SQLite Repository + EventBus`
-- 主线业务是“玩家分诊 -> 多轮追问 -> 分诊完成 -> 自动入队 -> 前端继续展示与交互”
+- 后端已拆出 `triage`、`internal_medicine`、`icu_doctor` 和 `test_simulator` 等模块
+- 主线业务从“玩家分诊”扩展为“分诊 -> 内科/ICU 诊疗 -> 辅助检查仿真 -> 回诊/后续处理”
 
 ---
 
@@ -63,6 +66,7 @@ scene/
     runtime.js
   ui/
     task-board.js
+    medical-record.js
 ```
 
 ### 4.2 后端主结构
@@ -77,18 +81,18 @@ backend/app/
       patients.py
       queues.py
       triage.py
+      internal_medicine.py
+      icu.py
+      visits.py
   agents/
     triage/
-      graph.py
-      state.py
-      state_machine.py
-      schemas.py
-      prompts.py
-      rules.py
-      service.py
+    internal_medicine/
+    icu_doctor/
+    test_simulator/
   domain/
     patient/
       state_machine.py
+    visit/
   departments/
     registry.py
     internal.py
@@ -108,11 +112,13 @@ backend/app/
     sessions.py
     queues.py
     agent_memory.py
+    visits.py
   schemas/
     common.py
     patient.py
     queue.py
     triage.py
+    visit.py
 ```
 
 ---
@@ -139,6 +145,7 @@ backend/app/
   - Canvas 场景初始化
   - 玩家移动与主循环
   - 分诊卡与分诊对话框打开/关闭
+  - 内科会话恢复与对话同步
   - 键盘事件（例如 `E` 键）
   - 轮询后端患者状态和队列状态
   - 将 agent、queue、npc、ui 模块串起来
@@ -151,6 +158,7 @@ backend/app/
   - 发送 follow-up message
   - 读取 patients
   - 读取 queues
+- 也预留了内科与辅助检查相关的请求封装
 - 目标是让其他前端模块不直接拼接 fetch 逻辑
 
 ### `scene/agent/store.js`
@@ -187,7 +195,12 @@ backend/app/
 
 ### `scene/ui/task-board.js`
 - 负责顶部任务板/工作流板展示
-- 将 patient 状态与任务文本进行映射展示
+- 将 patient、visit、session、active agent 状态与任务文本进行映射展示
+- 目前更偏向状态同步面板，不是独立的检验操作面板
+
+### `scene/ui/medical-record.js`
+- 负责病历卡展示
+- 可以把 triage 结果、internal medicine 记录和 simulated_report 渲染到同一张病历卡中
 
 ## 5.3 当前前端交互主线
 1. 玩家移动到分诊台附近
@@ -197,10 +210,16 @@ backend/app/
 5. 提交分诊卡后创建 triage session
 6. 前端轮询 patients / queues
 7. 分诊对话页随着后端状态变化同步刷新
-8. 分诊完成后继续展示 recommendation 和 queue 状态
+8. 分诊完成后进入内科会话或继续展示 recommendation 和 queue 状态
+9. 当 visit.data 里出现 `simulated_report` 时，病历卡可以直接展示检查报告
 
 ## 5.4 当前前端的一个现实情况
 虽然前端已经拆出模块，但 `scene/core/bootstrap.js` 仍然偏大，当前属于“模块化过渡态”。
+
+另外，辅助检查相关的 UI 还处在“数据展示 + 预留接口”阶段：
+- `scene/ui/medical-record.js` 已能展示仿真报告
+- `scene/agent/client.js` 已预留 `getSimulatedReport` 和 `completeAuxiliaryTest` 封装
+- 但还没有完整的独立检验科操作页
 
 因此在可视化里建议这样表达：
 - `bootstrap.js` 是“前端 orchestration layer”
@@ -222,8 +241,22 @@ backend/app/
 
 ### API 层：`backend/app/api/routes/`
 当前对外接口：
+- `POST /api/v1/visits`
+- `GET /api/v1/visits/{visit_id}`
+- `POST /api/v1/visits/{visit_id}/register`
+- `POST /api/v1/visits/{visit_id}/progress`
+- `POST /api/v1/visits/{visit_id}/enter-consultation`
+- `POST /api/v1/visits/{visit_id}/ready-payment`
 - `POST /api/v1/triage-sessions`
 - `POST /api/v1/triage-sessions/{session_id}/messages`
+- `GET /api/v1/triage-sessions/{session_id}`
+- `POST /api/v1/internal-medicine-sessions`
+- `POST /api/v1/internal-medicine-sessions/{session_id}/messages`
+- `GET /api/v1/internal-medicine-sessions/{session_id}`
+- `POST /api/v1/icu-sessions`
+- `POST /api/v1/icu-sessions/{session_id}/messages`
+- `GET /api/v1/icu-sessions/{session_id}`
+- `GET /api/v1/icu-patients`
 - `GET /api/v1/patients`
 - `GET /api/v1/patients/{patient_id}`
 - `GET /api/v1/queues`
@@ -239,14 +272,14 @@ backend/app/
 职责：
 - 创建 FastAPI app
 - 初始化数据库
-- 创建 repository / event bus / state machine / triage service
+- 创建 repository / event bus / state machine / triage / internal_medicine / ICU / npc simulator
 - 注册 EventBus subscriber
 - 注入到 app container
 
 这是后端的“composition root”。
 
 ### Agent 层：`backend/app/agents/triage/`
-这是当前系统里唯一完整实现的 Agent 包。
+这是当前系统里最成熟的 Agent 包之一；除此之外还有内科、ICU 和辅助检查仿真模块。
 
 分工如下：
 - `graph.py`
@@ -265,6 +298,19 @@ backend/app/
   - 负责融合 memory、LLM、rules、state transition、response build
 - `schemas.py`
   - triage agent 相关局部 schema
+
+### `backend/app/agents/internal_medicine/`
+- 负责门诊内科问诊、追问护栏、最终诊断与检查建议
+- 当前会把检查分区和仿真报告写回 visit.data
+
+### `backend/app/agents/icu_doctor/`
+- 负责高危症状下的 ICU 处理与紧急建议
+- 采用和 triage / internal_medicine 类似的独立会话与状态机模式
+
+### `backend/app/agents/test_simulator/`
+- 负责把内科问诊结果映射为一级辅助检查分区
+- 生成可展示的仿真报告
+- 这个模块是无状态辅助服务，不承担完整对话流程
 
 ### 领域状态机层：`backend/app/domain/patient/state_machine.py`
 这是全局患者生命周期状态机。
@@ -291,17 +337,22 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 
 当前事件：
 - `triage.completed`
+- `internal_medicine.consultation_completed`
+- `icu.consultation_completed`
+- `visit.state_changed`
 - `patient.state_changed`
+- `test.zone_assigned`
+- `test.report_generated`
 - `queue.ticket_created`
 - `queue.ticket_called`
 
 当前 subscriber：
 - `queue.py`
-  - triage 完成后创建 queue ticket
+  - triage / visit 流程中的排队副作用
 - `patient_projection.py`
   - 根据 lifecycle state 更新展示态
 - `audit.py`
-  - 记录审计日志
+  - 记录审计日志，包括内科和辅助检查事件
 
 ### Repository 层：`backend/app/repositories/`
 负责持久化访问。
@@ -338,6 +389,7 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 - `queued`
 - `called`
 - `in_consultation`
+- `in_test`
 - `completed`
 - `cancelled`
 - `error`
@@ -348,7 +400,31 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 如果无需追问，则：
 `untriaged -> triaging -> triaged -> queued`
 
-## 7.2 分诊对话状态机
+## 7.2 Visit 生命周期状态机
+定义在 `backend/app/domain/visit/state_machine.py`。
+
+状态里已经包含：
+- `arrived`
+- `registration_pending`
+- `registered`
+- `waiting_triage`
+- `triaging`
+- `in_triage`
+- `waiting_followup`
+- `triaged`
+- `waiting_consultation`
+- `in_consultation`
+- `waiting_test`
+- `waiting_payment`
+- `waiting_return_consultation`
+- `waiting_pharmacy`
+- `completed`
+- `cancelled`
+- `error`
+
+当前主流程里，内科问诊完成后会进入 `waiting_test`，并把仿真报告写回 `visit.data`。
+
+## 7.3 分诊对话状态机
 定义在 `backend/app/agents/triage/state_machine.py`。
 
 状态：
@@ -364,7 +440,29 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 主路径：
 `idle -> collecting_initial_info -> evaluating -> needs_followup -> awaiting_patient_reply -> re_evaluating -> triaged`
 
-## 7.3 状态机与 EventBus 的分工
+## 7.4 内科对话状态机
+定义在 `backend/app/agents/internal_medicine/state_machine.py`。
+
+状态：
+- `idle`
+- `collecting_info`
+- `evaluating`
+- `needs_followup`
+- `awaiting_patient_reply`
+- `re_evaluating`
+- `diagnosis_complete`
+- `treatment_planning`
+- `completed`
+- `failed`
+
+内科 Agent 还会使用 `backend/app/agents/internal_medicine/workflow.py` 里的 `ConsultationProgress` 记录：
+- `asked_fields_history`
+- `last_question_focus`
+- `last_question_text`
+- `last_extracted_fields`
+- `patient_reply_count`
+
+## 7.5 状态机与 EventBus 的分工
 - 状态机负责：判断能不能迁移、迁移到哪里
 - EventBus 负责：迁移完成后广播事实
 - Subscriber 负责：处理排队、审计、投影等副作用
@@ -402,7 +500,7 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
   - last_triage_level
 
 ## 8.3 Agent Private Memory
-当前 triage agent 会维护：
+当前 triage / internal_medicine / ICU agent 会维护各自的私有记忆：
 - `dialogue_state`
 - `assistant_message`
 - `missing_fields`
@@ -423,7 +521,24 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 - 避免同一句追问连续重复
 - 给前端提供更稳定的展示信号
 
-## 8.4 为什么这样拆
+## 8.4 Visit Data Payload
+当前内科与辅助检查链路主要把跨步骤数据落在 `visit.data_json` 里，而不是新增独立表。
+
+常见字段包括：
+- `triage_session_id`
+- `internal_medicine_session_id`
+- `diagnostic_session`
+- `simulated_report`
+- `test_category`
+- `test_items`
+- `registration_completed_at`
+
+这样做的好处是：
+- 改动面小
+- 状态转换时容易回读
+- 前端病历卡和任务板可以直接展示结果
+
+## 8.5 为什么这样拆
 这是为了让以后新增 Agent 时不会互相污染。
 
 例如：
@@ -466,79 +581,6 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 - `LLM 生成 + 规则约束`
 - 主追问字段必须在缺失字段中
 - recommendation 如果没变，不在每轮追问里重复
-- 风险高时允许先提示一句，再问单一关键问题
-- 单次输出保持简短
-
-这意味着系统更像“有边界的智能分诊问答”，不是开放聊天机器人。
-
----
-
-## 10. 当前前后端联动主流程
-
-### 主流程
-1. 玩家走到分诊台附近
-2. 前端按 `E`
-3. 首次进入时打开分诊卡
-4. 提交后创建 triage session
-5. 打开分诊对话页
-6. 后端返回初步 recommendation + follow-up
-7. 玩家继续输入回复
-8. 后端更新记忆并重新评估
-9. triage 完成后发布 `triage.completed`
-10. EventBus subscriber 创建 queue ticket
-11. 前端继续轮询 patients / queues 并更新界面
-
-### 当前 UI 特殊规则
-- 分诊卡只在第一次触发
-- 之后再次按 `E`，直接回到当前分诊聊天
-- recommendation 只在首次或变化时显示
-
----
-
-## 11. Agent 维护与新增 Agent 的技术约定
-
-## 11.1 当前推荐方式
-如果未来新增一个独立 Agent，例如“门诊内科医生 Agent”，推荐做法是：
-1. 先定义业务边界
-2. 先定义状态机
-3. 再创建独立 Agent 包
-4. 明确 shared memory 和 private memory 边界
-5. 通过独立 API route 暴露能力
-6. 只在状态迁移完成后发 EventBus 事件
-
-## 11.2 标准 Agent 包结构
-推荐位置：
-```text
-backend/app/agents/<agent_name>/
-  graph.py
-  state.py
-  state_machine.py
-  schemas.py
-  prompts.py
-  rules.py
-  service.py
-```
-
-## 11.3 代码边界约束
-新增 Agent 时不要：
-- 直接把新逻辑塞进 `server.py`
-- 直接把 prompt、SQL、API glue 写进一个文件
-- 把 EventBus 当成主决策器
-- 把所有 Agent 的记忆都塞进同一个共享 blob
-
-## 11.4 维护建议
-如果多人协作，建议职责拆分为：
-- Agent runtime / graph
-- Prompt / rule
-- API / schema
-- Memory / repository
-- Queue / EventBus
-- Frontend dialogue UI
-
-这样可以减少多人都改同一个文件的冲突。
-
----
-
 ## 12. 适合 GPT 可视化的结构化描述
 
 如果要生成一张“当前系统架构图”，建议画成下面 5 层：
@@ -546,31 +588,41 @@ backend/app/agents/<agent_name>/
 ### Layer 1: User / Scene Layer
 - Player
 - Triage Desk
-- Dialogue Modal
+- Internal Medicine Dialogue
+- Medical Record Card
 - Queue Board
 - Random NPCs
+- ICU Area
 
 ### Layer 2: Frontend Interaction Layer
 - `scene/core/bootstrap.js`
-- `agent/client.js`
-- `agent/store.js`
-- `triage-form.js`
-- `triage-dialogue.js`
-- `queue/runtime.js`
-- `npc/runtime.js`
-- `ui/task-board.js`
+- `scene/agent/client.js`
+- `scene/agent/store.js`
+- `scene/agent/triage-form.js`
+- `scene/agent/triage-dialogue.js`
+- `scene/queue/runtime.js`
+- `scene/npc/runtime.js`
+- `scene/ui/task-board.js`
+- `scene/ui/medical-record.js`
 
 ### Layer 3: Backend API Layer
 - FastAPI App
+- Visit Routes
 - Triage Routes
+- Internal Medicine Routes
+- ICU Routes
 - Patient Routes
 - Queue Routes
 - Health Route
 
 ### Layer 4: Backend Runtime Layer
 - Triage Graph
-- Triage Service
+- Internal Medicine Graph / Workflow
+- ICU Doctor Service
+- Test Simulator
 - Triage Dialogue State Machine
+- Internal Medicine Dialogue State Machine
+- Visit Lifecycle State Machine
 - Patient Lifecycle State Machine
 - EventBus
 - Queue Subscriber
@@ -581,9 +633,10 @@ backend/app/agents/<agent_name>/
 - Patient Repository
 - Session Repository
 - Agent Memory Repository
+- Visit Repository
 - Queue Repository
 - SQLite Database
-- Triage Rule Store / Knowledge Rules
+- Triage / Internal Medicine / ICU Rule Store
 - LLM Endpoint
 
 ---
@@ -595,13 +648,21 @@ backend/app/agents/<agent_name>/
 - Scene Bootstrap
 - Triage Form
 - Triage Dialogue
-- Backend API
+- Internal Medicine Dialogue
+- Medical Record Card
+- Visit API
 - Triage Graph
-- Triage Service
+- Internal Medicine Graph
+- ICU Doctor Service
+- Test Simulator
 - Triage Dialogue State Machine
+- Internal Medicine Dialogue State Machine
+- Visit Lifecycle State Machine
 - Patient Lifecycle State Machine
 - EventBus
 - Queue Subscriber
+- Patient Projection Subscriber
+- Audit Subscriber
 - Repositories
 - SQLite
 - LLM API
@@ -610,142 +671,34 @@ backend/app/agents/<agent_name>/
 
 ### 13.2 核心边
 - Player -> Triage Form
-- Triage Form -> Backend API
-- Backend API -> Triage Graph
+- Triage Form -> Visit / Triage API
+- Triage API -> Triage Graph
 - Triage Graph -> Triage Service
 - Triage Service -> Rules
 - Triage Service -> LLM API
 - Triage Service -> Repositories
 - Triage Service -> Dialogue State Machine
-- Triage Service -> Patient State Machine
 - Triage Service -> EventBus
 - EventBus -> Queue Subscriber
-- Queue Subscriber -> Queue Repository
+- EventBus -> Patient Projection Subscriber
+- EventBus -> Audit Subscriber
+- Visit API -> Internal Medicine Service
+- Internal Medicine Service -> Test Simulator
+- Internal Medicine Service -> Visit Repository
+- Internal Medicine Service -> EventBus
 - Repositories -> SQLite
-- Backend API -> Frontend Dialogue
-- Backend API -> Queue Board
-- Bootstrap -> Queue Runtime
-- Bootstrap -> NPC Runtime
+- Queue Subscriber -> Queue Repository
+- Patient Projection Subscriber -> Patient Repository
+- Scene Bootstrap -> Queue Board
+- Scene Bootstrap -> Medical Record Card
+- Scene Bootstrap -> NPC Runtime
 
 ---
 
-## 14. Mermaid：系统总览图
+## 14. 一句话给 GPT 的压缩版
 
-```mermaid
-flowchart LR
-    Player["Player / 玩家"] --> Desk["Triage Desk / 分诊台"]
-    Desk --> Form["Triage Form / 分诊卡"]
-    Desk --> Dialog["Triage Dialogue / 分诊对话页"]
+如果你只想给模型一句压缩描述，可以直接使用：
 
-    subgraph Frontend["Frontend Scene"]
-        Bootstrap["scene/core/bootstrap.js"]
-        AgentClient["scene/agent/client.js"]
-        AgentStore["scene/agent/store.js"]
-        QueueRuntime["scene/queue/runtime.js"]
-        NPCRuntime["scene/npc/runtime.js"]
-        TaskBoard["scene/ui/task-board.js"]
-    end
+> 当前项目是一个基于 FastAPI + SQLite + EventBus + 显式状态机的医院分诊与门诊流程模拟系统，前端使用原生 Canvas/ESM 实现。系统核心从 triage 扩展到 internal_medicine、ICU 和辅助检查仿真，前端通过 bootstrap 连接分诊对话、内科会话、病历卡和队列展示，后端通过 repository、memory、LLM 和状态机协作完成 visit、patient、queue 和 simulated_report 的联动。
 
-    Form --> Bootstrap
-    Dialog --> Bootstrap
-    Bootstrap --> AgentClient
-    Bootstrap --> AgentStore
-    Bootstrap --> QueueRuntime
-    Bootstrap --> NPCRuntime
-    Bootstrap --> TaskBoard
-
-    subgraph Backend["Backend App"]
-        API["FastAPI Routes"]
-        Graph["Triage Graph"]
-        Service["Triage Service"]
-        TSM["Triage Dialogue State Machine"]
-        PSM["Patient Lifecycle State Machine"]
-        Bus["EventBus"]
-        QueueSub["Queue Subscriber"]
-        AuditSub["Audit Subscriber"]
-    end
-
-    AgentClient --> API
-    API --> Graph
-    Graph --> Service
-    Service --> TSM
-    Service --> PSM
-    Service --> Bus
-    Bus --> QueueSub
-    Bus --> AuditSub
-
-    subgraph Data["Persistence + External"]
-        Repo["Repositories"]
-        DB["SQLite"]
-        Rules["Rule Store"]
-        LLM["LLM API"]
-    end
-
-    Service --> Repo
-    Repo --> DB
-    Service --> Rules
-    Service --> LLM
-    QueueSub --> Repo
-
-    API --> Dialog
-    API --> QueueRuntime
-```
-
----
-
-## 15. Mermaid：分诊时序图
-
-```mermaid
-sequenceDiagram
-    participant U as Player
-    participant F as Frontend
-    participant API as FastAPI
-    participant G as Triage Graph
-    participant S as Triage Service
-    participant SM as State Machines
-    participant L as LLM API
-    participant B as EventBus
-    participant Q as Queue Subscriber
-    participant DB as Repositories/DB
-
-    U->>F: 按 E，首次打开分诊卡
-    U->>F: 提交分诊卡
-    F->>API: POST /api/v1/triage-sessions
-    API->>G: create_session
-    G->>S: load context + evaluate
-    S->>SM: triage dialogue / patient state transition
-    S->>L: triage result + follow-up generation
-    S->>DB: persist patient/session/memory
-    S->>B: publish triage.completed or followup state
-    B->>Q: queue side effect
-    Q->>DB: create queue ticket
-    API-->>F: patient + dialogue + queue-related state
-
-    U->>F: 在对话页继续回复
-    F->>API: POST /api/v1/triage-sessions/{id}/messages
-    API->>G: continue_session
-    G->>S: re-evaluate
-    S->>DB: update memory + turns
-    API-->>F: updated dialogue and patient state
-```
-
----
-
-## 16. 可直接给 GPT 出图的简化提示词
-下面这段文字可以直接作为可视化模型的输入基础：
-
-> 请画一张“医院分诊与排队模拟系统”的软件架构图。系统分为五层：第一层是玩家与医院场景，包括分诊台、分诊卡、分诊对话页、队列看板和随机 NPC；第二层是前端交互层，包括 bootstrap、agent client、agent store、triage form、triage dialogue、queue runtime、npc runtime 和 task board；第三层是后端 API 层，使用 FastAPI，对外提供 triage session、patient、queue 和 health 接口；第四层是后端运行时层，包括 triage graph、triage service、triage dialogue state machine、patient lifecycle state machine、EventBus、queue subscriber 和 audit subscriber；第五层是数据与外部服务层，包括 repositories、SQLite、rule store 和 LLM API。请突出主流程：玩家提交分诊卡后，后端创建 triage session，triage agent 进行多轮追问与分诊，分诊完成后通过 EventBus 自动创建 queue ticket，前端持续轮询并更新分诊对话与排队看板。图风格要求清晰、工程化、模块边界明确、箭头方向清楚。
-
----
-
-## 17. 一句话结论
-当前项目已经不是“前端大脚本 + 后端单文件”的原型，而是一个带有：
-- 模块化前端
-- FastAPI 后端
-- triage agent graph
-- 双状态机
-- EventBus
-- Repository 持久化
-- 多轮分诊对话
-- 自动排队联动
-的可持续扩展基础架构。
+这是一套可持续扩展的基础架构。

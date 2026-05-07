@@ -14,8 +14,10 @@ from app.agents.internal_medicine.rules import (
     build_missing_fields,
     derive_risk_flags,
     extract_structured_updates,
+    final_result_changed,
     merge_unique,
     merge_vitals,
+    prioritize_missing_fields,
     retrieve_relevant_internal_medicine_rules,
     rule_based_internal_medicine,
     split_symptoms,
@@ -23,7 +25,14 @@ from app.agents.internal_medicine.rules import (
 )
 from app.agents.internal_medicine.state import WorkingMemory
 from app.agents.internal_medicine.workflow import ConsultationProgress
-from app.events.types import INTERNAL_MEDICINE_CONSULTATION_COMPLETED, PATIENT_STATE_CHANGED, VISIT_STATE_CHANGED
+from app.agents.test_simulator.service import TestSimulationAgent
+from app.events.types import (
+    INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
+    PATIENT_STATE_CHANGED,
+    TEST_REPORT_GENERATED,
+    TEST_ZONE_ASSIGNED,
+    VISIT_STATE_CHANGED,
+)
 from app.schemas.common import InternalMedicineDialogueState, PatientLifecycleState, VisitLifecycleState
 
 
@@ -32,7 +41,10 @@ def now_iso() -> str:
 
 
 MIN_PATIENT_REPLY_COUNT_BEFORE_COMPLETE = 2
-
+PRIMARY_TEST_ZONE_LABELS = {
+    "medical_imaging": "医学影像检查",
+    "medical_laboratory": "医学实验室检验",
+}
 
 class InternalMedicineService:
     def __init__(
@@ -48,6 +60,7 @@ class InternalMedicineService:
         visit_state_machine,
         bus,
         graph,
+        test_simulator=None,
     ):
         self.llm_settings = llm_settings
         self.patient_repo = patient_repo
@@ -60,6 +73,7 @@ class InternalMedicineService:
         self.visit_state_machine = visit_state_machine
         self.bus = bus
         self.graph = graph
+        self.test_simulator = test_simulator or TestSimulationAgent()
 
     def create_session(self, payload: dict):
         return self.graph.invoke({"mode": "create_session", "payload": payload})
@@ -102,12 +116,16 @@ class InternalMedicineService:
         if session_id:
             private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="internal_medicine")
         if private_memory:
+            progress = ConsultationProgress.from_dict(private_memory.get("consultation_progress"))
             dialogue = {
                 "status": private_memory.get("dialogue_state", InternalMedicineDialogueState.IDLE.value),
                 "assistant_message": private_memory.get("assistant_message", ""),
                 "missing_fields": private_memory.get("missing_fields", []),
                 "turns": self.session_repo.list_turns(session_id),
                 "message_type": private_memory.get("message_type", "followup"),
+                "question_focus": progress.last_question_focus,
+                "asked_fields_history": progress.asked_fields_history,
+                "final_result": private_memory.get("final_result", {}),
             }
             evidence = private_memory.get("evidence", [])
 
@@ -214,6 +232,7 @@ class InternalMedicineService:
         private_memory.setdefault("evidence", [])
         private_memory.setdefault("latest_summary", {})
         private_memory.setdefault("consultation_progress", {})
+        private_memory.setdefault("final_result", {})
         private_memory["dialogue_state"] = dialogue_state.value
 
         progress = ConsultationProgress.from_dict(private_memory.get("consultation_progress"))
@@ -241,8 +260,11 @@ class InternalMedicineService:
         if extracted.get("allergy_status") == "known":
             profile["allergy_status"] = "known"
             profile["allergies"] = extracted.get("allergies") or []
+        elif extracted.get("allergy_status") == "uncertain" and profile.get("allergy_status") != "known":
+            profile["allergy_status"] = "uncertain"
         clinical["risk_flags"] = derive_risk_flags(clinical.get("symptoms") or [], clinical.get("vitals") or {})
         memory.consultation_progress.patient_reply_count += 1
+        memory.consultation_progress.last_extracted_fields = extracted.get("extracted_fields", [])
 
     def build_merged_payload(self, payload: dict, shared_memory: dict) -> dict:
         clinical = shared_memory["clinical_memory"]
@@ -255,7 +277,15 @@ class InternalMedicineService:
         merged["visit_id"] = payload.get("visit_id")
         return merged
 
-    def request_consultation_from_llm(self, payload: dict, shared_memory: dict, missing_fields: list[str]) -> dict | None:
+    def request_consultation_from_llm(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        previous_final_result: dict | None = None,
+        post_final_reassessment: bool = False,
+    ) -> dict | None:
         if not self.llm_settings.get("api_key"):
             return None
         req = urlrequest.Request(
@@ -264,15 +294,16 @@ class InternalMedicineService:
                 {
                     "model": self.llm_settings["model"],
                     "messages": [
-                        {"role": "system", "content": [{"type": "text", "text": build_consultation_system_prompt()}]},
+                        {"role": "system", "content": build_consultation_system_prompt()},
                         {
                             "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": build_consultation_user_prompt(shared_memory, payload.get("message", ""), missing_fields),
-                                }
-                            ],
+                            "content": build_consultation_user_prompt(
+                                shared_memory,
+                                payload.get("message", ""),
+                                missing_fields,
+                                previous_final_result=previous_final_result,
+                                post_final_reassessment=post_final_reassessment,
+                            ),
                         },
                     ],
                     "temperature": 0,
@@ -324,37 +355,78 @@ class InternalMedicineService:
                 ).strip()
         return ""
 
-    def evaluate(self, merged_payload: dict, memory: WorkingMemory, mode: str) -> tuple[dict, list[dict], list[str], str, bool]:
-        missing_fields = build_missing_fields(memory.shared_memory)
+    def evaluate(self, merged_payload: dict, memory: WorkingMemory, mode: str) -> tuple[dict, list[dict], list[str], dict, bool]:
+        progress = memory.consultation_progress
+        previous_final_result = memory.private_memory.get("final_result") if isinstance(memory.private_memory.get("final_result"), dict) else {}
+        is_post_final_reassessment = mode == "continue_session" and progress.completed
+        missing_fields = prioritize_missing_fields(
+            memory.shared_memory,
+            asked_fields_history=progress.asked_fields_history,
+            last_question_focus=progress.last_question_focus,
+        )
         rules = retrieve_relevant_internal_medicine_rules(merged_payload, top_k=3)
         evidence = [{"id": rule.get("id"), "title": rule.get("title"), "source": rule.get("source")} for rule in rules]
         fallback = rule_based_internal_medicine(merged_payload)
-        progress = memory.consultation_progress
 
         if mode == "create_session":
             assistant_message = build_initial_message(memory.shared_memory, progress)
-            return fallback, evidence, missing_fields, assistant_message, False
+            return (
+                fallback,
+                evidence,
+                build_missing_fields(memory.shared_memory),
+                {"assistant_message": assistant_message, "message_type": "followup"},
+                False,
+            )
 
-        if missing_fields or progress.patient_reply_count < MIN_PATIENT_REPLY_COUNT_BEFORE_COMPLETE:
-            question_focus = missing_fields[0] if missing_fields else None
-            progress.followup_count += 1
-            if question_focus:
-                progress.asked_fields_history.append(question_focus)
-                assistant_message = build_follow_up_question(question_focus, memory.shared_memory)
-            else:
-                assistant_message = build_transition_follow_up_question(memory.shared_memory)
-            return fallback, evidence, missing_fields, assistant_message, False
-
-        llm_result = None
-        if progress.patient_reply_count >= MIN_PATIENT_REPLY_COUNT_BEFORE_COMPLETE:
+        if is_post_final_reassessment:
+            llm_result = None
             try:
-                llm_result = self.request_consultation_from_llm(merged_payload, memory.shared_memory, missing_fields)
+                llm_result = self.request_consultation_from_llm(
+                    merged_payload,
+                    memory.shared_memory,
+                    missing_fields,
+                    previous_final_result=previous_final_result,
+                    post_final_reassessment=True,
+                )
             except Exception:
                 llm_result = None
-            final_result = validate_internal_medicine_result(llm_result, fallback)
-            assistant_message = (llm_result or {}).get("assistant_message") if isinstance(llm_result, dict) else None
-            assistant_message = assistant_message or build_final_message(final_result)
-            return final_result, evidence, [], assistant_message, True
+            final_result = validate_internal_medicine_result(llm_result, fallback, merged_payload)
+            message_type = "final_update" if final_result_changed(previous_final_result, final_result) else "final_no_change"
+            assistant_message = build_final_message(final_result, message_type=message_type)
+            progress.last_question_focus = None
+            progress.last_question_text = assistant_message
+            return final_result, evidence, [], {"assistant_message": assistant_message, "message_type": message_type}, True
+
+        if missing_fields or progress.patient_reply_count < MIN_PATIENT_REPLY_COUNT_BEFORE_COMPLETE:
+            progress.followup_count += 1
+            question_focus = missing_fields[0] if missing_fields else None
+            if question_focus:
+                asked_count = sum(1 for item in progress.asked_fields_history if item == question_focus)
+                assistant_message = build_follow_up_question(
+                    question_focus,
+                    memory.shared_memory,
+                    asked_count=asked_count,
+                    is_repeated=question_focus == progress.last_question_focus and asked_count > 0,
+                    last_question_text=progress.last_question_text,
+                )
+                progress.asked_fields_history.append(question_focus)
+                progress.last_question_focus = question_focus
+            else:
+                assistant_message = build_transition_follow_up_question(memory.shared_memory)
+                progress.last_question_focus = None
+            progress.last_question_text = assistant_message
+            return fallback, evidence, missing_fields, {"assistant_message": assistant_message, "message_type": "followup"}, False
+
+        llm_result = None
+        try:
+            llm_result = self.request_consultation_from_llm(merged_payload, memory.shared_memory, missing_fields)
+        except Exception:
+            llm_result = None
+        final_result = validate_internal_medicine_result(llm_result, fallback, merged_payload)
+        assistant_message = build_final_message(final_result, message_type="final")
+        progress.last_question_focus = None
+        progress.last_question_text = assistant_message
+        return final_result, evidence, [], {"assistant_message": assistant_message, "message_type": "final"}, True
 
     def persist_result(
         self,
@@ -366,26 +438,32 @@ class InternalMedicineService:
         consultation_result: dict,
         evidence: list[dict],
         missing_fields: list[str],
-        assistant_message: str,
+        assistant_payload: dict,
         complete: bool,
     ):
         timestamp = now_iso()
         shared = memory.shared_memory
         private_memory = memory.private_memory
         progress = memory.consultation_progress
+        was_completed = progress.completed
         progress.completed = complete
+        message_type = assistant_payload.get("message_type", "final" if complete else "followup")
+        assistant_message = assistant_payload.get("assistant_message", "")
 
         shared["clinical_memory"]["last_department"] = consultation_result.get("department")
         private_memory["dialogue_state"] = dialogue_state.value
         private_memory["assistant_message"] = assistant_message
         private_memory["missing_fields"] = missing_fields
         private_memory["evidence"] = evidence
-        private_memory["message_type"] = "final" if complete else "followup"
+        private_memory["message_type"] = message_type
+        private_memory["final_result"] = consultation_result if complete else private_memory.get("final_result", {})
         private_memory["consultation_progress"] = progress.to_dict()
         private_memory["latest_summary"] = {
             "department": consultation_result.get("department"),
             "priority": consultation_result.get("priority"),
             "complete": complete,
+            "message_type": message_type,
+            "red_flags": consultation_result.get("red_flags", []),
         }
 
         self.memory_repo.save_shared_memory(patient_id, shared)
@@ -399,15 +477,18 @@ class InternalMedicineService:
             timestamp,
             metadata={
                 "agent_type": "internal_medicine",
-                "message_type": "final" if complete else "followup",
+                "message_type": message_type,
                 "department": consultation_result.get("department"),
                 "priority": consultation_result.get("priority"),
                 "diagnosis_level": consultation_result.get("diagnosis_level"),
+                "test_category": consultation_result.get("test_category"),
+                "test_required": consultation_result.get("test_required", True),
+                "question_focus": progress.last_question_focus,
             },
         )
         existing_patient = self.patient_repo.get(patient_id)
         next_patient_state = None
-        if complete and existing_patient:
+        if complete and not was_completed and existing_patient:
             current_patient_state = PatientLifecycleState(existing_patient["lifecycle_state"])
             next_patient_state = self.patient_state_machine.transition(current_patient_state, "internal_medicine_completed")
 
@@ -418,7 +499,7 @@ class InternalMedicineService:
         }
         if next_patient_state:
             patient_update_payload["lifecycle_state"] = next_patient_state.value
-            patient_update_payload["location"] = "Imaging & Lab"
+            patient_update_payload["location"] = "Auxiliary Diagnostic Center"
 
         self.patient_repo.update_patient(
             patient_id,
@@ -435,26 +516,61 @@ class InternalMedicineService:
 
         visit_row = self.visit_repo.get(payload.get("visit_id")) if payload.get("visit_id") else None
         if visit_row:
-            if complete:
+            if complete and not was_completed:
                 visit_data = self._get_visit_data(visit_row)
+                simulation_report = self.test_simulator.generate_report(consultation_result, shared)
+                assigned_category = simulation_report["category_code"]
+                assigned_zone_label = PRIMARY_TEST_ZONE_LABELS.get(assigned_category, "辅助检查")
                 existing_diagnostic_session = visit_data.get("diagnostic_session")
                 existing_diagnostic_session = existing_diagnostic_session if isinstance(existing_diagnostic_session, dict) else {}
                 diagnostic_session = {
                     "id": existing_diagnostic_session.get("id") or f"diag-session-{visit_row['id']}",
-                    "type": "imaging_lab",
-                    "status": "pending",
+                    "type": "auxiliary_diagnostic_center",
+                    "primary_category": assigned_category,
+                    "primary_category_label": assigned_zone_label,
+                    "window_code": simulation_report.get("window_code"),
+                    "window_label": simulation_report.get("window_label"),
+                    "recommended_items": simulation_report.get("test_items", []),
+                    "status": "report_generated",
                     "created_at": existing_diagnostic_session.get("created_at") or timestamp,
+                    "generated_at": simulation_report.get("generated_at", timestamp),
                     "source_session_id": session_id,
+                    "report": simulation_report,
                 }
                 self._transition_visit(
                     visit_row,
                     "consultation_completed",
                     current_node="diagnostic_wait",
-                    current_department="Imaging & Lab",
+                    current_department="Auxiliary Diagnostic Center",
                     active_agent_type=None,
                     extra_data={
                         "internal_medicine_session_id": session_id,
                         "diagnostic_session": diagnostic_session,
+                        "test_required": consultation_result.get("test_required", True),
+                        "test_category": assigned_category,
+                        "test_category_label": assigned_zone_label,
+                        "test_items": simulation_report.get("test_items", []),
+                        "simulated_report": simulation_report,
+                    },
+                )
+                self.bus.publish(
+                    TEST_ZONE_ASSIGNED,
+                    {
+                        "patient_id": patient_id,
+                        "visit_id": visit_row["id"],
+                        "session_id": session_id,
+                        "test_category": assigned_category,
+                        "window_label": simulation_report.get("window_label"),
+                    },
+                )
+                self.bus.publish(
+                    TEST_REPORT_GENERATED,
+                    {
+                        "patient_id": patient_id,
+                        "visit_id": visit_row["id"],
+                        "session_id": session_id,
+                        "test_category": assigned_category,
+                        "report_summary": simulation_report.get("report_summary", {}),
                     },
                 )
                 self.bus.publish(
@@ -467,19 +583,23 @@ class InternalMedicineService:
                         "priority": consultation_result.get("priority"),
                     },
                 )
-            else:
+            elif not complete:
                 self._update_visit_agent_context(visit_row, session_id, active_agent_type="internal_medicine")
 
     def build_response(self, patient_id: str, session_id: str):
         patient_view = self.get_patient_view(patient_id)
         session_row = self.session_repo.get(session_id)
         private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="internal_medicine")
+        progress = ConsultationProgress.from_dict(private_memory.get("consultation_progress"))
         dialogue = {
             "status": private_memory.get("dialogue_state", InternalMedicineDialogueState.IDLE.value),
             "assistant_message": private_memory.get("assistant_message", ""),
             "missing_fields": private_memory.get("missing_fields", []),
             "turns": self.session_repo.list_turns(session_id),
             "message_type": private_memory.get("message_type", "followup"),
+            "question_focus": progress.last_question_focus,
+            "asked_fields_history": progress.asked_fields_history,
+            "final_result": private_memory.get("final_result", {}),
         }
         return {
             "ok": True,

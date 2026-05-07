@@ -28,7 +28,7 @@ INTERNAL_MEDICINE_TRANSITIONS = {
         "receive_reply": InternalMedicineDialogueState.RE_EVALUATING,
     },
     InternalMedicineDialogueState.TREATMENT_PLANNING: {"approve": InternalMedicineDialogueState.COMPLETED},
-    InternalMedicineDialogueState.COMPLETED: {},
+    InternalMedicineDialogueState.COMPLETED: {"receive_reply": InternalMedicineDialogueState.RE_EVALUATING},
     InternalMedicineDialogueState.FAILED: {},
 }
 

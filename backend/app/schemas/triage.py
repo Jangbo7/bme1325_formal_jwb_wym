@@ -14,6 +14,7 @@ class VitalsPayload(BaseModel):
 class CreateTriageSessionRequest(BaseModel):
     patient_id: str = "P-self"
     session_id: str | None = None
+    visit_id: str | None = None
     name: str = "You (Player)"
     age: int | None = None
     sex: str | None = None
@@ -29,6 +30,7 @@ class CreateTriageSessionRequest(BaseModel):
 
 class TriageMessageRequest(BaseModel):
     patient_id: str | None = None
+    visit_id: str | None = None
     name: str | None = None
     message: str
 

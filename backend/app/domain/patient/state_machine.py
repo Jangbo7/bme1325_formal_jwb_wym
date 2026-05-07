@@ -8,6 +8,7 @@ PATIENT_TRANSITIONS = {
     },
     PatientLifecycleState.TRIAGING: {
         "begin_triage": PatientLifecycleState.TRIAGING,
+        "resume_triage": PatientLifecycleState.TRIAGING,
         "followup_requested": PatientLifecycleState.WAITING_FOLLOWUP,
         "triage_completed": PatientLifecycleState.TRIAGED,
         "mark_error": PatientLifecycleState.ERROR,
@@ -43,6 +44,7 @@ PATIENT_TRANSITIONS = {
         "mark_error": PatientLifecycleState.ERROR,
     },
     PatientLifecycleState.IN_TEST: {
+        "begin_triage": PatientLifecycleState.TRIAGING,
         "finish": PatientLifecycleState.COMPLETED,
         "mark_error": PatientLifecycleState.ERROR,
     },

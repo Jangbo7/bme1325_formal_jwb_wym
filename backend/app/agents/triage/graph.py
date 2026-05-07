@@ -1,3 +1,5 @@
+import uuid
+
 from app.agents.triage.state import TriageGraphState
 from app.agents.triage.state_machine import TriageDialogueStateMachine
 
@@ -47,7 +49,7 @@ class TriageGraph:
 
     def _load_context_node(self, work: dict):
         payload = dict(work["payload"])
-        session_id = work.get("session_id") or payload.get("session_id") or "session-main"
+        session_id = work.get("session_id") or payload.get("session_id") or str(uuid.uuid4())
         payload["session_id"] = session_id
         patient_id = payload["patient_id"]
 
@@ -84,6 +86,8 @@ class TriageGraph:
             )
         else:
             session_row = self.service.session_repo.get(session_id)
+            if not session_row:
+                raise LookupError(f"triage session not found: {session_id}")
             current_dialogue_state = TriageDialogueState(session_row["dialogue_state"])
             dialogue_state = self.dialogue_state_machine.transition(current_dialogue_state, "receive_reply")
             payload["visit_id"] = session_row.get("visit_id") or payload.get("visit_id")

@@ -10,8 +10,18 @@
 </head>
 <body>
   <div class="hud">
-    <div class="hud__title">Hospital Pseudo 3D</div>
-    <div class="hud__tips">Move: WASD / Arrows, stairs switch floor, E talks to nearby staff and interacts with triage, registration, and doctor entry.</div>
+    <div class="hud__topline">
+      <div class="hud__title">Hospital Pseudo 3D</div>
+      <div class="hud__buttons">
+        <button type="button" class="hud__btn" id="hudHelpToggle" aria-expanded="false" aria-controls="hudHelpPanel">Help</button>
+        <button type="button" class="hud__btn" id="hudTasksToggle" aria-pressed="false">Tasks</button>
+        <button type="button" class="hud__btn" id="hudLabelsToggle" aria-pressed="false">Labels</button>
+        <button type="button" class="hud__btn" id="hudDebugToggle" aria-pressed="false">Debug</button>
+      </div>
+    </div>
+    <div class="hud__panel hidden" id="hudHelpPanel">
+      <div class="hud__tips">Move: WASD / Arrows. Use stairs to switch floor. Press E to talk to nearby staff and interact with triage, registration, and doctor entry.</div>
+    </div>
     <div class="hud__floor">
       <span id="floor-state">Current Floor: 1F</span>
     </div>

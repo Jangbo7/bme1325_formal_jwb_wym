@@ -1,7 +1,7 @@
-// 星露谷风格医院游戏主逻辑
+﻿// 鏄熼湶璋烽鏍煎尰闄㈡父鎴忎富閫昏緫
 import { createBackendClient } from './api/client.js';
 
-// ============== 配置 ==============
+// ============== 閰嶇疆 ==============
 const CONFIG = {
   TILE_SIZE: 48,
   PLAYER_SPEED: 20,
@@ -26,62 +26,62 @@ const COLORS = {
   WATER_BLUE: '#5DADE2',
 };
 
-// ============== 房间定义 ==============
+// ============== 鎴块棿瀹氫箟 ==============
 const ROOMS = [
-  { id: 'lobby', name: '医院大厅', x: 12, y: 10, w: 8, h: 6, type: 'main', exits: [{ dir: 'up', targetRoom: 'triage', targetX: 7, targetY: 9 }, { dir: 'left', targetRoom: 'icu', targetX: 9, targetY: 17 }, { dir: 'right', targetRoom: 'internal', targetX: 21, targetY: 17 }] },
-  { id: 'triage', name: '门诊', x: 4, y: 4, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'down', targetRoom: 'lobby', targetX: 16, targetY: 13 }] },
-  { id: 'pharmacy', name: '药房', x: 22, y: 4, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'down', targetRoom: 'lobby', targetX: 16, targetY: 13 }] },
+  { id: 'lobby', name: '鍖婚櫌澶у巺', x: 12, y: 10, w: 8, h: 6, type: 'main', exits: [{ dir: 'up', targetRoom: 'triage', targetX: 7, targetY: 9 }, { dir: 'left', targetRoom: 'icu', targetX: 9, targetY: 17 }, { dir: 'right', targetRoom: 'internal', targetX: 21, targetY: 17 }] },
+  { id: 'triage', name: '闂ㄨ瘖', x: 4, y: 4, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'down', targetRoom: 'lobby', targetX: 16, targetY: 13 }] },
+  { id: 'pharmacy', name: '鑽埧', x: 22, y: 4, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'down', targetRoom: 'lobby', targetX: 16, targetY: 13 }] },
   { id: 'icu', name: 'ICU', x: 4, y: 12, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'right', targetRoom: 'lobby', targetX: 13, targetY: 16 }] },
-  { id: 'internal', name: '内科', x: 22, y: 12, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'left', targetRoom: 'lobby', targetX: 19, targetY: 16 }] },
-  { id: 'lab', name: '化验室', x: 12, y: 18, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'up', targetRoom: 'lobby', targetX: 16, targetY: 15 }] },
-  { id: 'garden', name: '后花园', x: 12, y: 25, w: 8, h: 6, type: 'outdoor', exits: [{ dir: 'up', targetRoom: 'lobby', targetX: 16, targetY: 15 }] },
+  { id: 'internal', name: '鍐呯', x: 22, y: 12, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'left', targetRoom: 'lobby', targetX: 19, targetY: 16 }] },
+  { id: 'lab', name: '鍖栭獙瀹?, x: 12, y: 18, w: 6, h: 5, type: 'clinic', exits: [{ dir: 'up', targetRoom: 'lobby', targetX: 16, targetY: 15 }] },
+  { id: 'garden', name: '鍚庤姳鍥?, x: 12, y: 25, w: 8, h: 6, type: 'outdoor', exits: [{ dir: 'up', targetRoom: 'lobby', targetX: 16, targetY: 15 }] },
 ];
 
-// ============== NPC定义 ==============
+// ============== NPC瀹氫箟 ==============
 const NPC_TEMPLATES = {
-  doctor: { emoji: '👨‍⚕️', color: '#FFFFFF' },
-  nurse: { emoji: '👩‍⚕️', color: '#FFB6C1' },
-  patient_male: { emoji: '👨', color: '#ADD8E6' },
-  patient_female: { emoji: '👩', color: '#FFB6C1' },
-  visitor: { emoji: '🧑', color: '#98D8AA' },
+  doctor: { emoji: '馃懆鈥嶁殨锔?, color: '#FFFFFF' },
+  nurse: { emoji: '馃懇鈥嶁殨锔?, color: '#FFB6C1' },
+  patient_male: { emoji: '馃懆', color: '#ADD8E6' },
+  patient_female: { emoji: '馃懇', color: '#FFB6C1' },
+  visitor: { emoji: '馃', color: '#98D8AA' },
 };
 
-// NPC多种对话内容
+// NPC澶氱瀵硅瘽鍐呭
 const NPC_DIALOGUES = {
   triage: [
-    '你好，有什么不舒服吗？请描述一下您的症状。',
-    '欢迎来到门诊。请问您今天是来看什么病的？',
-    '请先测量一下体温和血压，我会根据您的情况安排就诊。',
+    '浣犲ソ锛屾湁浠€涔堜笉鑸掓湇鍚楋紵璇锋弿杩颁竴涓嬫偍鐨勭棁鐘躲€?,
+    '娆㈣繋鏉ュ埌闂ㄨ瘖銆傝闂偍浠婂ぉ鏄潵鐪嬩粈涔堢梾鐨勶紵',
+    '璇峰厛娴嬮噺涓€涓嬩綋娓╁拰琛€鍘嬶紝鎴戜細鏍规嵁鎮ㄧ殑鎯呭喌瀹夋帓灏辫瘖銆?,
   ],
   icu: [
-    '重症监护室需要特殊许可才能进入。请问您有什么事？',
-    'ICU是危重病人监护区域，非授权人员不得进入。',
-    '如果您是病人家属，请先到前台登记。',
+    '閲嶇棁鐩戞姢瀹ら渶瑕佺壒娈婅鍙墠鑳借繘鍏ャ€傝闂偍鏈変粈涔堜簨锛?,
+    'ICU鏄嵄閲嶇梾浜虹洃鎶ゅ尯鍩燂紝闈炴巿鏉冧汉鍛樹笉寰楄繘鍏ャ€?,
+    '濡傛灉鎮ㄦ槸鐥呬汉瀹跺睘锛岃鍏堝埌鍓嶅彴鐧昏銆?,
   ],
   internal: [
-    '内科主要诊治各种内科疾病，请问您哪里不舒服？',
-    '常见内科疾病包括感冒发烧、高血压、糖尿病等。',
-    '请详细描述一下您的症状，我会为您做详细诊断。',
+    '鍐呯涓昏璇婃不鍚勭鍐呯鐤剧梾锛岃闂偍鍝噷涓嶈垝鏈嶏紵',
+    '甯歌鍐呯鐤剧梾鍖呮嫭鎰熷啋鍙戠儳銆侀珮琛€鍘嬨€佺硸灏跨梾绛夈€?,
+    '璇疯缁嗘弿杩颁竴涓嬫偍鐨勭棁鐘讹紝鎴戜細涓烘偍鍋氳缁嗚瘖鏂€?,
   ],
   pharmacy: [
-    '请出示处方单取药。',
-    '药房开放时间为早上8点到晚上6点。',
-    '如有疑问，请咨询值班药师。',
+    '璇峰嚭绀哄鏂瑰崟鍙栬嵂銆?,
+    '鑽埧寮€鏀炬椂闂翠负鏃╀笂8鐐瑰埌鏅氫笂6鐐广€?,
+    '濡傛湁鐤戦棶锛岃鍜ㄨ鍊肩彮鑽笀銆?,
   ],
   lobby_nurse: [
-    '欢迎来到医院！请问需要什么帮助？',
-    '您好！如果您需要挂号，请到相应科室。',
-    '请注意保持安静，这是医疗场所。',
+    '娆㈣繋鏉ュ埌鍖婚櫌锛佽闂渶瑕佷粈涔堝府鍔╋紵',
+    '鎮ㄥソ锛佸鏋滄偍闇€瑕佹寕鍙凤紝璇峰埌鐩稿簲绉戝銆?,
+    '璇锋敞鎰忎繚鎸佸畨闈欙紝杩欐槸鍖荤枟鍦烘墍銆?,
   ],
   lobby_patient: [
-    '我在这里等检查结果，已经等了一会儿了...',
-    '医生说还要再等等，结果出来会通知我的。',
-    '这家医院服务不错，就是人有点多。',
+    '鎴戝湪杩欓噷绛夋鏌ョ粨鏋滐紝宸茬粡绛変簡涓€浼氬効浜?..',
+    '鍖荤敓璇磋繕瑕佸啀绛夌瓑锛岀粨鏋滃嚭鏉ヤ細閫氱煡鎴戠殑銆?,
+    '杩欏鍖婚櫌鏈嶅姟涓嶉敊锛屽氨鏄汉鏈夌偣澶氥€?,
   ],
   garden_visitor: [
-    '花园空气真好，病情好多了。',
-    '出来透透气，感觉整个人都精神多了。',
-    '这里环境优雅，很适合休养。',
+    '鑺卞洯绌烘皵鐪熷ソ锛岀梾鎯呭ソ澶氫簡銆?,
+    '鍑烘潵閫忛€忔皵锛屾劅瑙夋暣涓汉閮界簿绁炲浜嗐€?,
+    '杩欓噷鐜浼橀泤锛屽緢閫傚悎浼戝吇銆?,
   ],
 };
 
@@ -95,21 +95,33 @@ function getNPCDialogue(npcId, dialogueIndex) {
   else if (npcId === 'npc_6') category = 'lobby_patient';
   else if (npcId === 'npc_7') category = 'garden_visitor';
   
-  const dialogues = NPC_DIALOGUES[category] || ['你好！'];
+  const dialogues = NPC_DIALOGUES[category] || ['浣犲ソ锛?];
   return dialogues[dialogueIndex % dialogues.length];
 }
 
 const NPCs = [
-  { id: 'npc_1', name: '张医生', template: 'doctor', room: 'triage', x: 5, y: 6 },
-  { id: 'npc_2', name: '李护士', template: 'nurse', room: 'lobby', x: 14, y: 12 },
-  { id: 'npc_3', name: '王主任', template: 'doctor', room: 'icu', x: 5, y: 13 },
-  { id: 'npc_4', name: '刘医生', template: 'doctor', room: 'internal', x: 23, y: 13 },
-  { id: 'npc_5', name: '赵药师', template: 'doctor', room: 'pharmacy', x: 23, y: 6 },
-  { id: 'npc_6', name: '钱先生', template: 'patient_male', room: 'lobby', x: 16, y: 13 },
-  { id: 'npc_7', name: '孙女士', template: 'patient_female', room: 'garden', x: 14, y: 28 },
+  { id: 'npc_1', name: '寮犲尰鐢?, template: 'doctor', room: 'triage', x: 5, y: 6 },
+  { id: 'npc_2', name: '鏉庢姢澹?, template: 'nurse', room: 'lobby', x: 14, y: 12 },
+  { id: 'npc_3', name: '鐜嬩富浠?, template: 'doctor', room: 'icu', x: 5, y: 13 },
+  { id: 'npc_4', name: '鍒樺尰鐢?, template: 'doctor', room: 'internal', x: 23, y: 13 },
+  { id: 'npc_5', name: '璧佃嵂甯?, template: 'doctor', room: 'pharmacy', x: 23, y: 6 },
+  { id: 'npc_6', name: '閽卞厛鐢?, template: 'patient_male', room: 'lobby', x: 16, y: 13 },
+  { id: 'npc_7', name: '瀛欏コ澹?, template: 'patient_female', room: 'garden', x: 14, y: 28 },
 ];
 
-// ============== 游戏状态 ==============
+// ============== 娓告垙鐘舵€?==============
+function getClientId() {
+  let clientId = localStorage.getItem('client_id');
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem('client_id', clientId);
+  }
+  return clientId;
+}
+
+const clientId = getClientId();
+const patientId = `P-${clientId}`;
+
 class GameState {
   constructor() {
     this.player = { x: 16, y: 13, direction: 'down' };
@@ -126,6 +138,8 @@ class GameState {
     this.apiKey = '';
     this.currentDialogueCounter = {};
     this.dialogueActionInProgress = false;
+    this.isNpcPanelOpen = false;
+    this.isStatusPanelOpen = false;
   }
 
   updateTime(deltaMinutes) {
@@ -139,9 +153,9 @@ class GameState {
   getTimeString() {
     const hours = Math.floor(this.time / 60);
     const minutes = this.time % 60;
-    const period = hours < 12 ? '上午' : '下午';
+    const period = hours < 12 ? '涓婂崍' : '涓嬪崍';
     const displayHour = hours > 12 ? hours - 12 : hours;
-    return `第 ${this.day} 天 - ${period} ${displayHour}:${minutes.toString().padStart(2, '0')}`;
+    return `绗?${this.day} 澶?- ${period} ${displayHour}:${minutes.toString().padStart(2, '0')}`;
   }
 
   getNextDialogue(npcId) {
@@ -154,7 +168,7 @@ class GameState {
   }
 }
 
-// ============== 渲染器 ==============
+// ============== 娓叉煋鍣?==============
 class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -216,7 +230,7 @@ class Renderer {
     ctx.fillRect(offsetX - 20, offsetY, 20, room.h * CONFIG.TILE_SIZE);
     ctx.fillRect(offsetX + room.w * CONFIG.TILE_SIZE, offsetY, 20, room.h * CONFIG.TILE_SIZE);
 
-    // 画门
+    // 鐢婚棬
     const doorWidth = CONFIG.TILE_SIZE * 1.5;
     const doorHeight = CONFIG.TILE_SIZE * 2;
     ctx.fillStyle = COLORS.WOOD_BROWN;
@@ -231,11 +245,11 @@ class Renderer {
       ctx.fillRect(offsetX + room.w * CONFIG.TILE_SIZE / 2 - doorWidth / 2 + 5, offsetY + room.h * CONFIG.TILE_SIZE - 5, doorWidth - 10, doorHeight - 30);
     }
 
-    // 画出口标记
+    // 鐢诲嚭鍙ｆ爣璁?
     ctx.fillStyle = '#FFD700';
     ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('出口', offsetX + room.w * CONFIG.TILE_SIZE / 2, offsetY + room.h * CONFIG.TILE_SIZE + 15);
+    ctx.fillText('鍑哄彛', offsetX + room.w * CONFIG.TILE_SIZE / 2, offsetY + room.h * CONFIG.TILE_SIZE + 15);
 
     ctx.fillStyle = COLORS.ROOF_RED;
     ctx.beginPath();
@@ -333,7 +347,7 @@ class Renderer {
     ctx.fillStyle = '#FFF';
     ctx.font = 'bold 14px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('按 E 对话', screenX + 25, screenY + 19);
+    ctx.fillText('鎸?E 瀵硅瘽', screenX + 25, screenY + 19);
   }
 
   drawExitPrompt() {
@@ -346,11 +360,11 @@ class Renderer {
     ctx.fillStyle = '#000';
     ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('按 Q 走出房间', this.canvas.width / 2, 100);
+    ctx.fillText('鎸?Q 璧板嚭鎴块棿', this.canvas.width / 2, 100);
   }
 }
 
-// ============== 游戏逻辑 ==============
+// ============== 娓告垙閫昏緫 ==============
 class GameLogic {
   constructor() {
     this.keys = {};
@@ -362,11 +376,17 @@ class GameLogic {
       this.keys[e.key.toLowerCase()] = true;
       if (e.key.toLowerCase() === 'e') this.tryInteract();
       if (e.key.toLowerCase() === 'q') this.tryExitRoom();
-      if (e.key === 'Escape' && gameState.dialogueActive) this.closeDialogue();
+      if (e.key === 'Escape') this.handleEscape();
     });
     window.addEventListener('keyup', (e) => {
       this.keys[e.key.toLowerCase()] = false;
     });
+  }
+
+  handleEscape() {
+    if (isInputModalOpen()) return;
+    if (closeFloatingPanels()) return;
+    if (gameState.dialogueActive) this.closeDialogue();
   }
 
   update(deltaTime) {
@@ -475,17 +495,17 @@ class GameLogic {
     optionsEl.innerHTML = '';
     if (npc.template === 'doctor') {
       if (npc.room === 'triage') {
-        this.addDialogueOption('我要挂号', () => this.requestRegistration(npc));
-        this.addDialogueOption('我有症状要描述', () => this.describeSymptoms(npc));
+        this.addDialogueOption('鎴戣鎸傚彿', () => this.requestRegistration(npc));
+        this.addDialogueOption('鎴戞湁鐥囩姸瑕佹弿杩?, () => this.describeSymptoms(npc));
       } else if (npc.room === 'internal') {
-        this.addDialogueOption('我要内科问诊', () => this.requestInternalMedicine(npc));
-        this.addDialogueOption('我有内科问题咨询', () => this.consultInternal(npc));
+        this.addDialogueOption('鎴戣鍐呯闂瘖', () => this.requestInternalMedicine(npc));
+        this.addDialogueOption('鎴戞湁鍐呯闂鍜ㄨ', () => this.consultInternal(npc));
       } else if (npc.room === 'icu') {
-        this.addDialogueOption('我想了解ICU情况', () => this.consultICU(npc));
-        this.addDialogueOption('我有危重病人咨询', () => this.requestICUConsultation(npc));
+        this.addDialogueOption('鎴戞兂浜嗚ВICU鎯呭喌', () => this.consultICU(npc));
+        this.addDialogueOption('鎴戞湁鍗遍噸鐥呬汉鍜ㄨ', () => this.requestICUConsultation(npc));
       }
     }
-    this.addDialogueOption('谢谢，再见', () => this.closeDialogue());
+    this.addDialogueOption('璋㈣阿锛屽啀瑙?, () => this.closeDialogue());
     
     dialogueBox.classList.remove('hidden');
   }
@@ -510,19 +530,19 @@ class GameLogic {
   }
 
   async requestRegistration(npc) {
-    const symptoms = await showTextInputDialog('请描述您的症状：', '', '例如：发烧、咳嗽两天');
+    const symptoms = await showTextInputDialog('璇锋弿杩版偍鐨勭棁鐘讹細', '', '渚嬪锛氬彂鐑с€佸挸鍡戒袱澶?);
     if (!symptoms) return;
     
     if (backendClient && gameState.apiKey) {
       try {
         const session = await backendClient.createTriageSession({
-          patient_id: 'player_1',
-          name: '玩家',
+          patient_id: patientId,
+          name: '鐜╁',
           chief_complaint: symptoms,
         });
-        alert(`分诊成功！Session: ${session.session_id}\n请到相应科室就诊。`);
+        alert(`鍒嗚瘖鎴愬姛锛丼ession: ${session.session_id}\n璇峰埌鐩稿簲绉戝灏辫瘖銆俙);
       } catch (e) {
-        alert('分诊失败，将使用本地模拟分诊。');
+        alert('鍒嗚瘖澶辫触锛屽皢浣跨敤鏈湴妯℃嫙鍒嗚瘖銆?);
         this.mockTriageResult(symptoms);
       }
     } else {
@@ -532,105 +552,105 @@ class GameLogic {
 
   mockTriageResult(symptoms) {
     const symptomsLower = symptoms.toLowerCase();
-    let dept = '内科';
+    let dept = '鍐呯';
     let level = 3;
     
-    if (symptomsLower.includes('发烧') || symptomsLower.includes('感冒') || symptomsLower.includes('咳嗽')) {
-      dept = '内科';
+    if (symptomsLower.includes('鍙戠儳') || symptomsLower.includes('鎰熷啋') || symptomsLower.includes('鍜冲椊')) {
+      dept = '鍐呯';
       level = 3;
-    } else if (symptomsLower.includes('骨折') || symptomsLower.includes('外伤') || symptomsLower.includes('出血')) {
-      dept = '急诊';
+    } else if (symptomsLower.includes('楠ㄦ姌') || symptomsLower.includes('澶栦激') || symptomsLower.includes('鍑鸿')) {
+      dept = '鎬ヨ瘖';
       level = 2;
-    } else if (symptomsLower.includes('心脏') || symptomsLower.includes('胸痛') || symptomsLower.includes('呼吸困难')) {
+    } else if (symptomsLower.includes('蹇冭剰') || symptomsLower.includes('鑳哥棝') || symptomsLower.includes('鍛煎惛鍥伴毦')) {
       dept = 'ICU';
       level = 1;
     }
     
-    alert(`模拟分诊结果:\n科室: ${dept}\n优先级: ${level}\n请到相应科室就诊。`);
+    alert(`妯℃嫙鍒嗚瘖缁撴灉:\n绉戝: ${dept}\n浼樺厛绾? ${level}\n璇峰埌鐩稿簲绉戝灏辫瘖銆俙);
   }
 
   async describeSymptoms(npc) {
-    const symptoms = await showTextInputDialog('请详细描述您的症状：', '', '尽量描述持续时间、疼痛程度、伴随症状');
+    const symptoms = await showTextInputDialog('璇疯缁嗘弿杩版偍鐨勭棁鐘讹細', '', '灏介噺鎻忚堪鎸佺画鏃堕棿銆佺柤鐥涚▼搴︺€佷即闅忕棁鐘?);
     if (!symptoms || !backendClient || !gameState.apiKey) {
       if (!backendClient || !gameState.apiKey) {
-        alert('API未连接或未设置API Key，将使用本地模拟诊断。');
+        alert('API鏈繛鎺ユ垨鏈缃瓵PI Key锛屽皢浣跨敤鏈湴妯℃嫙璇婃柇銆?);
       }
       return;
     }
     
     try {
       const session = await backendClient.createTriageSession({
-        patient_id: 'player_1',
-        name: '玩家',
+        patient_id: patientId,
+        name: '鐜╁',
         chief_complaint: symptoms,
       });
-      alert(`症状登记成功！Session: ${session.session_id}`);
+      alert(`鐥囩姸鐧昏鎴愬姛锛丼ession: ${session.session_id}`);
     } catch (e) {
-      alert('症状登记失败：' + e.message);
+      alert('鐥囩姸鐧昏澶辫触锛? + e.message);
     }
   }
 
   async requestInternalMedicine(npc) {
-    const symptoms = await showTextInputDialog('请描述您的内科症状：', '', '例如：头痛、胸闷、乏力');
+    const symptoms = await showTextInputDialog('璇锋弿杩版偍鐨勫唴绉戠棁鐘讹細', '', '渚嬪锛氬ご鐥涖€佽兏闂枫€佷箯鍔?);
     if (!symptoms) return;
     
     if (backendClient && gameState.apiKey) {
       try {
         const session = await backendClient.createInternalMedicineSession({
-          patient_id: 'player_1',
-          name: '玩家',
+          patient_id: patientId,
+          name: '鐜╁',
           chief_complaint: symptoms,
         });
-        alert(`内科问诊创建成功！Session: ${session.session_id}\n医生将为您诊断。`);
+        alert(`鍐呯闂瘖鍒涘缓鎴愬姛锛丼ession: ${session.session_id}\n鍖荤敓灏嗕负鎮ㄨ瘖鏂€俙);
       } catch (e) {
-        alert('内科问诊失败：' + e.message);
+        alert('鍐呯闂瘖澶辫触锛? + e.message);
       }
     } else {
-      alert('内科问诊：您的症状已记录。\n根据RAG知识库建议：\n1. 详细检查\n2. 血液化验\n3. 后续治疗');
+      alert('鍐呯闂瘖锛氭偍鐨勭棁鐘跺凡璁板綍銆俓n鏍规嵁RAG鐭ヨ瘑搴撳缓璁細\n1. 璇︾粏妫€鏌n2. 琛€娑插寲楠孿n3. 鍚庣画娌荤枟');
     }
   }
 
   async consultInternal(npc) {
-    const question = await showTextInputDialog('请描述您的内科问题：', '', '请输入你想咨询的问题');
+    const question = await showTextInputDialog('璇锋弿杩版偍鐨勫唴绉戦棶棰橈細', '', '璇疯緭鍏ヤ綘鎯冲挩璇㈢殑闂');
     if (!question) return;
     
     if (backendClient && gameState.apiKey) {
       try {
         const session = await backendClient.createInternalMedicineSession({
-          patient_id: 'player_1',
-          name: '玩家',
+          patient_id: patientId,
+          name: '鐜╁',
           chief_complaint: question,
         });
-        alert(`内科咨询创建成功！Session: ${session.session_id}`);
+        alert(`鍐呯鍜ㄨ鍒涘缓鎴愬姛锛丼ession: ${session.session_id}`);
       } catch (e) {
-        alert('内科咨询失败：' + e.message);
+        alert('鍐呯鍜ㄨ澶辫触锛? + e.message);
       }
     } else {
-      alert('内科咨询：基于RAG知识库，\n建议您预约内科门诊进行详细检查。');
+      alert('鍐呯鍜ㄨ锛氬熀浜嶳AG鐭ヨ瘑搴擄紝\n寤鸿鎮ㄩ绾﹀唴绉戦棬璇婅繘琛岃缁嗘鏌ャ€?);
     }
   }
 
   async consultICU(npc) {
-    alert('ICU（重症监护室）介绍：\n\nICU是医院危重病人的监护区域，\n配备专业设备和医护人员。\n\n如需咨询ICU相关问题，\n请通过API连接到后台系统。');
+    alert('ICU锛堥噸鐥囩洃鎶ゅ锛変粙缁嶏細\n\nICU鏄尰闄㈠嵄閲嶇梾浜虹殑鐩戞姢鍖哄煙锛孿n閰嶅涓撲笟璁惧鍜屽尰鎶や汉鍛樸€俓n\n濡傞渶鍜ㄨICU鐩稿叧闂锛孿n璇烽€氳繃API杩炴帴鍒板悗鍙扮郴缁熴€?);
   }
 
   async requestICUConsultation(npc) {
-    const info = await showTextInputDialog('请描述危重病人的情况：', '', '例如：意识状态、呼吸、血压等');
+    const info = await showTextInputDialog('璇锋弿杩板嵄閲嶇梾浜虹殑鎯呭喌锛?, '', '渚嬪锛氭剰璇嗙姸鎬併€佸懠鍚搞€佽鍘嬬瓑');
     if (!info) return;
     
     if (backendClient && gameState.apiKey) {
       try {
         const session = await backendClient.createICUSession({
-          patient_id: 'player_1',
-          name: '玩家',
+          patient_id: patientId,
+          name: '鐜╁',
           chief_complaint: info,
         });
-        alert(`ICU会诊创建成功！Session: ${session.session_id}\nICU医生将进行评估。`);
+        alert(`ICU浼氳瘖鍒涘缓鎴愬姛锛丼ession: ${session.session_id}\nICU鍖荤敓灏嗚繘琛岃瘎浼般€俙);
       } catch (e) {
-        alert('ICU会诊创建失败：' + e.message);
+        alert('ICU浼氳瘖鍒涘缓澶辫触锛? + e.message);
       }
     } else {
-      alert('ICU会诊请求已记录。\n基于RAG知识库：\n1. 立即评估生命体征\n2. 准备ICU监护设备\n3. 联系ICU专科医生');
+      alert('ICU浼氳瘖璇锋眰宸茶褰曘€俓n鍩轰簬RAG鐭ヨ瘑搴擄細\n1. 绔嬪嵆璇勪及鐢熷懡浣撳緛\n2. 鍑嗗ICU鐩戞姢璁惧\n3. 鑱旂郴ICU涓撶鍖荤敓');
     }
   }
 
@@ -644,10 +664,91 @@ class GameLogic {
     gameState.player.x = npc.x;
     gameState.player.y = npc.y - 1;
     gameState.currentRoom = npc.room;
-    document.getElementById('current-room').textContent = ROOMS.find(r => r.id === npc.room)?.name || '未知';
+    document.getElementById('current-room').textContent = ROOMS.find(r => r.id === npc.room)?.name || 'æœªçŸ¥';
+    setNpcPanelOpen(false);
   }
 }
 
+function setNpcPanelOpen(open) {
+  gameState.isNpcPanelOpen = open;
+  const shell = document.getElementById('npc-panel-shell');
+  const toggle = document.getElementById('npc-panel-toggle');
+  const panel = document.getElementById('npc-panel');
+  if (!shell || !toggle || !panel) return;
+
+  shell.classList.toggle('open', open);
+  toggle.setAttribute('aria-expanded', String(open));
+  panel.setAttribute('aria-hidden', String(!open));
+}
+
+function setStatusPanelOpen(open) {
+  gameState.isStatusPanelOpen = open;
+  const shell = document.getElementById('status-panel-shell');
+  const toggle = document.getElementById('status-toggle');
+  const popover = document.getElementById('status-popover');
+  if (!shell || !toggle || !popover) return;
+
+  shell.classList.toggle('open', open);
+  toggle.setAttribute('aria-expanded', String(open));
+  popover.setAttribute('aria-hidden', String(!open));
+}
+
+function toggleNpcPanel() {
+  setNpcPanelOpen(!gameState.isNpcPanelOpen);
+}
+
+function toggleStatusPanel() {
+  setStatusPanelOpen(!gameState.isStatusPanelOpen);
+}
+
+function closeFloatingPanels() {
+  let closed = false;
+  if (gameState.isNpcPanelOpen) {
+    setNpcPanelOpen(false);
+    closed = true;
+  }
+  if (gameState.isStatusPanelOpen) {
+    setStatusPanelOpen(false);
+    closed = true;
+  }
+  return closed;
+}
+
+function isInputModalOpen() {
+  const modal = document.getElementById('input-modal');
+  return Boolean(modal && !modal.classList.contains('hidden'));
+}
+
+function bindPanelInteractions() {
+  const npcToggle = document.getElementById('npc-panel-toggle');
+  const statusToggle = document.getElementById('status-toggle');
+  const npcShell = document.getElementById('npc-panel-shell');
+  const statusShell = document.getElementById('status-panel-shell');
+
+  if (npcToggle) {
+    npcToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleNpcPanel();
+    });
+  }
+
+  if (statusToggle) {
+    statusToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleStatusPanel();
+    });
+  }
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (gameState.isNpcPanelOpen && npcShell && !npcShell.contains(target)) {
+      setNpcPanelOpen(false);
+    }
+    if (gameState.isStatusPanelOpen && statusShell && !statusShell.contains(target)) {
+      setStatusPanelOpen(false);
+    }
+  });
+}
 function showTextInputDialog(title, defaultValue = '', placeholder = '') {
   const modal = document.getElementById('input-modal');
   const titleEl = document.getElementById('input-modal-title');
@@ -701,14 +802,25 @@ function showTextInputDialog(title, defaultValue = '', placeholder = '') {
   });
 }
 
-// ============== UI更新 ==============
+// ============== UI鏇存柊 ==============
 function updateUI() {
-  document.getElementById('player-name').textContent = '村民';
-  document.getElementById('current-room').textContent = ROOMS.find(r => r.id === gameState.currentRoom)?.name || '未知';
-  document.getElementById('time-display').textContent = gameState.getTimeString();
-  document.getElementById('weather-display').textContent = gameState.weather === 'sunny' ? '☀️ 晴天' : '⛅ 多云';
-  
+  const currentRoomName = ROOMS.find(r => r.id === gameState.currentRoom)?.name || '未知';
+  const weatherText = gameState.weather === 'sunny' ? '☀ 晴天' : '☁ 多云';
+  const weatherIcon = gameState.weather === 'sunny' ? '☀' : '☁';
+
+  const currentRoomEl = document.getElementById('current-room');
+  const timeDisplayEl = document.getElementById('time-display');
+  const weatherDisplayEl = document.getElementById('weather-display');
+  const statusIconEl = document.getElementById('status-toggle-icon');
+
+  if (currentRoomEl) currentRoomEl.textContent = currentRoomName;
+  if (timeDisplayEl) timeDisplayEl.textContent = gameState.getTimeString();
+  if (weatherDisplayEl) weatherDisplayEl.textContent = weatherText;
+  if (statusIconEl) statusIconEl.textContent = weatherIcon;
+
   const npcList = document.getElementById('npc-list');
+  if (!npcList) return;
+
   npcList.innerHTML = '';
   for (const npc of gameState.npcs) {
     const div = document.createElement('div');
@@ -728,12 +840,12 @@ function updateUI() {
   }
 }
 
-// ============== API Key设置 ==============
+// ============== API Key璁剧疆 ==============
 async function showApiKeyDialog() {
   const apiKey = await showTextInputDialog(
-    '请输入 API Key（留空使用本地模拟）',
+    '璇疯緭鍏?API Key锛堢暀绌轰娇鐢ㄦ湰鍦版ā鎷燂級',
     gameState.apiKey || '',
-    '例如：sk-xxxx'
+    '渚嬪锛歴k-xxxx'
   );
   if (apiKey === null) return;
 
@@ -742,13 +854,13 @@ async function showApiKeyDialog() {
     backendClient.updateApiKey(gameState.apiKey || 'mock-key-001');
   }
   if (gameState.apiKey) {
-    alert('API Key 已设置');
+    alert('API Key 宸茶缃?);
   } else {
-    alert('已切换为本地模拟模式');
+    alert('宸插垏鎹负鏈湴妯℃嫙妯″紡');
   }
 }
 
-// ============== 主循环 ==============
+// ============== 涓诲惊鐜?==============
 let gameState, renderer, gameLogic, backendClient;
 
 function gameLoop(timestamp) {
@@ -787,7 +899,7 @@ function gameLoop(timestamp) {
   requestAnimationFrame(gameLoop);
 }
 
-// ============== 初始化 ==============
+// ============== 鍒濆鍖?==============
 async function init() {
   const canvas = document.getElementById('game-canvas');
   renderer = new Renderer(canvas);
@@ -804,12 +916,15 @@ async function init() {
   try {
     await backendClient.health();
     gameState.apiConnected = true;
-    console.log('API连接成功');
+    console.log('API杩炴帴鎴愬姛');
   } catch (e) {
-    console.log('API未连接，游戏将以离线模式运行');
+    console.log('API鏈繛鎺ワ紝娓告垙灏嗕互绂荤嚎妯″紡杩愯');
   }
   
   window.addEventListener('resize', () => renderer.resize());
+  bindPanelInteractions();
+  setNpcPanelOpen(false);
+  setStatusPanelOpen(false);
   const apiSettingsBtn = document.getElementById('api-settings-btn');
   if (apiSettingsBtn) {
     apiSettingsBtn.addEventListener('click', () => {
@@ -825,3 +940,4 @@ async function init() {
 }
 
 window.addEventListener('DOMContentLoaded', init);
+

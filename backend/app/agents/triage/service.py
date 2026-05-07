@@ -29,6 +29,17 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+TRIAGE_REUSABLE_VISIT_STATES = {
+    VisitLifecycleState.ARRIVED,
+    VisitLifecycleState.REGISTRATION_PENDING,
+    VisitLifecycleState.REGISTERED,
+    VisitLifecycleState.WAITING_TRIAGE,
+    VisitLifecycleState.TRIAGING,
+    VisitLifecycleState.WAITING_FOLLOWUP,
+    VisitLifecycleState.TRIAGED,
+}
+
+
 class TriageService:
     def __init__(
         self,
@@ -63,15 +74,27 @@ class TriageService:
         visit_row = None
         if requested_visit_id:
             candidate = self.visit_repo.get(requested_visit_id)
-            if candidate and candidate.get("patient_id") == patient_id:
+            if candidate and candidate.get("patient_id") == patient_id and self._is_triage_compatible_visit(candidate):
                 visit_row = candidate
 
         if not visit_row:
-            visit_row = self.visit_repo.create_or_get_active(patient_id)
+            active_visit = self.visit_repo.get_active_by_patient(patient_id)
+            if active_visit and self._is_triage_compatible_visit(active_visit):
+                visit_row = active_visit
+            else:
+                visit_row = self.visit_repo.create(patient_id=patient_id)
 
         payload["visit_id"] = visit_row["id"]
         self.patient_repo.update_patient(patient_id, visit_id=visit_row["id"])
         return visit_row
+
+    @staticmethod
+    def _is_triage_compatible_visit(visit_row: dict) -> bool:
+        try:
+            visit_state = VisitLifecycleState(visit_row["state"])
+        except Exception:
+            return False
+        return visit_state in TRIAGE_REUSABLE_VISIT_STATES
 
     def transition_visit_state(
         self,
@@ -229,7 +252,19 @@ class TriageService:
 
     def continue_session(self, session_id: str, payload: dict):
         session_row = self.session_repo.get(session_id)
-        if session_row and session_row.get("dialogue_state") == TriageDialogueState.TRIAGED.value:
+        if not session_row:
+            raise LookupError(f"triage session not found: {session_id}")
+
+        session_patient_id = session_row["patient_id"]
+        requested_patient_id = payload.get("patient_id")
+        if requested_patient_id and requested_patient_id != session_patient_id:
+            raise ValueError("triage session patient mismatch")
+
+        payload["patient_id"] = session_patient_id
+        payload["visit_id"] = payload.get("visit_id") or session_row.get("visit_id")
+        payload["name"] = payload.get("name") or session_patient_id
+
+        if session_row.get("dialogue_state") == TriageDialogueState.TRIAGED.value:
             patient_id = payload.get("patient_id") or session_row["patient_id"]
             return self.build_response(patient_id, session_id)
         return self.graph.invoke({"mode": "continue_session", "payload": payload, "session_id": session_id})
@@ -323,57 +358,65 @@ class TriageService:
     def request_llm_json(self, messages: list[dict]):
         if not self.llm_settings["api_key"]:
             return None
-        req = urlrequest.Request(
-            self.llm_settings["endpoint"],
-            data=json.dumps(
-                {
-                    "model": self.llm_settings["model"],
-                    "messages": messages,
-                    "temperature": 0,
-                    "n": 1,
-                    "stream": False,
-                    "presence_penalty": 0,
-                    "frequency_penalty": 0,
-                }
-            ).encode("utf-8"),
-            headers={
-                "accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.llm_settings['api_key']}",
-            },
-            method="POST",
-        )
-        with urlrequest.urlopen(req, timeout=18) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        text = self.extract_text_from_response(data)
-        if not text:
-            return None
         try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            start = text.find("{")
-            end = text.rfind("}")
-            if start >= 0 and end > start:
-                return json.loads(text[start : end + 1])
-            raise
+            req = urlrequest.Request(
+                self.llm_settings["endpoint"],
+                data=json.dumps(
+                    {
+                        "model": self.llm_settings["model"],
+                        "messages": messages,
+                        "temperature": 0,
+                        "n": 1,
+                        "stream": False,
+                        "presence_penalty": 0,
+                        "frequency_penalty": 0,
+                    }
+                ).encode("utf-8"),
+                headers={
+                    "accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.llm_settings['api_key']}",
+                },
+                method="POST",
+            )
+            with urlrequest.urlopen(req, timeout=18) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            text = self.extract_text_from_response(data)
+            if not text:
+                return None
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                start = text.find("{")
+                end = text.rfind("}")
+                if start >= 0 and end > start:
+                    return json.loads(text[start : end + 1])
+                raise
+        except Exception as e:
+            print(f"Error calling LLM API: {e}")
+            return None
 
     def request_triage_from_llm(self, payload: dict, evidence_rules: list[dict], memory_context: WorkingMemory):
-        prompt = (
-            "You are a hospital triage nurse assistant. "
-            "Use the retrieved triage knowledge as supporting evidence, and consider both short-term conversation memory and long-term patient memory. "
-            "Return strict JSON only with keys: triage_level (integer 1-5), priority (H/M/L), department (string), note (string). "
-            "Patient data: "
-            + json.dumps(payload, ensure_ascii=False)
-            + " Short-term memory: "
-            + json.dumps({"turns": memory_context.short_term_turns}, ensure_ascii=False)
-            + " Long-term memory: "
-            + json.dumps(memory_context.shared_memory, ensure_ascii=False)
-            + " Agent-private memory: "
-            + json.dumps(memory_context.private_memory, ensure_ascii=False)
-            + " Retrieved rules: "
-            + json.dumps(evidence_rules, ensure_ascii=False)
-        )
-        return self.request_llm_json([{"role": "user", "content": [{"type": "text", "text": prompt}]}])
+        try:
+            prompt = (
+                "You are a hospital triage nurse assistant. "
+                "Use the retrieved triage knowledge as supporting evidence, and consider both short-term conversation memory and long-term patient memory. "
+                "Return strict JSON only with keys: triage_level (integer 1-5), priority (H/M/L), department (string), note (string). "
+                "Patient data: "
+                + json.dumps(payload, ensure_ascii=False)
+                + " Short-term memory: "
+                + json.dumps({"turns": memory_context.short_term_turns}, ensure_ascii=False)
+                + " Long-term memory: "
+                + json.dumps(memory_context.shared_memory, ensure_ascii=False)
+                + " Agent-private memory: "
+                + json.dumps(memory_context.private_memory, ensure_ascii=False)
+                + " Retrieved rules: "
+                + json.dumps(evidence_rules, ensure_ascii=False)
+            )
+            return self.request_llm_json([{"role": "user", "content": prompt}])
+        except Exception as e:
+            print(f"Error in request_triage_from_llm: {e}")
+            return None
 
     def request_followup_from_llm(
         self,
@@ -386,25 +429,20 @@ class TriageService:
         if not missing_fields:
             return None
         prompt_messages = [
-            {"role": "system", "content": [{"type": "text", "text": build_follow_up_system_prompt()}]},
+            {"role": "system", "content": build_follow_up_system_prompt()},
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": build_follow_up_user_prompt(
-                            triage_result=triage_result,
-                            missing_fields=missing_fields,
-                            patient_summary=memory.shared_memory,
-                            turns=memory.short_term_turns,
-                            risk_flags=memory.shared_memory["clinical_memory"].get("risk_flags") or [],
-                            last_question_focus=memory.private_memory.get("last_question_focus"),
-                            last_question_text=memory.private_memory.get("last_question_text"),
-                            asked_fields_history=memory.private_memory.get("asked_fields_history") or [],
-                            recommendation_changed=recommendation_changed,
-                        ),
-                    }
-                ],
+                "content": build_follow_up_user_prompt(
+                    triage_result=triage_result,
+                    missing_fields=missing_fields,
+                    patient_summary=memory.shared_memory,
+                    turns=memory.short_term_turns,
+                    risk_flags=memory.shared_memory["clinical_memory"].get("risk_flags") or [],
+                    last_question_focus=memory.private_memory.get("last_question_focus"),
+                    last_question_text=memory.private_memory.get("last_question_text"),
+                    asked_fields_history=memory.private_memory.get("asked_fields_history") or [],
+                    recommendation_changed=recommendation_changed,
+                ),
             },
         ]
         result = self.request_llm_json(prompt_messages)
