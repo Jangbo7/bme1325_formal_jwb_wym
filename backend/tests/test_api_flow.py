@@ -149,7 +149,6 @@ def test_strict_flow_triage_register_wait_call_enter(tmp_path, monkeypatch):
     assert enter_data["patient"]["lifecycle_state"] == "in_consultation"
 
 
-
 def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     session_id = f"session-{uuid.uuid4().hex[:8]}"
@@ -221,7 +220,7 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
             "patient_id": "P-self",
             "visit_id": visit_id,
             "name": "Player",
-            "message": "今早开始，已经持续3小时，伴有轻微咳嗽和发热，没有药物过敏。",
+            "message": "我发热和咳嗽已经3天了，昨晚体温38.5℃，没有药物过敏。",
         },
     )
     assert doctor_message_resp.status_code == 200
@@ -242,7 +241,7 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
             "patient_id": "P-self",
             "visit_id": visit_id,
             "name": "Player",
-            "message": "我再补充一下，没有其他不适。",
+            "message": "症状今天早上明显加重，还伴有轻微胸闷。",
         },
     )
     assert second_message_resp.status_code == 200
@@ -257,10 +256,22 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
     assert visit_after_consultation["state"] == "waiting_test"
     diagnostic_session = visit_after_consultation["data"].get("diagnostic_session")
     assert isinstance(diagnostic_session, dict)
-    assert diagnostic_session["type"] == "imaging_lab"
-    assert diagnostic_session["status"] == "pending"
+    assert diagnostic_session["type"] == "auxiliary_diagnostic_center"
+    assert diagnostic_session["status"] == "report_generated"
+    assert diagnostic_session["primary_category"] in {"medical_imaging", "medical_laboratory"}
+    assert diagnostic_session["primary_category_label"] in {"医学影像检查", "医学实验室检验"}
+    assert diagnostic_session["window_label"] in {"医学影像检查窗", "医学实验室检验窗"}
+    assert isinstance(diagnostic_session.get("recommended_items"), list)
+    assert diagnostic_session.get("recommended_items")
+    simulated_report = diagnostic_session.get("report")
+    assert isinstance(simulated_report, dict)
+    assert simulated_report.get("simulation") is True
+    assert simulated_report.get("report_text")
+    assert simulated_report.get("category_code") == diagnostic_session["primary_category"]
     assert diagnostic_session["source_session_id"] == doctor_create_data["session_id"]
     assert visit_after_consultation["data"]["internal_medicine_session_id"] == doctor_create_data["session_id"]
+    assert visit_after_consultation["data"]["test_category"] == diagnostic_session["primary_category"]
+    assert visit_after_consultation["data"].get("simulated_report", {}).get("report_text")
 
     patient_resp = client.get("/api/v1/patients/P-self", headers=headers())
     assert patient_resp.status_code == 200

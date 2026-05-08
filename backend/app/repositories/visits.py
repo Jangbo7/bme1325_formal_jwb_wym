@@ -125,6 +125,61 @@ class VisitRepository:
         finally:
             conn.close()
 
+    def update_openemr_encounter_id(self, visit_id: str, openemr_encounter_id: str | None) -> dict:
+        conn = self.db.connect()
+        try:
+            conn.execute(
+                "UPDATE visits SET openemr_encounter_id = ?, updated_at = ? WHERE id = ?",
+                (openemr_encounter_id, now_iso(), visit_id),
+            )
+            conn.commit()
+            return self.get(visit_id)
+        finally:
+            conn.close()
+
+    def set_emr_sync_status(
+        self,
+        visit_id: str,
+        *,
+        status: str,
+        error: str | None = None,
+        synced_at: str | None = None,
+    ) -> dict:
+        conn = self.db.connect()
+        try:
+            conn.execute(
+                """
+                UPDATE visits
+                SET emr_sync_status = ?, emr_sync_error = ?, emr_synced_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, error, synced_at, now_iso(), visit_id),
+            )
+            conn.commit()
+            return self.get(visit_id)
+        finally:
+            conn.close()
+
+    def get_visit_data(self, visit_id: str) -> dict:
+        row = self.get(visit_id)
+        if not row:
+            raise KeyError(visit_id)
+        return Database.decode_json(row.get("data_json"), {})
+
+    def set_openemr_sync_ref(self, visit_id: str, key: str, external_id: str | None) -> dict:
+        if key not in {"triage_note_id", "internal_medicine_note_id", "test_report_id"}:
+            raise ValueError("unsupported openemr sync key")
+        row = self.get(visit_id)
+        if not row:
+            raise KeyError(visit_id)
+        data = Database.decode_json(row.get("data_json"), {})
+        openemr_sync = data.get("openemr_sync")
+        if not isinstance(openemr_sync, dict):
+            openemr_sync = {}
+        openemr_sync[key] = external_id
+        data["openemr_sync"] = openemr_sync
+        return self.update_visit(visit_id, data=data)
+
     def to_view(self, row: dict) -> VisitView:
         return VisitView(
             id=row["id"],

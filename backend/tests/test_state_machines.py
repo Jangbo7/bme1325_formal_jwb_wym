@@ -1,6 +1,6 @@
 from app.agents.triage.state_machine import TriageDialogueStateMachine
 from app.domain.patient.state_machine import PatientStateMachine
-from app.schemas.common import PatientLifecycleState, TriageDialogueState
+from app.schemas.common import InternalMedicineDialogueState, PatientLifecycleState, TriageDialogueState, VisitLifecycleState
 
 
 def test_patient_state_machine_happy_path():
@@ -13,6 +13,18 @@ def test_patient_state_machine_happy_path():
     assert state == PatientLifecycleState.TRIAGING
 
 
+def test_patient_state_machine_allows_restart_from_in_test():
+    machine = PatientStateMachine()
+    state = machine.transition(PatientLifecycleState.IN_TEST, "begin_triage")
+    assert state == PatientLifecycleState.TRIAGING
+
+
+def test_patient_state_machine_allows_idempotent_triage_resume():
+    machine = PatientStateMachine()
+    state = machine.transition(PatientLifecycleState.TRIAGING, "resume_triage")
+    assert state == PatientLifecycleState.TRIAGING
+
+
 def test_triage_state_machine_happy_path():
     machine = TriageDialogueStateMachine()
     state = machine.transition(TriageDialogueState.IDLE, "start")
@@ -21,3 +33,26 @@ def test_triage_state_machine_happy_path():
     assert state == TriageDialogueState.EVALUATING
     state = machine.transition(state, "need_followup")
     assert state == TriageDialogueState.NEEDS_FOLLOWUP
+
+
+def test_visit_state_machine_allows_restart_from_in_test():
+    from app.domain.visit.state_machine import VisitStateMachine
+
+    machine = VisitStateMachine()
+    assert machine.transition(VisitLifecycleState.WAITING_TEST, "begin_triage") == VisitLifecycleState.TRIAGING
+    state = machine.transition(VisitLifecycleState.IN_TEST, "begin_triage")
+    assert state == VisitLifecycleState.TRIAGING
+
+
+def test_internal_medicine_state_machine_allows_reassessment_after_completion():
+    from app.agents.internal_medicine.state_machine import InternalMedicineDialogueStateMachine
+
+    machine = InternalMedicineDialogueStateMachine()
+    state = machine.transition(InternalMedicineDialogueState.IDLE, "start")
+    state = machine.transition(state, "evaluate")
+    state = machine.transition(state, "complete")
+    state = machine.transition(state, "plan_treatment")
+    state = machine.transition(state, "approve")
+    assert state == InternalMedicineDialogueState.COMPLETED
+    state = machine.transition(state, "receive_reply")
+    assert state == InternalMedicineDialogueState.RE_EVALUATING

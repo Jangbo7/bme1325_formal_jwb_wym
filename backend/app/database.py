@@ -166,8 +166,13 @@ class Database:
                     """
                 )
                 self._ensure_column(conn, "patients", "visit_id", "TEXT")
+                self._ensure_column(conn, "patients", "openemr_patient_id", "TEXT")
                 self._ensure_column(conn, "triage_sessions", "visit_id", "TEXT")
                 self._ensure_column(conn, "queue_tickets", "visit_id", "TEXT")
+                self._ensure_column(conn, "visits", "openemr_encounter_id", "TEXT")
+                self._ensure_column(conn, "visits", "emr_sync_status", "TEXT")
+                self._ensure_column(conn, "visits", "emr_synced_at", "TEXT")
+                self._ensure_column(conn, "visits", "emr_sync_error", "TEXT")
                 if not self._agent_session_memory_has_composite_pk(conn):
                     self._migrate_agent_session_memory_to_composite_pk(conn)
                 conn.commit()

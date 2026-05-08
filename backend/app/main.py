@@ -11,6 +11,7 @@ from app.agents.triage.state_machine import TriageDialogueStateMachine
 from app.api.routes.health import router as health_router
 from app.api.routes.icu import router as icu_router
 from app.api.routes.internal_medicine import router as internal_medicine_router
+from app.api.routes.openemr import router as openemr_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.queues import router as queues_router
 from app.api.routes.triage import router as triage_router
@@ -21,6 +22,7 @@ from app.domain.patient.state_machine import PatientStateMachine
 from app.domain.visit.state_machine import VisitStateMachine
 from app.events.bus import EventBus
 from app.events.subscribers.audit import AuditSubscriber
+from app.events.subscribers.openemr_sync import OpenEMRSyncSubscriber
 from app.events.subscribers.patient_projection import PatientProjectionSubscriber
 from app.events.types import (
     ICU_CONSULTATION_COMPLETED,
@@ -38,6 +40,7 @@ from app.repositories.patients import PatientRepository
 from app.repositories.queues import QueueRepository
 from app.repositories.sessions import SessionRepository
 from app.repositories.visits import VisitRepository
+from app.integrations.openemr import EMRService, OpenEMRClient
 from app.services import NpcPatientSimulator
 
 
@@ -125,6 +128,38 @@ def create_container():
 
     patient_projection = PatientProjectionSubscriber(patient_repo, patient_state_machine)
     audit = AuditSubscriber(Path(__file__).resolve().parents[2])
+    openemr_client = OpenEMRClient(
+        enabled=settings["openemr_enabled"],
+        dry_run=settings["openemr_dry_run"],
+        base_url=settings["openemr_base_url"],
+        api_base_path=settings["openemr_api_base_path"],
+        timeout_seconds=settings["openemr_timeout_seconds"],
+        verify_ssl=settings["openemr_verify_ssl"],
+        client_id=settings["openemr_client_id"],
+        client_secret=settings["openemr_client_secret"],
+        oauth_enabled=settings["openemr_oauth_enabled"],
+        oauth_discovery_url=settings["openemr_oauth_discovery_url"],
+        oauth_token_url=settings["openemr_oauth_token_url"],
+        oauth_scope=settings["openemr_oauth_scope"],
+        oauth_audience=settings["openemr_oauth_audience"],
+        oauth_use_basic_fallback=settings["openemr_oauth_use_basic_fallback"],
+        username=settings["openemr_username"],
+        password=settings["openemr_password"],
+        outbound_log_path=settings["openemr_outbound_log_path"],
+    )
+    emr_service = EMRService(
+        client=openemr_client,
+        patient_repo=patient_repo,
+        visit_repo=visit_repo,
+        session_repo=session_repo,
+        memory_repo=memory_repo,
+        prepared_log_path=settings["openemr_prepared_log_path"],
+    )
+    openemr_sync_subscriber = OpenEMRSyncSubscriber(
+        emr_service=emr_service,
+        visit_repo=visit_repo,
+        session_repo=session_repo,
+    )
 
     bus.subscribe(PATIENT_STATE_CHANGED, patient_projection.handle_state_changed)
     bus.subscribe(TRIAGE_COMPLETED, lambda payload: audit.write(TRIAGE_COMPLETED, payload))
@@ -136,6 +171,10 @@ def create_container():
     bus.subscribe(QUEUE_TICKET_CALLED, lambda payload: audit.write(QUEUE_TICKET_CALLED, payload))
     bus.subscribe(TEST_ZONE_ASSIGNED, lambda payload: audit.write(TEST_ZONE_ASSIGNED, payload))
     bus.subscribe(TEST_REPORT_GENERATED, lambda payload: audit.write(TEST_REPORT_GENERATED, payload))
+    bus.subscribe(TRIAGE_COMPLETED, openemr_sync_subscriber.handle_triage_completed)
+    bus.subscribe(INTERNAL_MEDICINE_CONSULTATION_COMPLETED, openemr_sync_subscriber.handle_internal_medicine_completed)
+    bus.subscribe(TEST_REPORT_GENERATED, openemr_sync_subscriber.handle_test_report_generated)
+    bus.subscribe(VISIT_STATE_CHANGED, openemr_sync_subscriber.handle_visit_state_changed)
 
     return {
         "settings": settings,
@@ -146,6 +185,8 @@ def create_container():
         "queue_repo": queue_repo,
         "visit_repo": visit_repo,
         "event_bus": bus,
+        "openemr_client": openemr_client,
+        "emr_service": emr_service,
         "triage_service": triage_service,
         "internal_medicine_service": internal_medicine_service,
         "icu_doctor_service": icu_doctor_service,
@@ -188,6 +229,7 @@ def create_app() -> FastAPI:
     app.include_router(icu_router)
     app.include_router(patients_router)
     app.include_router(queues_router)
+    app.include_router(openemr_router)
     return app
 
 

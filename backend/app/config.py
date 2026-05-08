@@ -15,6 +15,17 @@ DEFAULT_SIMULATOR_SPAWN_INTERVAL_SECONDS = 8.0
 DEFAULT_SIMULATOR_MAX_ACTIVE_PATIENTS = 2
 DEFAULT_SIMULATOR_QUEUE_WAIT_SECONDS = 6.0
 DEFAULT_SIMULATOR_CONSULT_SECONDS = 9.0
+DEFAULT_OPENEMR_ENABLED = False
+DEFAULT_OPENEMR_BASE_URL = "http://localhost:8080"
+DEFAULT_OPENEMR_API_BASE_PATH = "/apis/default/fhir"
+DEFAULT_OPENEMR_TIMEOUT_SECONDS = 10
+DEFAULT_OPENEMR_VERIFY_SSL = False
+DEFAULT_OPENEMR_DRY_RUN = True
+DEFAULT_OPENEMR_OAUTH_ENABLED = True
+DEFAULT_OPENEMR_OAUTH_SCOPE = "api:fhir user/Patient.write user/DocumentReference.write"
+DEFAULT_OPENEMR_OAUTH_USE_BASIC_FALLBACK = True
+DEFAULT_OPENEMR_OUTBOUND_LOG_PATH = "backend/data/openemr_outbound_payloads.log"
+DEFAULT_OPENEMR_PREPARED_LOG_PATH = "backend/data/openemr_prepared_payloads.log"
 
 _DOTENV_LOADED = False
 
@@ -125,4 +136,43 @@ def get_settings() -> dict:
             os.getenv("SIMULATOR_CONSULT_SECONDS"),
             DEFAULT_SIMULATOR_CONSULT_SECONDS,
         ),
+        "openemr_enabled": _parse_bool(
+            os.getenv("OPENEMR_ENABLED"),
+            DEFAULT_OPENEMR_ENABLED,
+        ),
+        "openemr_base_url": os.getenv("OPENEMR_BASE_URL", "").strip() or DEFAULT_OPENEMR_BASE_URL,
+        "openemr_api_base_path": os.getenv("OPENEMR_API_BASE_PATH", "").strip() or DEFAULT_OPENEMR_API_BASE_PATH,
+        "openemr_client_id": os.getenv("OPENEMR_CLIENT_ID", "").strip() or None,
+        "openemr_client_secret": os.getenv("OPENEMR_CLIENT_SECRET", "").strip() or None,
+        "openemr_oauth_enabled": _parse_bool(
+            os.getenv("OPENEMR_OAUTH_ENABLED"),
+            DEFAULT_OPENEMR_OAUTH_ENABLED,
+        ),
+        "openemr_oauth_discovery_url": os.getenv("OPENEMR_OAUTH_DISCOVERY_URL", "").strip() or None,
+        "openemr_oauth_token_url": os.getenv("OPENEMR_OAUTH_TOKEN_URL", "").strip() or None,
+        "openemr_oauth_scope": os.getenv("OPENEMR_OAUTH_SCOPE", "").strip() or DEFAULT_OPENEMR_OAUTH_SCOPE,
+        "openemr_oauth_audience": os.getenv("OPENEMR_OAUTH_AUDIENCE", "").strip() or None,
+        "openemr_oauth_use_basic_fallback": _parse_bool(
+            os.getenv("OPENEMR_OAUTH_USE_BASIC_FALLBACK"),
+            DEFAULT_OPENEMR_OAUTH_USE_BASIC_FALLBACK,
+        ),
+        "openemr_username": os.getenv("OPENEMR_USERNAME", "").strip() or None,
+        "openemr_password": os.getenv("OPENEMR_PASSWORD", "").strip() or None,
+        "openemr_timeout_seconds": max(
+            1,
+            _parse_int(
+                os.getenv("OPENEMR_TIMEOUT_SECONDS"),
+                DEFAULT_OPENEMR_TIMEOUT_SECONDS,
+            ),
+        ),
+        "openemr_verify_ssl": _parse_bool(
+            os.getenv("OPENEMR_VERIFY_SSL"),
+            DEFAULT_OPENEMR_VERIFY_SSL,
+        ),
+        "openemr_dry_run": _parse_bool(
+            os.getenv("OPENEMR_DRY_RUN"),
+            DEFAULT_OPENEMR_DRY_RUN,
+        ),
+        "openemr_outbound_log_path": os.getenv("OPENEMR_OUTBOUND_LOG_PATH", "").strip() or DEFAULT_OPENEMR_OUTBOUND_LOG_PATH,
+        "openemr_prepared_log_path": os.getenv("OPENEMR_PREPARED_LOG_PATH", "").strip() or DEFAULT_OPENEMR_PREPARED_LOG_PATH,
     }

@@ -66,6 +66,7 @@ class PatientRepository:
                 "triage": {"level": None, "note": ""},
                 "session_id": None,
                 "visit_id": None,
+                "openemr_patient_id": None,
             }
         )
 
@@ -74,8 +75,8 @@ class PatientRepository:
         try:
             conn.execute(
                 """
-                INSERT INTO patients (id, name, lifecycle_state, display_state, priority, location, updated_at, triage_level, triage_note, session_id, visit_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO patients (id, name, lifecycle_state, display_state, priority, location, updated_at, triage_level, triage_note, session_id, visit_id, openemr_patient_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name=excluded.name,
                     lifecycle_state=excluded.lifecycle_state,
@@ -86,7 +87,8 @@ class PatientRepository:
                     triage_level=excluded.triage_level,
                     triage_note=excluded.triage_note,
                     session_id=excluded.session_id,
-                    visit_id=excluded.visit_id
+                    visit_id=excluded.visit_id,
+                    openemr_patient_id=excluded.openemr_patient_id
                 """,
                 (
                     payload["id"],
@@ -100,6 +102,7 @@ class PatientRepository:
                     payload["triage"]["note"],
                     payload.get("session_id"),
                     payload.get("visit_id"),
+                    payload.get("openemr_patient_id"),
                 ),
             )
             conn.commit()
@@ -140,9 +143,16 @@ class PatientRepository:
             },
             "session_id": kwargs.get("session_id", existing["session_id"]),
             "visit_id": kwargs.get("visit_id", existing.get("visit_id")),
+            "openemr_patient_id": kwargs.get("openemr_patient_id", existing.get("openemr_patient_id")),
         }
         self.save_view(payload)
         return self.get(patient_id)
+
+    def update_openemr_patient_id(self, patient_id: str, openemr_patient_id: str | None) -> dict:
+        existing = self.get(patient_id)
+        if not existing:
+            raise KeyError(patient_id)
+        return self.update_patient(patient_id, openemr_patient_id=openemr_patient_id)
 
     def to_view(
         self,
