@@ -33,7 +33,7 @@ Backend default URL:
 ## Frontend Startup
 ```powershell
 cd scene
-python -m http.server 5500
+www
 ```
 
 Frontend URL:
