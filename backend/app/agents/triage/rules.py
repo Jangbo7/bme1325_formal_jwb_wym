@@ -35,6 +35,39 @@ STOP_SYMPTOM_PHRASES = (
     "\u4e0d\u6e05\u695a",
     "pain score",
 )
+MAX_FOLLOWUP_ATTEMPTS_PER_FIELD = 2
+
+
+def _chinese_numeral_to_int(token: str) -> int | None:
+    mapping = {
+        "零": 0,
+        "〇": 0,
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+    }
+    token = (token or "").strip()
+    if not token:
+        return None
+    if token == "十":
+        return 10
+    if "十" in token:
+        parts = token.split("十")
+        tens = 1 if parts[0] == "" else mapping.get(parts[0])
+        ones = 0 if len(parts) < 2 or parts[1] == "" else mapping.get(parts[1])
+        if tens is None or ones is None:
+            return None
+        return tens * 10 + ones
+    if len(token) == 1:
+        return mapping.get(token)
+    return None
 
 
 def _safe_float(value, default):
@@ -138,6 +171,12 @@ def prioritize_missing_fields(shared_memory: dict, private_memory: dict | None =
     risk_flags = set(clinical.get("risk_flags") or [])
     asked_fields_history = (private_memory or {}).get("asked_fields_history", [])
     last_question_focus = (private_memory or {}).get("last_question_focus")
+    asked_counts = {field: asked_fields_history.count(field) for field in set(asked_fields_history)}
+
+    # Keep triage concise: do not repeatedly ask the same field too many times.
+    missing = [field for field in missing if asked_counts.get(field, 0) < MAX_FOLLOWUP_ATTEMPTS_PER_FIELD]
+    if not missing:
+        return []
 
     if "cardiopulmonary_alert" in risk_flags or any(term in symptoms_text for term in ("chest", "breath", "\u80f8\u75db", "\u80f8\u95f7", "\u547c\u5438\u56f0\u96be")):
         preferred = ["onset_time", "pain_score", "temp_c", "allergies", "symptoms", "chief_complaint"]
@@ -263,6 +302,29 @@ def extract_time_text(message: str) -> tuple[str | None, float]:
             return mapped, 0.8
     if "half hour" in lowered or "30 min" in lowered or "\u534a\u5c0f\u65f6" in message:
         return "30 minutes", 0.95
+    absolute_time_patterns = (
+        r"((?:\u4eca\u5929)?\u65e9\u4e0a|\u4e0a\u5348|\u4e2d\u5348|\u4e0b\u5348|\u665a\u4e0a|\u4eca\u665a|\u51cc\u6668|\u6628\u665a|\u6628\u5929\u665a\u4e0a)?\s*([0-2]?\d)\s*\u70b9(?:\s*([0-5]?\d)\s*\u5206)?(?:\u5de6\u53f3|\u591a|\u6574|\u534a)?",
+        r"((?:today|this morning|morning|afternoon|evening|last night)\\s*)?([0-2]?\\d)\\s*(?::([0-5]?\\d))?\\s*(am|pm)",
+    )
+    for pattern in absolute_time_patterns:
+        match = re.search(pattern, message, flags=re.IGNORECASE)
+        if match:
+            return match.group(0).strip(), 0.92
+
+    chinese_time_match = re.search(
+        r"((?:\u4eca\u5929)?\u65e9\u4e0a|\u4e0a\u5348|\u4e2d\u5348|\u4e0b\u5348|\u665a\u4e0a|\u4eca\u665a|\u51cc\u6668|\u6628\u665a|\u6628\u5929\u665a\u4e0a)?\s*([零〇一二两三四五六七八九十]{1,3})\s*\u70b9(?:\s*([零〇一二两三四五六七八九十]{1,3})\s*\u5206)?(?:\u5de6\u53f3|\u591a|\u6574|\u534a)?",
+        message,
+    )
+    if chinese_time_match:
+        hour_text = chinese_time_match.group(2) or ""
+        minute_text = chinese_time_match.group(3) or ""
+        hour = _chinese_numeral_to_int(hour_text)
+        minute = _chinese_numeral_to_int(minute_text) if minute_text else 0
+        if chinese_time_match.group(0).endswith("\u534a"):
+            minute = 30
+        if hour is not None and 0 <= hour <= 23 and minute is not None and 0 <= minute <= 59:
+            return chinese_time_match.group(0).strip(), 0.9
+
     for pattern in (
         r"(\d+)\s*(min|mins|minute|minutes|hour|hours|day|days)",
         r"(\d+)\s*(\u5206\u949f|\u5c0f\u65f6|\u5929)",
