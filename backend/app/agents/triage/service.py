@@ -38,6 +38,7 @@ TRIAGE_REUSABLE_VISIT_STATES = {
     VisitLifecycleState.WAITING_FOLLOWUP,
     VisitLifecycleState.TRIAGED,
 }
+MAX_TRIAGE_FOLLOWUP_ROUNDS = 3
 
 
 class TriageService:
@@ -450,6 +451,8 @@ class TriageService:
             return None
         question_focus = result.get("question_focus")
         if question_focus not in missing_fields:
+            question_focus = missing_fields[0] if missing_fields else None
+        if not question_focus:
             return None
         assistant_message = (result.get("assistant_message") or "").strip()
         if not assistant_message:
@@ -457,23 +460,9 @@ class TriageService:
         style_tag = result.get("style_tag") or "followup"
         if style_tag not in {"followup", "final_recommendation"}:
             return None
-        if assistant_message.count("\n") > 1 or len(assistant_message) > 90:
+        # Relax guardrails to avoid dropping valid LLM follow-ups too aggressively.
+        if assistant_message.count("\n") > 3 or len(assistant_message) > 220:
             return None
-        lowered = assistant_message.lower()
-        if not recommendation_changed:
-            repeated_tokens = [
-                (triage_result.get("department") or "").lower(),
-                f"priority {str(triage_result.get('priority') or '').lower()}",
-                "recommendation",
-                "department",
-                "\u5efa\u8bae",
-                "\u6025\u8bca",
-                "\u6025\u8a3a",
-                "\u79d1\u5ba4",
-                "\u8bc4\u4f30",
-            ]
-            if any(token and token in lowered for token in repeated_tokens):
-                return None
         last_question_text = (memory.private_memory.get("last_question_text") or "").strip()
         if last_question_text and assistant_message == last_question_text:
             return None
@@ -564,6 +553,10 @@ class TriageService:
         final_result = validate_triage_result(llm_result, fallback)
         evidence = [{"id": rule.get("id"), "title": rule.get("title"), "source": rule.get("source")} for rule in retrieved_rules]
         missing_fields = prioritize_missing_fields(memory.shared_memory, memory.private_memory)
+        followup_rounds = len(memory.private_memory.get("asked_fields_history") or [])
+        if missing_fields and followup_rounds >= MAX_TRIAGE_FOLLOWUP_ROUNDS:
+            # Hard stop for triage interaction length: force a final recommendation after 3 follow-up rounds.
+            missing_fields = []
         assistant_payload = self.generate_dialogue_payload(final_result, missing_fields, memory)
         return final_result, evidence, missing_fields, assistant_payload
 

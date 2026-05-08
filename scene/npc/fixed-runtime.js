@@ -119,8 +119,8 @@ function normalizePoint(point) {
   return { x, y, floor };
 }
 
-export function createFixedNpcRuntime({ rooms, roomBounds, canMoveTo }) {
-  const npcs = fixedNpcDefinitions
+export function createFixedNpcRuntime({ rooms, roomBounds, canMoveTo, extraDefinitions = [] }) {
+  const npcs = [...fixedNpcDefinitions, ...extraDefinitions]
     .map((definition) => resolveNpcInstance(definition, rooms, roomBounds, canMoveTo))
     .filter(Boolean);
 
