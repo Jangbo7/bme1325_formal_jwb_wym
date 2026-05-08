@@ -11,6 +11,11 @@ import { renderNpcDialogue } from "../ui/npc-dialogue.js";
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const floorStateLabel = document.getElementById("floor-state");
+const hudHelpToggle = document.getElementById("hudHelpToggle");
+const hudHelpPanel = document.getElementById("hudHelpPanel");
+const hudTasksToggle = document.getElementById("hudTasksToggle");
+const hudLabelsToggle = document.getElementById("hudLabelsToggle");
+const hudDebugToggle = document.getElementById("hudDebugToggle");
 
 const TILE = 32;
 const WALL_THICKNESS = TILE * 0.5;
@@ -31,6 +36,12 @@ const FLOOR_BASE_Z = { 1: 0, 2: FLOOR_HEIGHT };
 const keys = new Set();
 const camera = { x: 0, y: 0 };
 let fixedNpcRuntime = null;
+const overlayState = {
+  helpOpen: false,
+  tasksOpen: false,
+  labelsOpen: false,
+  debugOpen: false,
+};
 
 const palette = {
   roomFloor: "#705970",
@@ -367,6 +378,7 @@ function buildTriagePayloadFromForm() {
     fields: triageUi.fields,
     zoneLabel: zoneState.currentZoneLabel,
     floor: player.floor,
+    patientId: triageConversationState.patientId,
   });
 }
 
@@ -814,7 +826,7 @@ function drawFixedNpc(npc) {
     shadowColor: "rgba(0, 0, 0, 0.24)",
   });
   drawDefaultHead(top, npc.headColor);
-  drawFixedNpcLabel(npc, top);
+  if (overlayState.labelsOpen) drawFixedNpcLabel(npc, top);
   ctx.restore();
 }
 
@@ -823,6 +835,8 @@ function characterDepth(x, y) {
 }
 
 function drawLabels() {
+  if (!overlayState.labelsOpen) return;
+
   const labels = {
     registration: "Registration",
     consultation: "Consultation",
@@ -1030,6 +1044,8 @@ function drawFixedNpcHint() {
 }
 
 function drawTaskBoard() {
+  if (!overlayState.tasksOpen) return;
+
   const panelWidth = 430;
   const rowHeight = 20;
   const panelHeight = 38 + rowHeight * taskBoard.tasks.length;
@@ -1060,6 +1076,8 @@ function drawTaskBoard() {
 }
 
 function drawRuntimeDebugPanel() {
+  if (!overlayState.debugOpen) return;
+
   const panelWidth = 360;
   const panelHeight = 122;
   const panelX = 18;
@@ -1090,6 +1108,8 @@ function drawRuntimeDebugPanel() {
 }
 
 function drawZoneStatusPanel() {
+  if (!overlayState.debugOpen) return;
+
   const panelWidth = 360;
   const panelHeight = 136;
   const panelX = 18;
@@ -1156,6 +1176,54 @@ function drawFloorLayer(floor, activeDoor, dimmed) {
 
 function updateFloorHud() {
   if (floorStateLabel) floorStateLabel.textContent = `Current Floor: ${activeFloor}F`;
+}
+
+function syncHudToggleButton(button, active, ariaName = "pressed") {
+  if (!button) return;
+  button.classList.toggle("is-active", active);
+  button.setAttribute(`aria-${ariaName}`, String(active));
+}
+
+function syncOverlayUi() {
+  if (hudHelpPanel) hudHelpPanel.classList.toggle("hidden", !overlayState.helpOpen);
+  syncHudToggleButton(hudHelpToggle, overlayState.helpOpen, "expanded");
+  syncHudToggleButton(hudTasksToggle, overlayState.tasksOpen);
+  syncHudToggleButton(hudLabelsToggle, overlayState.labelsOpen);
+  syncHudToggleButton(hudDebugToggle, overlayState.debugOpen);
+}
+
+function closeOverlayPanels() {
+  const hadOpenPanel = overlayState.helpOpen || overlayState.tasksOpen || overlayState.labelsOpen || overlayState.debugOpen;
+  overlayState.helpOpen = false;
+  overlayState.tasksOpen = false;
+  overlayState.labelsOpen = false;
+  overlayState.debugOpen = false;
+  syncOverlayUi();
+  return hadOpenPanel;
+}
+
+function bindHudControls() {
+  hudHelpToggle?.addEventListener("click", () => {
+    overlayState.helpOpen = !overlayState.helpOpen;
+    syncOverlayUi();
+  });
+
+  hudTasksToggle?.addEventListener("click", () => {
+    overlayState.tasksOpen = !overlayState.tasksOpen;
+    syncOverlayUi();
+  });
+
+  hudLabelsToggle?.addEventListener("click", () => {
+    overlayState.labelsOpen = !overlayState.labelsOpen;
+    syncOverlayUi();
+  });
+
+  hudDebugToggle?.addEventListener("click", () => {
+    overlayState.debugOpen = !overlayState.debugOpen;
+    syncOverlayUi();
+  });
+
+  syncOverlayUi();
 }
 
 function switchFloor(nextFloor, targetPosition) {
@@ -1270,15 +1338,27 @@ const visitSessionState = {
   visit: null,
 };
 
+function getClientId() {
+  let clientId = localStorage.getItem('client_id');
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem('client_id', clientId);
+  }
+  return clientId;
+}
+
+const clientId = getClientId();
+const patientId = `P-${clientId}`;
+
 const triageConversationState = {
-  patientId: "P-self",
+  patientId: patientId,
   visitId: null,
-  sessionId: "session-main",
+  sessionId: null,
   sending: false,
 };
 
 const doctorConversationState = {
-  patientId: "P-self",
+  patientId: patientId,
   visitId: null,
   sessionId: null,
   sending: false,
@@ -1854,14 +1934,25 @@ async function submitTriageFromModal() {
     doctorConversationState.visitId = triageConversationState.visitId;
     closeTriageModal();
     openTriageDialogue(payload);
-    if (data.patient) {
-      agentStore.syncPatient(data.patient);
-      syncTriageDialogue(data.patient);
+    const responsePatient = data.patient && data.dialogue
+      ? { ...data.patient, dialogue: data.dialogue }
+      : data.patient;
+    if (responsePatient) {
+      agentStore.syncPatient(responsePatient);
+      syncTriageDialogue(responsePatient);
+    } else if (triageDialogueUi.status) {
+      triageDialogueUi.awaitingResult = false;
+      triageDialogueUi.status.textContent = "Triage response was empty. Please retry the triage card.";
     }
     await pollBackendStatuses(true);
   } catch (error) {
     backendState.connected = false;
     backendState.lastError = error?.message || "triage submit failed";
+    triageDialogueUi.awaitingResult = false;
+    if (triageDialogueUi.status) {
+      triageDialogueUi.status.textContent = `Triage submit failed: ${backendState.lastError}`;
+    }
+    pushStatusHint(`Triage submit failed: ${backendState.lastError}`);
   } finally {
     backendState.submitting = false;
   }
@@ -1869,30 +1960,48 @@ async function submitTriageFromModal() {
 
 async function submitTriageDialogueReply() {
   if (triageConversationState.sending || !triageDialogueUi.input) return;
+  if (!triageConversationState.sessionId) {
+    if (triageDialogueUi.status) {
+      triageDialogueUi.status.textContent = "No active triage session was found. Please submit a new triage card.";
+    }
+    pushStatusHint("No active triage session. Start triage again.");
+    return;
+  }
   const message = triageDialogueUi.input.value.trim();
   if (!message) return;
 
   triageConversationState.sending = true;
   if (triageDialogueUi.sendBtn) triageDialogueUi.sendBtn.disabled = true;
+  if (triageDialogueUi.status) {
+    triageDialogueUi.status.textContent = "Sending your reply to the triage agent...";
+  }
   try {
     const data = await backendClient.sendTriageMessage(triageConversationState.sessionId, {
       patient_id: triageConversationState.patientId,
+      visit_id: triageConversationState.visitId,
       name: "You (Player)",
       message,
     });
     triageDialogueUi.input.value = "";
     triageConversationState.visitId = data.visit_id || triageConversationState.visitId;
     doctorConversationState.visitId = triageConversationState.visitId;
-    if (data.patient) {
-      agentStore.syncPatient(data.patient);
-      syncTriageDialogue(data.patient);
+    const responsePatient = data.patient && data.dialogue
+      ? { ...data.patient, dialogue: data.dialogue }
+      : data.patient;
+    if (responsePatient) {
+      agentStore.syncPatient(responsePatient);
+      syncTriageDialogue(responsePatient);
+    } else if (triageDialogueUi.status) {
+      triageDialogueUi.status.textContent = "Triage response was empty. You can send the reply again.";
     }
     await pollBackendStatuses(true);
   } catch (error) {
     backendState.lastError = error?.message || "triage chat failed";
+    triageDialogueUi.awaitingResult = false;
     if (triageDialogueUi.status) {
       triageDialogueUi.status.textContent = `Dialogue send failed: ${backendState.lastError}`;
     }
+    pushStatusHint(`Triage dialogue failed: ${backendState.lastError}`);
   } finally {
     triageConversationState.sending = false;
     if (triageDialogueUi.sendBtn) triageDialogueUi.sendBtn.disabled = false;
@@ -2001,6 +2110,11 @@ function loop(now) {
 }
 
 window.addEventListener("keydown", (event) => {
+  if (!event.repeat && event.code === "Escape" && closeOverlayPanels()) {
+    event.preventDefault();
+    return;
+  }
+
   if (npcDialogueUi.open) {
     if (event.code === "Escape" && !event.repeat) {
       closeNpcDialogueModal();
@@ -2181,6 +2295,7 @@ if (triageUi.fields.pain && triageUi.painDisplay) {
   });
 }
 
+bindHudControls();
 updateFloorHud();
 pollBackendStatuses(true);
 window.dispatchEvent(new Event("resize"));

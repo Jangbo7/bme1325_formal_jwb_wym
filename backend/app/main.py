@@ -28,6 +28,8 @@ from app.events.types import (
     PATIENT_STATE_CHANGED,
     QUEUE_TICKET_CALLED,
     QUEUE_TICKET_CREATED,
+    TEST_REPORT_GENERATED,
+    TEST_ZONE_ASSIGNED,
     TRIAGE_COMPLETED,
     VISIT_STATE_CHANGED,
 )
@@ -132,6 +134,8 @@ def create_container():
     bus.subscribe(VISIT_STATE_CHANGED, lambda payload: audit.write(VISIT_STATE_CHANGED, payload))
     bus.subscribe(QUEUE_TICKET_CREATED, lambda payload: audit.write(QUEUE_TICKET_CREATED, payload))
     bus.subscribe(QUEUE_TICKET_CALLED, lambda payload: audit.write(QUEUE_TICKET_CALLED, payload))
+    bus.subscribe(TEST_ZONE_ASSIGNED, lambda payload: audit.write(TEST_ZONE_ASSIGNED, payload))
+    bus.subscribe(TEST_REPORT_GENERATED, lambda payload: audit.write(TEST_REPORT_GENERATED, payload))
 
     return {
         "settings": settings,
