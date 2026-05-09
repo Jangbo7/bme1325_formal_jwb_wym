@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.api.contract import require_encounter_id, require_patient_id
 
 router = APIRouter()
 
@@ -14,6 +15,7 @@ def openemr_health(request: Request):
 
 @router.post("/api/v1/openemr/sync/patient/{patient_id}")
 def sync_openemr_patient(patient_id: str, request: Request):
+    require_patient_id(patient_id, field="patient_id")
     patient_repo = request.app.state.container["patient_repo"]
     if not patient_repo.get(patient_id):
         raise HTTPException(status_code=404, detail="patient not found")
@@ -23,6 +25,7 @@ def sync_openemr_patient(patient_id: str, request: Request):
 
 @router.post("/api/v1/openemr/sync/visit/{visit_id}")
 def sync_openemr_visit(visit_id: str, request: Request):
+    require_encounter_id(visit_id, field="visit_id")
     visit_repo = request.app.state.container["visit_repo"]
     if not visit_repo.get(visit_id):
         raise HTTPException(status_code=404, detail="visit not found")
@@ -36,6 +39,7 @@ def sync_openemr_visit_notes(
     request: Request,
     force: bool = Query(default=False),
 ):
+    require_encounter_id(visit_id, field="visit_id")
     container = request.app.state.container
     visit = container["visit_repo"].get(visit_id)
     if not visit:

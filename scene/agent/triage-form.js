@@ -6,8 +6,9 @@ export function buildTriagePayloadFromFormValues({ fields, zoneLabel, floor, pat
   const diastolic = Number.parseInt(fields.diastolic?.value ?? "86", 10);
   const pain = Number.parseInt(fields.pain?.value ?? "5", 10);
 
+  const fallbackPatientId = `P-${Math.random().toString(16).slice(2, 10).padEnd(8, "0").slice(0, 8)}`;
   return {
-    patient_id: patientId || "P-self",
+    patient_id: patientId || fallbackPatientId,
     name: "You (Player)",
     symptoms,
     vitals: {

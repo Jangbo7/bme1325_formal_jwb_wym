@@ -1,6 +1,9 @@
+import json
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.internal_medicine import create_internal_medicine_service
@@ -9,6 +12,8 @@ from app.agents.triage.graph import LANGGRAPH_AVAILABLE, TriageGraph
 from app.agents.triage.service import TriageService
 from app.agents.triage.state_machine import TriageDialogueStateMachine
 from app.api.routes.health import router as health_router
+from app.api.routes.encounters import router as encounters_router
+from app.api.routes.events import router as events_router
 from app.api.routes.icu import router as icu_router
 from app.api.routes.internal_medicine import router as internal_medicine_router
 from app.api.routes.openemr import router as openemr_router
@@ -16,11 +21,24 @@ from app.api.routes.patients import router as patients_router
 from app.api.routes.queues import router as queues_router
 from app.api.routes.triage import router as triage_router
 from app.api.routes.visits import router as visits_router
+from app.api.contract import (
+    ContractError,
+    error_envelope,
+    fetch_idempotency_record,
+    map_exception,
+    new_trace_id,
+    normalize_success_payload,
+    request_fingerprint,
+    should_require_idempotency,
+    success_envelope,
+    upsert_idempotency_record,
+)
 from app.config import get_settings
 from app.database import Database
 from app.domain.patient.state_machine import PatientStateMachine
 from app.domain.visit.state_machine import VisitStateMachine
 from app.events.bus import EventBus
+from app.events.bridge import HospitalEventBridge, RedisMirrorPublisher
 from app.events.subscribers.audit import AuditSubscriber
 from app.events.subscribers.openemr_sync import OpenEMRSyncSubscriber
 from app.events.subscribers.patient_projection import PatientProjectionSubscriber
@@ -41,7 +59,7 @@ from app.repositories.queues import QueueRepository
 from app.repositories.sessions import SessionRepository
 from app.repositories.visits import VisitRepository
 from app.integrations.openemr import EMRService, OpenEMRClient
-from app.services import NpcPatientSimulator
+from app.services import EncounterOrchestrationService, NpcPatientSimulator
 
 
 def create_container():
@@ -57,8 +75,28 @@ def create_container():
     queue_repo = QueueRepository(db)
     visit_repo = VisitRepository(db)
     bus = EventBus()
+    redis_mirror_publisher = RedisMirrorPublisher(
+        enabled=settings["redis_mirror_enabled"],
+        host=settings["hospital_redis_host"],
+        port=settings["hospital_redis_port"],
+        db=settings["hospital_redis_db"],
+        password=settings["hospital_redis_password"],
+        channel_prefix=settings["hospital_redis_channel_prefix"],
+        durable_stream_enabled=settings["hospital_redis_durable_stream_enabled"],
+        durable_stream_key=settings["hospital_redis_durable_stream_key"],
+    )
+    event_bridge = HospitalEventBridge(
+        producer=settings["event_producer"],
+        redis_publisher=redis_mirror_publisher,
+    )
+    bus.tap(event_bridge.handle_internal_event)
     patient_state_machine = PatientStateMachine()
     visit_state_machine = VisitStateMachine()
+    encounter_orchestration_service = EncounterOrchestrationService(
+        visit_repo=visit_repo,
+        patient_repo=patient_repo,
+        bus=bus,
+    )
     dialogue_state_machine = TriageDialogueStateMachine()
     triage_service = TriageService(
         llm_settings={
@@ -94,6 +132,7 @@ def create_container():
         patient_state_machine=patient_state_machine,
         visit_state_machine=visit_state_machine,
         bus=bus,
+        encounter_orchestration_service=encounter_orchestration_service,
     )
 
     icu_doctor_service = create_icub_doctor_service(
@@ -184,7 +223,9 @@ def create_container():
         "memory_repo": memory_repo,
         "queue_repo": queue_repo,
         "visit_repo": visit_repo,
+        "encounter_orchestration_service": encounter_orchestration_service,
         "event_bus": bus,
+        "event_bridge": event_bridge,
         "openemr_client": openemr_client,
         "emr_service": emr_service,
         "triage_service": triage_service,
@@ -222,7 +263,177 @@ def create_app() -> FastAPI:
         # Backend model access still uses llm_api_key from backend/.env.
         return await call_next(request)
 
+    @app.middleware("http")
+    async def contract_middleware(request: Request, call_next):
+        trace_id = new_trace_id()
+        request.state.trace_id = trace_id
+        request.scope["trace_id"] = trace_id
+
+        method = request.method.upper()
+        path = request.url.path
+        idempotency_enabled = should_require_idempotency(method, path)
+        idempotency_key = None
+        request_hash = None
+        db = request.app.state.container["db"]
+
+        if idempotency_enabled:
+            idempotency_key = (request.headers.get("Idempotency-Key") or "").strip()
+            if not idempotency_key:
+                return JSONResponse(
+                    status_code=400,
+                    content=error_envelope(
+                        code="IDEMPOTENCY_KEY_REQUIRED",
+                        trace_id=trace_id,
+                        details={"header": "Idempotency-Key"},
+                    ),
+                )
+
+            body = await request.body()
+
+            async def receive():
+                return {"type": "http.request", "body": body, "more_body": False}
+
+            request = Request(request.scope, receive)
+            request.state.trace_id = trace_id
+            request_hash = request_fingerprint(
+                method=method,
+                path=path,
+                query=request.url.query,
+                body=body,
+            )
+            record = fetch_idempotency_record(
+                db,
+                key=idempotency_key,
+                method=method,
+                path=path,
+            )
+            if record:
+                if record["request_hash"] != request_hash:
+                    return JSONResponse(
+                        status_code=409,
+                        content=error_envelope(
+                            code="IDEMPOTENCY_KEY_REUSED",
+                            trace_id=trace_id,
+                            details={"method": method, "path": path},
+                        ),
+                    )
+                replay_body = json.loads(record["response_body"])
+                headers = {"X-Idempotent-Replay": "true", "X-Trace-Id": trace_id}
+                return JSONResponse(status_code=int(record["response_status"]), content=replay_body, headers=headers)
+
+        response = await call_next(request)
+
+        content_type = (response.headers.get("content-type") or "").lower()
+        is_sse = "text/event-stream" in content_type
+        payload_dict = None
+        response_bytes: bytes | None = None
+        if path.startswith("/api/v1/") and not is_sse and "application/json" in content_type:
+            if hasattr(response, "body_iterator"):
+                chunks: list[bytes] = []
+                async for chunk in response.body_iterator:
+                    chunks.append(chunk)
+                response_bytes = b"".join(chunks)
+            else:
+                response_bytes = getattr(response, "body", None)
+            if response_bytes:
+                try:
+                    payload = json.loads(response_bytes.decode("utf-8"))
+                    if isinstance(payload, dict) and {"ok", "data", "error", "trace_id"}.issubset(payload.keys()):
+                        payload_dict = payload
+                        if not payload_dict.get("trace_id"):
+                            payload_dict["trace_id"] = trace_id
+                    elif response.status_code < 400:
+                        payload_dict = success_envelope(normalize_success_payload(payload), trace_id)
+                except Exception:
+                    payload_dict = None
+
+        if payload_dict is not None:
+            preserved_headers = {
+                key: value
+                for key, value in response.headers.items()
+                if key.lower() not in {"content-length", "content-type"}
+            }
+            preserved_headers["X-Trace-Id"] = trace_id
+            response = JSONResponse(
+                status_code=response.status_code,
+                content=payload_dict,
+                headers=preserved_headers,
+            )
+        elif response_bytes is not None:
+            preserved_headers = {
+                key: value
+                for key, value in response.headers.items()
+                if key.lower() != "content-length"
+            }
+            response = Response(
+                content=response_bytes,
+                status_code=response.status_code,
+                headers=preserved_headers,
+                media_type=response.media_type,
+            )
+
+        if (
+            idempotency_enabled
+            and idempotency_key
+            and request_hash
+            and response.status_code < 500
+            and payload_dict is not None
+        ):
+            upsert_idempotency_record(
+                db,
+                key=idempotency_key,
+                method=method,
+                path=path,
+                request_hash=request_hash,
+                response_status=response.status_code,
+                response_body=payload_dict,
+            )
+
+        return response
+
+    @app.exception_handler(ContractError)
+    async def contract_error_handler(request: Request, exc: ContractError):
+        code, message, details, status_code = map_exception(exc)
+        trace_id = getattr(request.state, "trace_id", new_trace_id())
+        return JSONResponse(
+            status_code=status_code,
+            content=error_envelope(code=code, trace_id=trace_id, message=message, details=details),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError):
+        trace_id = getattr(request.state, "trace_id", new_trace_id())
+        return JSONResponse(
+            status_code=422,
+            content=error_envelope(
+                code="VALIDATION_ERROR",
+                trace_id=trace_id,
+                message="request validation failed",
+                details=exc.errors(),
+            ),
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_error_handler(request: Request, exc: HTTPException):
+        code, message, details, status_code = map_exception(exc)
+        trace_id = getattr(request.state, "trace_id", new_trace_id())
+        return JSONResponse(
+            status_code=status_code,
+            content=error_envelope(code=code, trace_id=trace_id, message=message, details=details),
+        )
+
+    @app.exception_handler(Exception)
+    async def global_error_handler(request: Request, exc: Exception):
+        code, message, details, status_code = map_exception(exc)
+        trace_id = getattr(request.state, "trace_id", new_trace_id())
+        return JSONResponse(
+            status_code=status_code,
+            content=error_envelope(code=code, trace_id=trace_id, message=message, details=details),
+        )
+
     app.include_router(health_router)
+    app.include_router(encounters_router)
+    app.include_router(events_router)
     app.include_router(visits_router)
     app.include_router(triage_router)
     app.include_router(internal_medicine_router)

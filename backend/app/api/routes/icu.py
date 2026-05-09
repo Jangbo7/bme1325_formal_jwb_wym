@@ -1,7 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
+from app.api.contract import require_patient_id
 from app.agents.icu_doctor.schemas import CreateICUSessionRequest, ICUMessageRequest
 
 
@@ -12,6 +13,7 @@ router = APIRouter()
 def create_icu_session(body: CreateICUSessionRequest, request: Request):
     service = request.app.state.container["icu_doctor_service"]
     payload = body.model_dump()
+    require_patient_id(payload.get("patient_id"), field="patient_id")
     payload["session_id"] = payload.get("session_id") or f"icu-session-{uuid.uuid4().hex[:8]}"
     return service.create_session(payload)
 
@@ -19,10 +21,14 @@ def create_icu_session(body: CreateICUSessionRequest, request: Request):
 @router.post("/api/v1/icu-sessions/{session_id}/messages")
 def send_icu_message(session_id: str, body: ICUMessageRequest, request: Request):
     service = request.app.state.container["icu_doctor_service"]
+    session_repo = request.app.state.container["session_repo"]
     payload = body.model_dump()
     if not payload.get("patient_id"):
-        session = request.app.state.container["session_repo"].get(session_id)
-        payload["patient_id"] = session["patient_id"] if session else "P-self"
+        session = session_repo.get(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="session not found")
+        payload["patient_id"] = session["patient_id"]
+    require_patient_id(payload.get("patient_id"), field="patient_id")
     return service.continue_session(session_id, payload)
 
 
@@ -31,7 +37,7 @@ def get_icu_session(session_id: str, request: Request):
     service = request.app.state.container["icu_doctor_service"]
     session = request.app.state.container["session_repo"].get(session_id)
     if not session:
-        return {"ok": False, "error": "Session not found"}
+        raise HTTPException(status_code=404, detail="session not found")
     patient_id = session["patient_id"]
     return {
         "ok": True,

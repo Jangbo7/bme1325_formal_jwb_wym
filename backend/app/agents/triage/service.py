@@ -38,6 +38,7 @@ TRIAGE_REUSABLE_VISIT_STATES = {
     VisitLifecycleState.WAITING_FOLLOWUP,
     VisitLifecycleState.TRIAGED,
 }
+MAX_TRIAGE_FOLLOWUP_ROUNDS = 3
 
 
 class TriageService:
@@ -105,6 +106,7 @@ class TriageService:
         current_department: str | None = None,
         active_agent_type: str | None = None,
         extra_data: dict | None = None,
+        event_payload: dict | None = None,
     ) -> dict | None:
         if not visit_id:
             return None
@@ -139,6 +141,7 @@ class TriageService:
                 "patient_id": visit_row["patient_id"],
                 "state": next_state.value,
                 "event": event,
+                **(event_payload or {}),
             },
         )
         return updated
@@ -450,6 +453,8 @@ class TriageService:
             return None
         question_focus = result.get("question_focus")
         if question_focus not in missing_fields:
+            question_focus = missing_fields[0] if missing_fields else None
+        if not question_focus:
             return None
         assistant_message = (result.get("assistant_message") or "").strip()
         if not assistant_message:
@@ -457,23 +462,9 @@ class TriageService:
         style_tag = result.get("style_tag") or "followup"
         if style_tag not in {"followup", "final_recommendation"}:
             return None
-        if assistant_message.count("\n") > 1 or len(assistant_message) > 90:
+        # Relax guardrails to avoid dropping valid LLM follow-ups too aggressively.
+        if assistant_message.count("\n") > 3 or len(assistant_message) > 220:
             return None
-        lowered = assistant_message.lower()
-        if not recommendation_changed:
-            repeated_tokens = [
-                (triage_result.get("department") or "").lower(),
-                f"priority {str(triage_result.get('priority') or '').lower()}",
-                "recommendation",
-                "department",
-                "\u5efa\u8bae",
-                "\u6025\u8bca",
-                "\u6025\u8a3a",
-                "\u79d1\u5ba4",
-                "\u8bc4\u4f30",
-            ]
-            if any(token and token in lowered for token in repeated_tokens):
-                return None
         last_question_text = (memory.private_memory.get("last_question_text") or "").strip()
         if last_question_text and assistant_message == last_question_text:
             return None
@@ -515,6 +506,28 @@ class TriageService:
             "priority": triage_result.get("priority"),
             "triage_level": triage_result.get("triage_level"),
         }
+
+    @staticmethod
+    def resolve_triage_route_hint(triage_result: dict) -> dict | None:
+        try:
+            triage_level = int(triage_result.get("triage_level"))
+        except Exception:
+            return None
+        if triage_level == 1:
+            return {
+                "event": "route_to_icu_rescue",
+                "visit_state": VisitLifecycleState.IN_ICU_RESCUE.value,
+                "department": "ICU",
+                "target": "ICU",
+            }
+        if triage_level in {2, 3}:
+            return {
+                "event": "route_to_emergency",
+                "visit_state": VisitLifecycleState.IN_EMERGENCY.value,
+                "department": "Emergency",
+                "target": "ED",
+            }
+        return None
 
     def generate_dialogue_payload(self, triage_result: dict, missing_fields: list[str], memory: WorkingMemory) -> dict:
         previous_snapshot = memory.private_memory.get("recommendation_snapshot")
@@ -564,6 +577,10 @@ class TriageService:
         final_result = validate_triage_result(llm_result, fallback)
         evidence = [{"id": rule.get("id"), "title": rule.get("title"), "source": rule.get("source")} for rule in retrieved_rules]
         missing_fields = prioritize_missing_fields(memory.shared_memory, memory.private_memory)
+        followup_rounds = len(memory.private_memory.get("asked_fields_history") or [])
+        if missing_fields and followup_rounds >= MAX_TRIAGE_FOLLOWUP_ROUNDS:
+            # Hard stop for triage interaction length: force a final recommendation after 3 follow-up rounds.
+            missing_fields = []
         assistant_payload = self.generate_dialogue_payload(final_result, missing_fields, memory)
         return final_result, evidence, missing_fields, assistant_payload
 
@@ -664,6 +681,36 @@ class TriageService:
             active_agent_type="triage" if missing_fields else None,
             extra_data={"triage_session_id": session_id},
         )
+        if not missing_fields and visit_state_row:
+            route_hint = self.resolve_triage_route_hint(triage_result)
+            if route_hint:
+                triage_route_hint = {
+                    "target": route_hint["target"],
+                    "source": "triage_level",
+                    "placeholder": True,
+                }
+                visit_state_row = self.transition_visit_state(
+                    visit_id,
+                    route_hint["event"],
+                    current_node="triage_route_placeholder",
+                    current_department=route_hint["department"],
+                    active_agent_type=None,
+                    extra_data={
+                        "triage_session_id": session_id,
+                        "triage_route_hint": triage_route_hint,
+                    },
+                    event_payload={
+                        "placeholder": True,
+                        "from_group": "OUT",
+                        "to_group": triage_route_hint["target"],
+                        "reason": "triage_high_risk_placeholder_route",
+                        "triage_level": triage_result.get("triage_level"),
+                    },
+                )
+                self.patient_repo.update_patient(
+                    patient_id,
+                    location=route_hint["department"],
+                )
         if visit_state_row:
             self.patient_repo.update_patient(patient_id, visit_id=visit_state_row["id"])
 

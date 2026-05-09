@@ -163,6 +163,18 @@ class Database:
                         created_at TEXT NOT NULL,
                         data_json TEXT NOT NULL
                     );
+
+                    CREATE TABLE IF NOT EXISTS idempotency_records (
+                        idempotency_key TEXT NOT NULL,
+                        method TEXT NOT NULL,
+                        path TEXT NOT NULL,
+                        request_hash TEXT NOT NULL,
+                        response_status INTEGER NOT NULL,
+                        response_body TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        PRIMARY KEY (idempotency_key, method, path)
+                    );
                     """
                 )
                 self._ensure_column(conn, "patients", "visit_id", "TEXT")
@@ -189,6 +201,7 @@ class Database:
             "queue_tickets",
             "triage_history",
             "patients",
+            "idempotency_records",
         ]
 
         with self.lock:

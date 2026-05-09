@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 
 router = APIRouter()
@@ -14,4 +14,6 @@ def list_patients(request: Request):
 def get_patient(patient_id: str, request: Request):
     service = request.app.state.container["triage_service"]
     patient = service.get_patient_view(patient_id)
-    return {"patient": patient.model_dump() if patient else None}
+    if not patient:
+        raise HTTPException(status_code=404, detail="patient not found")
+    return {"patient": patient.model_dump()}

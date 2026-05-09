@@ -13,7 +13,7 @@ class VitalsPayload(BaseModel):
 
 
 class CreateInternalMedicineSessionRequest(BaseModel):
-    patient_id: str = "P-self"
+    patient_id: str
     visit_id: str
     session_id: str | None = None
     name: str = "You (Player)"
@@ -27,6 +27,7 @@ class CreateInternalMedicineSessionRequest(BaseModel):
     chronic_conditions: list[str] = Field(default_factory=list)
     location: str | None = None
     floor: int | None = None
+    round: int | None = None
 
 
 class InternalMedicineMessageRequest(BaseModel):

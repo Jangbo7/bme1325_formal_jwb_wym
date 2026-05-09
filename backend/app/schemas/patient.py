@@ -44,6 +44,7 @@ class PatientView(BaseModel):
     updated_at: str
     session_id: str | None = None
     visit_id: str | None = None
+    encounter_id: str | None = None
     visit_state: VisitLifecycleState | None = None
     active_agent_type: str | None = None
     session_refs: dict = Field(default_factory=dict)

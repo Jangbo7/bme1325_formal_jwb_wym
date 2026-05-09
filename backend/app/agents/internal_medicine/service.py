@@ -61,6 +61,7 @@ class InternalMedicineService:
         bus,
         graph,
         test_simulator=None,
+        encounter_orchestration_service=None,
     ):
         self.llm_settings = llm_settings
         self.patient_repo = patient_repo
@@ -74,6 +75,7 @@ class InternalMedicineService:
         self.bus = bus
         self.graph = graph
         self.test_simulator = test_simulator or TestSimulationAgent()
+        self.encounter_orchestration_service = encounter_orchestration_service
 
     def create_session(self, payload: dict):
         return self.graph.invoke({"mode": "create_session", "payload": payload})
@@ -102,7 +104,21 @@ class InternalMedicineService:
         visit_row = self.visit_repo.get(visit_id) if visit_id else self.visit_repo.get_active_by_patient(patient_id)
         visit_data = self._decode_visit_data(visit_row)
 
-        session_id = visit_data.get("internal_medicine_session_id")
+        visit_state_text = (visit_row.get("state") or "") if visit_row else ""
+        is_second_consultation_flow = visit_state_text in {
+            VisitLifecycleState.IN_SECOND_CONSULTATION.value,
+            VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
+            VisitLifecycleState.WAITING_PAYMENT.value,
+            VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
+            VisitLifecycleState.DISPOSITION_PENDING.value,
+            VisitLifecycleState.WAITING_PHARMACY.value,
+            VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
+            VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
+            VisitLifecycleState.DISPOSITION_REFERRAL.value,
+        }
+        session_id = visit_data.get("internal_medicine_round2_session_id") if is_second_consultation_flow else None
+        if not session_id:
+            session_id = visit_data.get("internal_medicine_session_id")
         if not session_id:
             latest_row = self.session_repo.get_latest_by_visit_and_agent(visit_row["id"], "internal_medicine") if visit_row else None
             session_id = latest_row["id"] if latest_row else None
@@ -133,6 +149,7 @@ class InternalMedicineService:
         session_refs = {
             "triage_session_id": visit_data.get("triage_session_id"),
             "internal_medicine_session_id": session_id,
+            "internal_medicine_round2_session_id": visit_data.get("internal_medicine_round2_session_id"),
         }
         return self.patient_repo.to_view(
             patient,
@@ -157,10 +174,19 @@ class InternalMedicineService:
         visit_row = self.visit_repo.get(visit_id) if visit_id else None
         if not visit_row or visit_row.get("patient_id") != patient_id:
             raise ValueError("visit not found")
-        if VisitLifecycleState(visit_row["state"]) != VisitLifecycleState.IN_CONSULTATION:
+        visit_state = VisitLifecycleState(visit_row["state"])
+        if visit_state == VisitLifecycleState.IN_CONSULTATION:
+            consultation_round = 1
+        elif visit_state == VisitLifecycleState.IN_SECOND_CONSULTATION:
+            consultation_round = 2
+        else:
             raise ValueError("visit is not in consultation")
-        if PatientLifecycleState(patient_row["lifecycle_state"]) != PatientLifecycleState.IN_CONSULTATION:
+        patient_state = PatientLifecycleState(patient_row["lifecycle_state"])
+        if consultation_round == 1 and patient_state != PatientLifecycleState.IN_CONSULTATION:
             raise ValueError("patient is not in consultation")
+        if consultation_round == 2 and patient_state not in {PatientLifecycleState.IN_CONSULTATION, PatientLifecycleState.IN_TEST}:
+            raise ValueError("patient is not ready for second consultation")
+        payload["_consultation_round"] = consultation_round
         self.session_repo.create_or_update(
             session_id,
             patient_id,
@@ -233,6 +259,7 @@ class InternalMedicineService:
         private_memory.setdefault("latest_summary", {})
         private_memory.setdefault("consultation_progress", {})
         private_memory.setdefault("final_result", {})
+        private_memory.setdefault("consultation_round", int(payload.get("_consultation_round") or 1))
         private_memory["dialogue_state"] = dialogue_state.value
 
         progress = ConsultationProgress.from_dict(private_memory.get("consultation_progress"))
@@ -275,6 +302,16 @@ class InternalMedicineService:
         merged["onset_time"] = payload.get("onset_time") or clinical.get("onset_time")
         merged["allergies"] = payload.get("allergies") or shared_memory["profile"].get("allergies") or []
         merged["visit_id"] = payload.get("visit_id")
+        visit_id = payload.get("visit_id")
+        if visit_id:
+            visit_row = self.visit_repo.get(visit_id)
+            visit_data = self._get_visit_data(visit_row) if visit_row else {}
+            simulated_report = visit_data.get("simulated_report")
+            diagnostic_session = visit_data.get("diagnostic_session")
+            if isinstance(simulated_report, dict):
+                merged["simulated_report"] = simulated_report
+            if isinstance(diagnostic_session, dict):
+                merged["diagnostic_session"] = diagnostic_session
         return merged
 
     def request_consultation_from_llm(
@@ -447,6 +484,7 @@ class InternalMedicineService:
         progress = memory.consultation_progress
         was_completed = progress.completed
         progress.completed = complete
+        consultation_round = int(private_memory.get("consultation_round") or 1)
         message_type = assistant_payload.get("message_type", "final" if complete else "followup")
         assistant_message = assistant_payload.get("assistant_message", "")
 
@@ -484,11 +522,12 @@ class InternalMedicineService:
                 "test_category": consultation_result.get("test_category"),
                 "test_required": consultation_result.get("test_required", True),
                 "question_focus": progress.last_question_focus,
+                "round": consultation_round,
             },
         )
         existing_patient = self.patient_repo.get(patient_id)
         next_patient_state = None
-        if complete and not was_completed and existing_patient:
+        if consultation_round == 1 and complete and not was_completed and existing_patient:
             current_patient_state = PatientLifecycleState(existing_patient["lifecycle_state"])
             next_patient_state = self.patient_state_machine.transition(current_patient_state, "internal_medicine_completed")
 
@@ -516,7 +555,7 @@ class InternalMedicineService:
 
         visit_row = self.visit_repo.get(payload.get("visit_id")) if payload.get("visit_id") else None
         if visit_row:
-            if complete and not was_completed:
+            if consultation_round == 1 and complete and not was_completed:
                 visit_data = self._get_visit_data(visit_row)
                 simulation_report = self.test_simulator.generate_report(consultation_result, shared)
                 assigned_category = simulation_report["category_code"]
@@ -545,8 +584,9 @@ class InternalMedicineService:
                     active_agent_type=None,
                     extra_data={
                         "internal_medicine_session_id": session_id,
+                        "internal_medicine_round": consultation_round,
                         "diagnostic_session": diagnostic_session,
-                        "test_required": consultation_result.get("test_required", True),
+                        "test_required": True,
                         "test_category": assigned_category,
                         "test_category_label": assigned_zone_label,
                         "test_items": simulation_report.get("test_items", []),
@@ -583,6 +623,42 @@ class InternalMedicineService:
                         "priority": consultation_result.get("priority"),
                     },
                 )
+            elif consultation_round == 2 and complete and not was_completed:
+                visit_data = self._get_visit_data(visit_row)
+                visit_data["internal_medicine_round2_session_id"] = session_id
+                visit_data["internal_medicine_round2_summary"] = {
+                    "assistant_message": assistant_message,
+                    "department": consultation_result.get("department"),
+                    "priority": consultation_result.get("priority"),
+                    "diagnosis_level": consultation_result.get("diagnosis_level"),
+                    "updated_at": timestamp,
+                }
+                finalized_visit = self._transition_visit(
+                    visit_row,
+                    "finalize_diagnosis",
+                    current_node="diagnosis_finalized",
+                    current_department="Consultation",
+                    active_agent_type="internal_medicine",
+                    extra_data=visit_data,
+                )
+                self._transition_visit(
+                    finalized_visit,
+                    "request_medical_payment",
+                    current_node="payment_wait",
+                    current_department="Payment",
+                    active_agent_type=None,
+                    extra_data=self._get_visit_data(finalized_visit),
+                )
+                self.bus.publish(
+                    INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
+                    {
+                        "patient_id": patient_id,
+                        "session_id": session_id,
+                        "visit_id": visit_row["id"],
+                        "department": consultation_result.get("department"),
+                        "priority": consultation_result.get("priority"),
+                    },
+                )
             elif not complete:
                 self._update_visit_agent_context(visit_row, session_id, active_agent_type="internal_medicine")
 
@@ -597,6 +673,7 @@ class InternalMedicineService:
             "missing_fields": private_memory.get("missing_fields", []),
             "turns": self.session_repo.list_turns(session_id),
             "message_type": private_memory.get("message_type", "followup"),
+            "round": int(private_memory.get("consultation_round") or 1),
             "question_focus": progress.last_question_focus,
             "asked_fields_history": progress.asked_fields_history,
             "final_result": private_memory.get("final_result", {}),
@@ -612,7 +689,11 @@ class InternalMedicineService:
 
     def _update_visit_agent_context(self, visit_row: dict, session_id: str, active_agent_type: str | None) -> dict:
         data = self._get_visit_data(visit_row)
-        data["internal_medicine_session_id"] = session_id
+        visit_state = VisitLifecycleState(visit_row["state"])
+        if visit_state == VisitLifecycleState.IN_SECOND_CONSULTATION:
+            data["internal_medicine_round2_session_id"] = session_id
+        else:
+            data["internal_medicine_session_id"] = session_id
         updated = self.visit_repo.update_visit(
             visit_row["id"],
             current_node="internal_medicine_consultation",
@@ -641,28 +722,46 @@ class InternalMedicineService:
         active_agent_type: str | None = None,
         extra_data: dict | None = None,
     ) -> dict:
-        current_state = VisitLifecycleState(visit_row["state"])
-        next_state = self.visit_state_machine.transition(current_state, event)
-        data = self._get_visit_data(visit_row)
+        next_state_value = None
+        base_row = visit_row
+        if self.encounter_orchestration_service is not None:
+            transition = self.encounter_orchestration_service.transition(
+                visit_row["id"],
+                event,
+                context={"source": "internal_medicine_service"},
+            )
+            next_state_value = transition.internal_to_state
+            base_row = self.visit_repo.get(visit_row["id"]) or visit_row
+        else:
+            current_state = VisitLifecycleState(visit_row["state"])
+            next_state = self.visit_state_machine.transition(current_state, event)
+            next_state_value = next_state.value
+        data = self._get_visit_data(base_row)
         if extra_data:
-            data.update(extra_data)
+            protected_keys = {"orchestration_state", "orchestration_history", "orchestration_debug_log"}
+            for key, value in extra_data.items():
+                if key in protected_keys:
+                    continue
+                data[key] = value
+        refreshed = self.visit_repo.get(visit_row["id"]) or base_row
         updated = self.visit_repo.update_visit(
             visit_row["id"],
-            state=next_state.value,
-            current_node=current_node if current_node is not None else visit_row.get("current_node"),
-            current_department=current_department if current_department is not None else visit_row.get("current_department"),
-            active_agent_type=active_agent_type if active_agent_type is not None else visit_row.get("active_agent_type"),
+            state=next_state_value,
+            current_node=current_node if current_node is not None else refreshed.get("current_node"),
+            current_department=current_department if current_department is not None else refreshed.get("current_department"),
+            active_agent_type=active_agent_type if active_agent_type is not None else refreshed.get("active_agent_type"),
             data=data,
         )
-        self.bus.publish(
-            VISIT_STATE_CHANGED,
-            {
-                "visit_id": updated["id"],
-                "patient_id": updated["patient_id"],
-                "state": updated["state"],
-                "event": event,
-            },
-        )
+        if self.encounter_orchestration_service is None:
+            self.bus.publish(
+                VISIT_STATE_CHANGED,
+                {
+                    "visit_id": updated["id"],
+                    "patient_id": updated["patient_id"],
+                    "state": updated["state"],
+                    "event": event,
+                },
+            )
         return updated
 
     @staticmethod

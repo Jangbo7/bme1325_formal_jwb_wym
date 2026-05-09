@@ -12,7 +12,7 @@ class VitalsPayload(BaseModel):
 
 
 class CreateICUSessionRequest(BaseModel):
-    patient_id: str = "P-self"
+    patient_id: str
     session_id: str | None = None
     name: str = "You (Player)"
     age: int | None = None

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hospital Sandbox Pseudo 3D Prototype</title>
+  <title>Hospital Village 2D Prototype</title>
   <link rel="stylesheet" href="./styles.css" />
   <link rel="icon" type="image/png" href="./img/head_photo-head@1x.png" />
   <link rel="shortcut icon" href="./img/head_photo-head@1x.png" />
@@ -11,7 +11,7 @@
 <body>
   <div class="hud">
     <div class="hud__topline">
-      <div class="hud__title">Hospital Pseudo 3D</div>
+      <div class="hud__title">Hospital Village 2D</div>
       <div class="hud__buttons">
         <button type="button" class="hud__btn" id="hudHelpToggle" aria-expanded="false" aria-controls="hudHelpPanel">Help</button>
         <button type="button" class="hud__btn" id="hudTasksToggle" aria-pressed="false">Tasks</button>
@@ -20,13 +20,13 @@
       </div>
     </div>
     <div class="hud__panel hidden" id="hudHelpPanel">
-      <div class="hud__tips">Move: WASD / Arrows. Use stairs to switch floor. Press E to talk to nearby staff and interact with triage, registration, and doctor entry.</div>
+      <div class="hud__tips">Move: WASD / Arrows. Press E to talk to nearby staff and interact with triage, registration, and doctor entry. Follow the glowing highlight for the next objective.</div>
     </div>
     <div class="hud__floor">
-      <span id="floor-state">Current Floor: 1F</span>
+      <span id="floor-state">Current Zone: Main Campus</span>
     </div>
   </div>
-  <canvas id="game" width="1280" height="720" aria-label="third person pseudo 3d hospital sandbox"></canvas>
+  <canvas id="game" width="1280" height="720" aria-label="top down 2d hospital village sandbox"></canvas>
 
   <div id="triageModal" class="triage-modal hidden" aria-hidden="true">
     <div class="triage-modal__content" role="dialog" aria-modal="true" aria-labelledby="triageModalTitle">
@@ -97,6 +97,43 @@
     </div>
   </div>
 
+  <div id="registrationModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content" role="dialog" aria-modal="true" aria-labelledby="registrationModalTitle">
+      <h2 id="registrationModalTitle">Registration Profile</h2>
+      <form id="registrationForm" class="triage-form">
+        <fieldset>
+          <label for="registrationName">Name</label>
+          <input id="registrationName" type="text" value="You (Player)" required />
+        </fieldset>
+
+        <fieldset>
+          <label for="registrationSex">Sex</label>
+          <select id="registrationSex">
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+            <option value="other">Other</option>
+            <option value="unknown" selected>Unknown</option>
+          </select>
+        </fieldset>
+
+        <fieldset>
+          <label for="registrationAge">Age</label>
+          <input id="registrationAge" type="number" min="0" max="120" value="30" required />
+        </fieldset>
+
+        <fieldset>
+          <label for="registrationIdNumber">ID Number</label>
+          <input id="registrationIdNumber" type="text" value="TEMP-REG-0001" required />
+        </fieldset>
+
+        <div class="triage-form__actions">
+          <button type="button" id="registrationCancelBtn" class="triage-btn triage-btn--ghost">Cancel</button>
+          <button type="submit" class="triage-btn triage-btn--primary">Submit Registration</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="doctorDialogueModal" class="triage-modal hidden" aria-hidden="true">
     <div class="triage-modal__content triage-dialogue" role="dialog" aria-modal="true" aria-labelledby="doctorDialogueTitle">
       <div class="triage-dialogue__header">
@@ -121,6 +158,24 @@
           <button type="submit" id="doctorDialogueSendBtn" class="triage-btn triage-btn--primary">Send</button>
         </form>
       </div>
+    </div>
+  </div>
+
+  <div id="testReportModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content triage-dialogue test-report" role="dialog" aria-modal="true" aria-labelledby="testReportTitle">
+      <div class="triage-dialogue__header">
+        <div>
+          <h2 id="testReportTitle">Simulated Test Report</h2>
+          <p id="testReportStatus" class="triage-dialogue__status">Latest diagnostic report.</p>
+        </div>
+        <button type="button" id="testReportCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+      <div class="triage-dialogue__meta">
+        <span id="testReportCategoryBadge" class="triage-badge">Category: -</span>
+        <span id="testReportTimeBadge" class="triage-badge triage-badge--muted">Generated: -</span>
+      </div>
+      <div id="testReportItems" class="test-report__items">Items: -</div>
+      <pre id="testReportBody" class="test-report__body">No report available.</pre>
     </div>
   </div>
 

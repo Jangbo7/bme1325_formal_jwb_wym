@@ -18,6 +18,15 @@ def headers():
     return {"X-API-Key": "mock-key-001"}
 
 
+def registration_payload(name: str = "Player"):
+    return {
+        "name": name,
+        "sex": "unknown",
+        "age": 30,
+        "id_number": "TEMP-REG-0001",
+    }
+
+
 def test_create_visit_returns_active_visit(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
 
@@ -84,11 +93,53 @@ def test_register_requires_triaged_visit(tmp_path, monkeypatch):
     )
     visit_id = visit_resp.json()["visit"]["id"]
 
+    register_name = "Alice Zhang"
     register_resp = client.post(
         f"/api/v1/visits/{visit_id}/register",
         headers=headers(),
+        json=registration_payload(register_name),
     )
     assert register_resp.status_code == 409
+
+
+def test_register_heals_stale_orchestration_snapshot(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    session_id = f"session-{uuid.uuid4().hex[:8]}"
+
+    triage_resp = client.post(
+        "/api/v1/triage-sessions",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "session_id": session_id,
+            "name": "Player",
+            "symptoms": "mild cough",
+            "onset_time": "1 day",
+            "allergies": [],
+            "vitals": {"heart_rate": 88, "temp_c": 37.2, "pain_score": 2},
+        },
+    )
+    assert triage_resp.status_code == 200
+    visit_id = triage_resp.json()["visit_id"]
+
+    app = client.app
+    visit_repo = app.state.container["visit_repo"]
+    visit_row = visit_repo.get(visit_id)
+    data = visit_repo.to_view(visit_row).data
+    data["orchestration_state"] = "ARRIVED"
+    visit_repo.update_visit(visit_id, data=data)
+
+    register_resp = client.post(
+        f"/api/v1/visits/{visit_id}/register",
+        headers=headers(),
+        json=registration_payload("Player"),
+    )
+    assert register_resp.status_code == 200
+    assert register_resp.json()["visit"]["state"] == "registered"
+
+    updated_visit = client.get(f"/api/v1/visits/{visit_id}", headers=headers())
+    assert updated_visit.status_code == 200
+    assert updated_visit.json()["visit"]["data"]["orchestration_state"] == "REGISTERED"
 
 
 def test_strict_flow_triage_register_wait_call_enter(tmp_path, monkeypatch):
@@ -102,10 +153,10 @@ def test_strict_flow_triage_register_wait_call_enter(tmp_path, monkeypatch):
             "patient_id": "P-self",
             "session_id": session_id,
             "name": "Player",
-            "symptoms": "fever",
+            "symptoms": "mild cough",
             "onset_time": "1 day",
             "allergies": [],
-            "vitals": {"heart_rate": 90, "temp_c": 38.5, "pain_score": 2},
+            "vitals": {"heart_rate": 88, "temp_c": 37.2, "pain_score": 2},
         },
     )
     assert triage_resp.status_code == 200
@@ -117,12 +168,24 @@ def test_strict_flow_triage_register_wait_call_enter(tmp_path, monkeypatch):
     all_waiting_after_triage = [ticket for group in queues_after_triage.json()["queues"] for ticket in group["waiting"]]
     assert not [ticket for ticket in all_waiting_after_triage if ticket["patient_id"] == "P-self"]
 
-    register_resp = client.post(f"/api/v1/visits/{visit_id}/register", headers=headers())
+    register_name = "Alice Zhang"
+    register_resp = client.post(
+        f"/api/v1/visits/{visit_id}/register",
+        headers=headers(),
+        json=registration_payload(register_name),
+    )
     assert register_resp.status_code == 200
     register_data = register_resp.json()
     assert register_data["visit"]["state"] == "registered"
     assert register_data["patient"]["lifecycle_state"] == "queued"
+    assert register_data["patient"]["name"] == register_name
     assert register_data["queue_ticket"]["status"] == "waiting"
+    queues_after_register = client.get("/api/v1/queues", headers=headers())
+    assert queues_after_register.status_code == 200
+    waiting_after_register = [ticket for group in queues_after_register.json()["queues"] for ticket in group["waiting"]]
+    self_ticket = next((ticket for ticket in waiting_after_register if ticket["patient_id"] == "P-self"), None)
+    assert self_ticket is not None
+    assert self_ticket["patient_name"] == register_name
 
     progress_resp = client.post(f"/api/v1/visits/{visit_id}/progress", headers=headers())
     assert progress_resp.status_code == 200
@@ -160,16 +223,20 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
             "patient_id": "P-self",
             "session_id": session_id,
             "name": "Player",
-            "symptoms": "fever",
+            "symptoms": "mild cough",
             "onset_time": "1 day",
             "allergies": [],
-            "vitals": {"heart_rate": 90, "temp_c": 38.5, "pain_score": 2},
+            "vitals": {"heart_rate": 88, "temp_c": 37.2, "pain_score": 2},
         },
     )
     assert triage_resp.status_code == 200
     visit_id = triage_resp.json()["visit_id"]
 
-    register_resp = client.post(f"/api/v1/visits/{visit_id}/register", headers=headers())
+    register_resp = client.post(
+        f"/api/v1/visits/{visit_id}/register",
+        headers=headers(),
+        json=registration_payload("Player"),
+    )
     assert register_resp.status_code == 200
 
     app = client.app
@@ -281,9 +348,103 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
     assert patient_view["dialogue_source_agent"] == "internal_medicine"
     assert patient_view["session_refs"]["internal_medicine_session_id"] == doctor_create_data["session_id"]
 
-    ready_payment_resp = client.post(f"/api/v1/visits/{visit_id}/ready-payment", headers=headers())
-    assert ready_payment_resp.status_code == 200
-    assert ready_payment_resp.json()["visit"]["state"] == "waiting_payment"
+    request_test_payment_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "request_test_payment"},
+    )
+    assert request_test_payment_resp.status_code == 200
+    assert request_test_payment_resp.json()["encounter"]["state"].lower() == "waiting_test_payment"
 
-    duplicate_ready_payment_resp = client.post(f"/api/v1/visits/{visit_id}/ready-payment", headers=headers())
-    assert duplicate_ready_payment_resp.status_code == 409
+    pay_test_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "pay_test"},
+    )
+    assert pay_test_resp.status_code == 200
+    assert pay_test_resp.json()["encounter"]["state"].lower() == "test_payment_completed"
+
+    start_exam_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "start_exam"},
+    )
+    assert start_exam_resp.status_code == 200
+    assert start_exam_resp.json()["encounter"]["state"].lower() == "in_test"
+
+    finish_exam_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "finish_exam"},
+    )
+    assert finish_exam_resp.status_code == 200
+    assert finish_exam_resp.json()["encounter"]["state"].lower() == "waiting_return_consultation"
+
+    results_ready_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "results_ready"},
+    )
+    assert results_ready_resp.status_code == 200
+    assert results_ready_resp.json()["encounter"]["state"].lower() == "results_ready"
+
+    queue_second_consultation_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "queue_second_consultation"},
+    )
+    assert queue_second_consultation_resp.status_code == 200
+    assert queue_second_consultation_resp.json()["encounter"]["state"].lower() == "waiting_second_consultation"
+
+    start_second_consultation_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "start_second_consultation"},
+    )
+    assert start_second_consultation_resp.status_code == 200
+    assert start_second_consultation_resp.json()["encounter"]["state"].lower() == "in_second_consultation"
+
+    doctor_round2_create_resp = client.post(
+        "/api/v1/internal-medicine-sessions",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "name": "Player",
+            "visit_id": visit_id,
+        },
+    )
+    assert doctor_round2_create_resp.status_code == 200
+    doctor_round2_create_data = doctor_round2_create_resp.json()
+    assert doctor_round2_create_data["visit_state"] == "in_second_consultation"
+    assert doctor_round2_create_data["session_id"] != doctor_create_data["session_id"]
+
+    doctor_round2_message_1_resp = client.post(
+        f"/api/v1/internal-medicine-sessions/{doctor_round2_create_data['session_id']}/messages",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "visit_id": visit_id,
+            "name": "Player",
+            "message": "I completed the test and I am back for report review.",
+        },
+    )
+    assert doctor_round2_message_1_resp.status_code == 200
+    assert doctor_round2_message_1_resp.json()["visit_state"] == "in_second_consultation"
+
+    doctor_round2_message_2_resp = client.post(
+        f"/api/v1/internal-medicine-sessions/{doctor_round2_create_data['session_id']}/messages",
+        headers=headers(),
+        json={
+            "patient_id": "P-self",
+            "visit_id": visit_id,
+            "name": "Player",
+            "message": "Please finalize the diagnosis and treatment plan based on the report.",
+        },
+    )
+    assert doctor_round2_message_2_resp.status_code == 200
+    assert doctor_round2_message_2_resp.json()["visit_state"] == "waiting_payment"
+    assert doctor_round2_message_2_resp.json()["dialogue"]["status"] == "completed"
+
+    simulated_report_resp = client.get(f"/api/v1/visits/{visit_id}/simulated-report", headers=headers())
+    assert simulated_report_resp.status_code == 200
+    assert simulated_report_resp.json()["report"]["report_text"]

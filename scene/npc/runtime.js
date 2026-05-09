@@ -1,5 +1,5 @@
 export function createNpcRuntime({ rooms, roomBounds, canMoveTo, project, constants }) {
-  const { CHARACTER_BODY_HEIGHT, CHARACTER_FOOT_RADIUS, CHARACTER_HEAD_RADIUS } = constants;
+  const { CHARACTER_FOOT_RADIUS } = constants;
   const npcs = initRandomNpcs(rooms, roomBounds, canMoveTo);
 
   function initRandomNpcs(allRooms, boundsFn, canMove) {
@@ -27,8 +27,11 @@ export function createNpcRuntime({ rooms, roomBounds, canMoveTo, project, consta
         targetY: null,
         walkTimer: 0,
         walkInterval: 2200 + Math.random() * 3500,
-        bodyColor: "#6ed3b1",
+        bodyColor: "#7dbf83",
+        accentColor: "#c6dd8f",
         headColor: "#f0c9b7",
+        hairColor: "#5d4128",
+        facing: "down",
       });
     }
     return list;
@@ -83,6 +86,11 @@ export function createNpcRuntime({ rooms, roomBounds, canMoveTo, project, consta
       }
       const vx = (dx / dist) * npc.speed * delta;
       const vy = (dy / dist) * npc.speed * delta;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        npc.facing = dx < 0 ? "left" : "right";
+      } else if (Math.abs(dy) > 0) {
+        npc.facing = dy < 0 ? "up" : "down";
+      }
       const nx = npc.x + vx;
       const ny = npc.y + vy;
       if (canMoveTo(nx, ny, npc.floor)) {
@@ -101,28 +109,40 @@ export function createNpcRuntime({ rooms, roomBounds, canMoveTo, project, consta
     for (const npc of npcs) {
       if (npc.floor !== floor) continue;
       const base = project(npc.x, npc.y, 0, npc.floor);
-      const top = project(npc.x, npc.y, CHARACTER_BODY_HEIGHT - 2, npc.floor);
+      const px = Math.round(base.x);
+      const py = Math.round(base.y);
       ctx.save();
       ctx.globalAlpha *= alpha;
-      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fillStyle = "rgba(44, 30, 18, 0.22)";
       ctx.beginPath();
-      ctx.ellipse(base.x, base.y + 8, CHARACTER_FOOT_RADIUS + 3, CHARACTER_FOOT_RADIUS - 1, 0, 0, Math.PI * 2);
+      ctx.ellipse(px, py + 12, CHARACTER_FOOT_RADIUS + 4, CHARACTER_FOOT_RADIUS - 1, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = npc.bodyColor;
-      ctx.lineWidth = 8;
-      ctx.beginPath();
-      ctx.moveTo(base.x, base.y - 1);
-      ctx.lineTo(top.x, top.y + 6);
-      ctx.stroke();
+
+      ctx.fillStyle = "#4d4d5c";
+      ctx.fillRect(px - 8, py + 4, 5, 11);
+      ctx.fillRect(px + 3, py + 4, 5, 11);
+
+      ctx.fillStyle = npc.bodyColor;
+      ctx.fillRect(px - 11, py - 15, 22, 21);
+      ctx.fillStyle = npc.accentColor;
+      ctx.fillRect(px - 9, py - 13, 18, 8);
+
+      if (npc.facing === "left") {
+        ctx.fillRect(px - 14, py - 12, 4, 11);
+      } else if (npc.facing === "right") {
+        ctx.fillRect(px + 10, py - 12, 4, 11);
+      }
+
       ctx.fillStyle = npc.headColor;
-      ctx.beginPath();
-      ctx.arc(top.x, top.y - 4, CHARACTER_HEAD_RADIUS - 1, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(px - 8, py - 28, 16, 16);
+      ctx.fillStyle = npc.hairColor;
+      ctx.fillRect(px - 8, py - 28, 16, 5);
+
       if (npc.state === "waiting") {
         ctx.fillStyle = "#ffe99c";
-        ctx.font = "10px 'Segoe UI'";
+        ctx.font = "600 10px 'Trebuchet MS'";
         ctx.textAlign = "center";
-        ctx.fillText("Waiting", top.x, top.y - 16);
+        ctx.fillText("Waiting", px, py - 34);
       }
       ctx.restore();
     }

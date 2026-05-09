@@ -1,7 +1,7 @@
-import uuid
 from datetime import datetime, timezone
 
 from app.database import Database
+from app.domain.identifiers import generate_encounter_id
 from app.schemas.common import VisitLifecycleState
 from app.schemas.visit import VisitView
 
@@ -29,7 +29,7 @@ class VisitRepository:
         active_agent_type: str | None = None,
         data: dict | None = None,
     ) -> dict:
-        visit_id = f"visit-{uuid.uuid4().hex[:10]}"
+        visit_id = generate_encounter_id()
         timestamp = now_iso()
         payload = {
             "id": visit_id,
@@ -183,6 +183,7 @@ class VisitRepository:
     def to_view(self, row: dict) -> VisitView:
         return VisitView(
             id=row["id"],
+            encounter_id=row["id"],
             patient_id=row["patient_id"],
             state=VisitLifecycleState(row["state"]),
             current_node=row.get("current_node"),

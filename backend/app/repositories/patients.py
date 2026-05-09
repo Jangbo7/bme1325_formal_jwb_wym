@@ -19,10 +19,10 @@ class PatientRepository:
     def _seed_defaults(self) -> None:
         if self.get("P-self") is None:
             self.upsert_basic("P-self", "You (Player)")
-        if self.get("P-102") is None:
+        if self.get("P-00000102") is None:
             self.save_view(
                 {
-                    "id": "P-102",
+                    "id": "P-00000102",
                     "name": "Wang Ayi",
                     "lifecycle_state": PatientLifecycleState.QUEUED.value,
                     "state": "Queued",
@@ -34,10 +34,10 @@ class PatientRepository:
                     "visit_id": None,
                 }
             )
-        if self.get("P-203") is None:
+        if self.get("P-00000203") is None:
             self.save_view(
                 {
-                    "id": "P-203",
+                    "id": "P-00000203",
                     "name": "Li Xiansheng",
                     "lifecycle_state": PatientLifecycleState.IN_CONSULTATION.value,
                     "state": "In Consultation",
@@ -184,6 +184,7 @@ class PatientRepository:
             updated_at=patient_row["updated_at"],
             session_id=patient_row.get("session_id"),
             visit_id=visit_id,
+            encounter_id=visit_id,
             visit_state=visit_state,
             active_agent_type=active_agent_type,
             session_refs=session_refs or {},

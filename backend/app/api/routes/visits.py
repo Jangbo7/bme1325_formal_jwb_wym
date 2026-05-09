@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.api.contract import require_encounter_id, require_patient_id
 from app.events.types import PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, VISIT_STATE_CHANGED
 from app.schemas.common import PatientLifecycleState, QueueTicketStatus, VisitLifecycleState
-from app.schemas.visit import CreateVisitRequest
+from app.schemas.visit import CreateVisitRequest, RegisterVisitRequest
 
 
 router = APIRouter()
@@ -42,16 +43,44 @@ def _get_visit_data(visit_row: dict) -> dict:
 
 
 def _transition_visit(container: dict, visit_row: dict, event: str, *, current_node: str | None = None, current_department: str | None = None, active_agent_type: str | None = None, data: dict | None = None) -> dict:
-    visit_state_machine = container["visit_state_machine"]
     visit_repo = container["visit_repo"]
     bus = container["event_bus"]
+    orchestration = container.get("encounter_orchestration_service")
+    if orchestration is not None:
+        try:
+            orchestration.transition(
+                visit_row["id"],
+                event,
+                dry_run=False,
+                context={"source": "visits.route"},
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        updated_after_state = visit_repo.get(visit_row["id"]) or visit_row
+        merged_data = _get_visit_data(updated_after_state)
+        if data is not None:
+            protected_keys = {"orchestration_state", "orchestration_history", "orchestration_debug_log"}
+            for key, value in data.items():
+                if key in protected_keys:
+                    continue
+                merged_data[key] = value
+        return visit_repo.update_visit(
+            visit_row["id"],
+            current_node=current_node if current_node is not None else updated_after_state.get("current_node"),
+            current_department=current_department if current_department is not None else updated_after_state.get("current_department"),
+            active_agent_type=active_agent_type if active_agent_type is not None else updated_after_state.get("active_agent_type"),
+            data=merged_data,
+        )
 
+    next_state_value = visit_row["state"]
+    visit_state_machine = container["visit_state_machine"]
     current_state = VisitLifecycleState(visit_row["state"])
     next_state = visit_state_machine.transition(current_state, event)
+    next_state_value = next_state.value
 
     updated = visit_repo.update_visit(
         visit_row["id"],
-        state=next_state.value,
+        state=next_state_value,
         current_node=current_node if current_node is not None else visit_row.get("current_node"),
         current_department=current_department if current_department is not None else visit_row.get("current_department"),
         active_agent_type=active_agent_type if active_agent_type is not None else visit_row.get("active_agent_type"),
@@ -101,6 +130,7 @@ def create_or_get_visit(body: CreateVisitRequest, request: Request):
     payload = body.model_dump()
 
     patient_id = payload["patient_id"]
+    require_patient_id(patient_id, field="patient_id")
     name = payload.get("name") or "You (Player)"
     patient_repo.upsert_basic(patient_id, name)
 
@@ -111,6 +141,7 @@ def create_or_get_visit(body: CreateVisitRequest, request: Request):
 
 @router.get("/api/v1/visits/{visit_id}")
 def get_visit(visit_id: str, request: Request):
+    require_encounter_id(visit_id, field="visit_id")
     visit_repo = request.app.state.container["visit_repo"]
     visit = visit_repo.get(visit_id)
     if not visit:
@@ -119,7 +150,8 @@ def get_visit(visit_id: str, request: Request):
 
 
 @router.post("/api/v1/visits/{visit_id}/register")
-def register_visit(visit_id: str, request: Request):
+def register_visit(visit_id: str, body: RegisterVisitRequest, request: Request):
+    require_encounter_id(visit_id, field="visit_id")
     container = request.app.state.container
     visit_repo = container["visit_repo"]
     patient_repo = container["patient_repo"]
@@ -143,8 +175,17 @@ def register_visit(visit_id: str, request: Request):
     if visit_state != VisitLifecycleState.TRIAGED:
         raise HTTPException(status_code=409, detail="visit must be triaged before registration")
 
+    profile_payload = body.model_dump()
+    registration_profile = {
+        "name": (profile_payload.get("name") or "You (Player)").strip() or "You (Player)",
+        "sex": (profile_payload.get("sex") or "unknown").strip() or "unknown",
+        "age": max(0, int(profile_payload.get("age") or 0)),
+        "id_number": (profile_payload.get("id_number") or "TEMP-REG-0001").strip() or "TEMP-REG-0001",
+    }
+
     visit_data = _get_visit_data(visit_row)
     visit_data["registration_completed_at"] = now_iso()
+    visit_data["registration_profile"] = registration_profile
     visit_row = _transition_visit(
         container,
         visit_row,
@@ -170,6 +211,7 @@ def register_visit(visit_id: str, request: Request):
 
     patient_repo.update_patient(
         patient_id,
+        name=registration_profile["name"],
         lifecycle_state=next_state.value,
         location=FIXED_QUEUE_DEPARTMENT_NAME,
         visit_id=visit_row["id"],
@@ -187,6 +229,7 @@ def register_visit(visit_id: str, request: Request):
 
 @router.post("/api/v1/visits/{visit_id}/progress")
 def progress_visit(visit_id: str, request: Request):
+    require_encounter_id(visit_id, field="visit_id")
     container = request.app.state.container
     visit_repo = container["visit_repo"]
     patient_repo = container["patient_repo"]
@@ -262,6 +305,7 @@ def progress_visit(visit_id: str, request: Request):
 
 @router.post("/api/v1/visits/{visit_id}/enter-consultation")
 def enter_consultation(visit_id: str, request: Request):
+    require_encounter_id(visit_id, field="visit_id")
     container = request.app.state.container
     visit_repo = container["visit_repo"]
     patient_repo = container["patient_repo"]
@@ -321,6 +365,7 @@ def enter_consultation(visit_id: str, request: Request):
 
 @router.post("/api/v1/visits/{visit_id}/ready-payment")
 def ready_payment(visit_id: str, request: Request):
+    require_encounter_id(visit_id, field="visit_id")
     container = request.app.state.container
     visit_repo = container["visit_repo"]
 
@@ -329,16 +374,35 @@ def ready_payment(visit_id: str, request: Request):
         raise HTTPException(status_code=404, detail="visit not found")
 
     visit_state = VisitLifecycleState(visit_row["state"])
-    if visit_state != VisitLifecycleState.WAITING_TEST:
-        raise HTTPException(status_code=409, detail="visit is not in waiting_test")
+    if visit_state != VisitLifecycleState.DIAGNOSIS_FINALIZED:
+        raise HTTPException(status_code=409, detail="visit is not in diagnosis_finalized")
 
     visit_row = _transition_visit(
         container,
         visit_row,
-        "ready_payment",
+        "request_medical_payment",
         current_node="payment_wait",
         current_department="Payment",
         active_agent_type=None,
         data=_get_visit_data(visit_row),
     )
     return {"ok": True, "visit": visit_repo.to_view(visit_row).model_dump()}
+
+
+@router.get("/api/v1/visits/{visit_id}/simulated-report")
+def get_simulated_report(visit_id: str, request: Request):
+    require_encounter_id(visit_id, field="visit_id")
+    visit_repo = request.app.state.container["visit_repo"]
+    visit_row = visit_repo.get(visit_id)
+    if not visit_row:
+        raise HTTPException(status_code=404, detail="visit not found")
+    visit_data = _get_visit_data(visit_row)
+    report = visit_data.get("simulated_report")
+    if not isinstance(report, dict):
+        raise HTTPException(status_code=404, detail="simulated report not found")
+    return {
+        "ok": True,
+        "visit_id": visit_id,
+        "visit_state": visit_row.get("state"),
+        "report": report,
+    }

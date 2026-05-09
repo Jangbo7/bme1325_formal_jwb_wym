@@ -12,7 +12,7 @@ class VitalsPayload(BaseModel):
 
 
 class CreateTriageSessionRequest(BaseModel):
-    patient_id: str = "P-self"
+    patient_id: str
     session_id: str | None = None
     visit_id: str | None = None
     name: str = "You (Player)"

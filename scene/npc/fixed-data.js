@@ -46,6 +46,7 @@ export const roomKindLabels = {
   registration: "Registration",
   triage: "Triage",
   pharmacy: "Pharmacy",
+  empty_room: "Reserved",
 };
 
 export const fixedNpcDefinitions = [
@@ -81,7 +82,7 @@ export const fixedNpcDefinitions = [
     id: "ward-nurse",
     name: "Sera",
     roleLabel: "Nurse",
-    floor: 2,
+    floor: 1,
     roomKind: "ward",
     roomIndex: 0,
     placement: { x: 0.42, y: 0.55 },
@@ -95,7 +96,7 @@ export const fixedNpcDefinitions = [
     id: "icu-nurse",
     name: "Ivan",
     roleLabel: "Nurse",
-    floor: 2,
+    floor: 1,
     roomKind: "icu",
     roomIndex: 0,
     placement: { x: 0.58, y: 0.52 },
@@ -109,7 +110,7 @@ export const fixedNpcDefinitions = [
     id: "lab-tech",
     name: "Jun",
     roleLabel: "Lab Tech",
-    floor: 2,
+    floor: 1,
     roomKind: "lab",
     roomIndex: 0,
     placement: { x: 0.56, y: 0.48 },
@@ -123,7 +124,7 @@ export const fixedNpcDefinitions = [
     id: "office-admin",
     name: "Nora",
     roleLabel: "Admin",
-    floor: 2,
+    floor: 1,
     roomKind: "office",
     roomIndex: 0,
     placement: { x: 0.48, y: 0.52 },

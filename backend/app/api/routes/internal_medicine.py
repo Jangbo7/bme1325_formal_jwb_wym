@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.api.contract import require_encounter_id, require_patient_id
 from app.agents.internal_medicine.schemas import CreateInternalMedicineSessionRequest, InternalMedicineMessageRequest
 
 
@@ -12,6 +13,8 @@ router = APIRouter()
 def create_internal_medicine_session(body: CreateInternalMedicineSessionRequest, request: Request):
     service = request.app.state.container["internal_medicine_service"]
     payload = body.model_dump()
+    require_patient_id(payload.get("patient_id"), field="patient_id")
+    require_encounter_id(payload.get("visit_id"), field="visit_id")
     payload["session_id"] = payload.get("session_id") or f"im-session-{uuid.uuid4().hex[:8]}"
     try:
         return service.create_session(payload)
@@ -30,6 +33,9 @@ def send_internal_medicine_message(session_id: str, body: InternalMedicineMessag
         payload["patient_id"] = session["patient_id"]
     if not payload.get("visit_id"):
         payload["visit_id"] = session.get("visit_id")
+    require_patient_id(payload.get("patient_id"), field="patient_id")
+    if payload.get("visit_id"):
+        require_encounter_id(payload.get("visit_id"), field="visit_id")
     try:
         return service.continue_session(session_id, payload)
     except ValueError as exc:

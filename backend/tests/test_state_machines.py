@@ -40,8 +40,19 @@ def test_visit_state_machine_allows_restart_from_in_test():
 
     machine = VisitStateMachine()
     assert machine.transition(VisitLifecycleState.WAITING_TEST, "begin_triage") == VisitLifecycleState.TRIAGING
-    state = machine.transition(VisitLifecycleState.IN_TEST, "begin_triage")
-    assert state == VisitLifecycleState.TRIAGING
+    state = machine.transition(VisitLifecycleState.IN_TEST, "finish_exam")
+    assert state == VisitLifecycleState.WAITING_RETURN_CONSULTATION
+
+
+def test_visit_state_machine_blocks_waiting_test_shortcut_to_payment():
+    from app.domain.visit.state_machine import VisitStateMachine
+
+    machine = VisitStateMachine()
+    try:
+        machine.transition(VisitLifecycleState.WAITING_TEST, "ready_payment")
+        assert False, "ready_payment shortcut should be blocked in waiting_test"
+    except ValueError:
+        pass
 
 
 def test_internal_medicine_state_machine_allows_reassessment_after_completion():

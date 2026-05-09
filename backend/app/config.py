@@ -6,7 +6,7 @@ DEFAULT_BACKEND_HOST = "127.0.0.1"
 DEFAULT_BACKEND_PORT = 8787
 DEFAULT_MOCK_API_KEY = "mock-key-001"
 DEFAULT_LLM_ENDPOINT = "https://genaiapi.shanghaitech.edu.cn/api/v1/start"
-DEFAULT_LLM_MODEL = "GPT-5.2"
+DEFAULT_LLM_MODEL = "deepseek-v3:671b"
 DEFAULT_DATABASE_URL = "sqlite:///backend/data/app.db"
 DEFAULT_RESET_ON_SERVER_START = True
 DEFAULT_SIMULATOR_ENABLED = True
@@ -26,6 +26,24 @@ DEFAULT_OPENEMR_OAUTH_SCOPE = "api:fhir user/Patient.write user/DocumentReferenc
 DEFAULT_OPENEMR_OAUTH_USE_BASIC_FALLBACK = True
 DEFAULT_OPENEMR_OUTBOUND_LOG_PATH = "backend/data/openemr_outbound_payloads.log"
 DEFAULT_OPENEMR_PREPARED_LOG_PATH = "backend/data/openemr_prepared_payloads.log"
+DEFAULT_REDIS_MIRROR_ENABLED = True
+DEFAULT_HOSPITAL_REDIS_HOST = "127.0.0.1"
+DEFAULT_HOSPITAL_REDIS_PORT = 6379
+DEFAULT_HOSPITAL_REDIS_DB = 0
+DEFAULT_HOSPITAL_REDIS_CHANNEL_PREFIX = "hospital"
+DEFAULT_HOSPITAL_REDIS_DURABLE_STREAM_ENABLED = False
+DEFAULT_HOSPITAL_REDIS_DURABLE_STREAM_KEY = "hospital:journal"
+DEFAULT_EVENT_PRODUCER = "groupA.outpatient"
+DEFAULT_STATE_DEBUG_ENABLED = True
+DEFAULT_STATE_DEBUG_ALLOW_FORCE = True
+
+MODEL_API_KEY_ENV_MAP = {
+    "GPT-5.2": "GPT52_API_KEY",
+    "deepseek-v3:671b": "DEEPSEEK_V3_API_KEY",
+    "deepseek-r1:671b": "DEEPSEEK_R1_API_KEY",
+    "qwen-instruct": "QWEN_API_KEY",
+    "qwen2.5-vl-instruct": "QWEN_VL_API_KEY",
+}
 
 _DOTENV_LOADED = False
 
@@ -86,15 +104,25 @@ def _parse_float(value: str | None, default: float) -> float:
         return default
 
 
+def _resolve_llm_api_key(model_name: str) -> str:
+    specific_key_env = MODEL_API_KEY_ENV_MAP.get(model_name, "")
+    if specific_key_env:
+        specific_key = os.getenv(specific_key_env, "").strip()
+        if specific_key:
+            return specific_key
+
+    return (
+        os.getenv("LLM_API_KEY", "").strip()
+        or os.getenv("OPENAI_API_KEY", "").strip()
+    )
+
+
 def get_settings() -> dict:
     base_dir = Path(__file__).resolve().parent.parent
     _load_dotenv(base_dir / ".env")
 
-    llm_api_key = (
-        os.getenv("GPT52_API_KEY", "").strip()
-        or os.getenv("LLM_API_KEY", "").strip()
-        or os.getenv("OPENAI_API_KEY", "").strip()
-    )
+    llm_model = os.getenv("LLM_MODEL", "").strip() or DEFAULT_LLM_MODEL
+    llm_api_key = _resolve_llm_api_key(llm_model)
 
     return {
         "host": os.getenv("BACKEND_HOST", "").strip() or DEFAULT_BACKEND_HOST,
@@ -102,7 +130,7 @@ def get_settings() -> dict:
         "mock_api_key": os.getenv("MOCK_API_KEY", "").strip() or DEFAULT_MOCK_API_KEY,
         "mock_key_source": "env" if os.getenv("MOCK_API_KEY", "").strip() else "fallback",
         "llm_endpoint": os.getenv("LLM_ENDPOINT", "").strip() or DEFAULT_LLM_ENDPOINT,
-        "llm_model": os.getenv("LLM_MODEL", "").strip() or DEFAULT_LLM_MODEL,
+        "llm_model": llm_model,
         "llm_api_key": llm_api_key,
         "database_url": os.getenv("DATABASE_URL", "").strip() or DEFAULT_DATABASE_URL,
         "reset_on_server_start": _parse_bool(
@@ -175,4 +203,39 @@ def get_settings() -> dict:
         ),
         "openemr_outbound_log_path": os.getenv("OPENEMR_OUTBOUND_LOG_PATH", "").strip() or DEFAULT_OPENEMR_OUTBOUND_LOG_PATH,
         "openemr_prepared_log_path": os.getenv("OPENEMR_PREPARED_LOG_PATH", "").strip() or DEFAULT_OPENEMR_PREPARED_LOG_PATH,
+        "redis_mirror_enabled": _parse_bool(
+            os.getenv("REDIS_MIRROR_ENABLED"),
+            DEFAULT_REDIS_MIRROR_ENABLED,
+        ),
+        "hospital_redis_host": os.getenv("HOSPITAL_REDIS_HOST", "").strip() or DEFAULT_HOSPITAL_REDIS_HOST,
+        "hospital_redis_port": max(
+            1,
+            _parse_int(
+                os.getenv("HOSPITAL_REDIS_PORT"),
+                DEFAULT_HOSPITAL_REDIS_PORT,
+            ),
+        ),
+        "hospital_redis_db": max(
+            0,
+            _parse_int(
+                os.getenv("HOSPITAL_REDIS_DB"),
+                DEFAULT_HOSPITAL_REDIS_DB,
+            ),
+        ),
+        "hospital_redis_password": os.getenv("HOSPITAL_REDIS_PASSWORD", "").strip() or None,
+        "hospital_redis_channel_prefix": os.getenv("HOSPITAL_REDIS_CHANNEL_PREFIX", "").strip() or DEFAULT_HOSPITAL_REDIS_CHANNEL_PREFIX,
+        "hospital_redis_durable_stream_enabled": _parse_bool(
+            os.getenv("HOSPITAL_REDIS_DURABLE_STREAM_ENABLED"),
+            DEFAULT_HOSPITAL_REDIS_DURABLE_STREAM_ENABLED,
+        ),
+        "hospital_redis_durable_stream_key": os.getenv("HOSPITAL_REDIS_DURABLE_STREAM_KEY", "").strip() or DEFAULT_HOSPITAL_REDIS_DURABLE_STREAM_KEY,
+        "event_producer": os.getenv("EVENT_PRODUCER", "").strip() or DEFAULT_EVENT_PRODUCER,
+        "state_debug_enabled": _parse_bool(
+            os.getenv("STATE_DEBUG_ENABLED"),
+            DEFAULT_STATE_DEBUG_ENABLED,
+        ),
+        "state_debug_allow_force": _parse_bool(
+            os.getenv("STATE_DEBUG_ALLOW_FORCE"),
+            DEFAULT_STATE_DEBUG_ALLOW_FORCE,
+        ),
     }

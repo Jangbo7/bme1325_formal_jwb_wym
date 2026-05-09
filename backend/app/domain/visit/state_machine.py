@@ -30,7 +30,17 @@ VISIT_TRANSITIONS = {
     },
     VisitLifecycleState.TRIAGED: {
         "triage_completed": VisitLifecycleState.TRIAGED,
+        "route_to_emergency": VisitLifecycleState.IN_EMERGENCY,
+        "route_to_icu_rescue": VisitLifecycleState.IN_ICU_RESCUE,
         "register_completed": VisitLifecycleState.REGISTERED,
+        "begin_triage": VisitLifecycleState.TRIAGING,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.IN_EMERGENCY: {
+        "begin_triage": VisitLifecycleState.TRIAGING,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.IN_ICU_RESCUE: {
         "begin_triage": VisitLifecycleState.TRIAGING,
         "mark_error": VisitLifecycleState.ERROR,
     },
@@ -47,15 +57,48 @@ VISIT_TRANSITIONS = {
     VisitLifecycleState.WAITING_PAYMENT: {"mark_error": VisitLifecycleState.ERROR},
     VisitLifecycleState.WAITING_TEST: {
         "begin_triage": VisitLifecycleState.TRIAGING,
-        "ready_payment": VisitLifecycleState.WAITING_PAYMENT,
+        "request_test_payment": VisitLifecycleState.WAITING_TEST_PAYMENT,
+        "results_ready": VisitLifecycleState.RESULTS_READY,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.WAITING_TEST_PAYMENT: {
+        "pay_test": VisitLifecycleState.TEST_PAYMENT_COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.TEST_PAYMENT_COMPLETED: {
+        "start_exam": VisitLifecycleState.IN_TEST,
         "mark_error": VisitLifecycleState.ERROR,
     },
     VisitLifecycleState.IN_TEST: {
-        "begin_triage": VisitLifecycleState.TRIAGING,
+        "finish_exam": VisitLifecycleState.WAITING_RETURN_CONSULTATION,
         "mark_error": VisitLifecycleState.ERROR,
     },
-    VisitLifecycleState.WAITING_RETURN_CONSULTATION: {"mark_error": VisitLifecycleState.ERROR},
+    VisitLifecycleState.WAITING_RETURN_CONSULTATION: {
+        "results_ready": VisitLifecycleState.RESULTS_READY,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.RESULTS_READY: {
+        "queue_second_consultation": VisitLifecycleState.WAITING_SECOND_CONSULTATION,
+        "start_second_consultation": VisitLifecycleState.IN_SECOND_CONSULTATION,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.WAITING_SECOND_CONSULTATION: {
+        "start_second_consultation": VisitLifecycleState.IN_SECOND_CONSULTATION,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.IN_SECOND_CONSULTATION: {
+        "finalize_diagnosis": VisitLifecycleState.DIAGNOSIS_FINALIZED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.DIAGNOSIS_FINALIZED: {
+        "request_medical_payment": VisitLifecycleState.WAITING_PAYMENT,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
     VisitLifecycleState.WAITING_PHARMACY: {"mark_error": VisitLifecycleState.ERROR},
+    VisitLifecycleState.TRANSFERRING: {
+        "complete_visit": VisitLifecycleState.COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
     VisitLifecycleState.COMPLETED: {},
     VisitLifecycleState.ERROR: {
         "begin_triage": VisitLifecycleState.TRIAGING,

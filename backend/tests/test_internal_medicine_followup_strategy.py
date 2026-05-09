@@ -23,6 +23,15 @@ def headers():
     return {"X-API-Key": "mock-key-001"}
 
 
+def registration_payload(name: str = "Player"):
+    return {
+        "name": name,
+        "sex": "unknown",
+        "age": 30,
+        "id_number": "TEMP-REG-0001",
+    }
+
+
 def prepare_visit_in_consultation(client: TestClient) -> str:
     triage_session_id = f"triage-{uuid.uuid4().hex[:8]}"
     triage_resp = client.post(
@@ -41,7 +50,11 @@ def prepare_visit_in_consultation(client: TestClient) -> str:
     assert triage_resp.status_code == 200
     visit_id = triage_resp.json()["visit_id"]
 
-    register_resp = client.post(f"/api/v1/visits/{visit_id}/register", headers=headers())
+    register_resp = client.post(
+        f"/api/v1/visits/{visit_id}/register",
+        headers=headers(),
+        json=registration_payload("Player"),
+    )
     assert register_resp.status_code == 200
 
     app = client.app
