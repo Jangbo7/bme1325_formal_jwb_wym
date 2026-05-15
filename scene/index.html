@@ -13,6 +13,8 @@
     <div class="hud__topline">
       <div class="hud__title">Hospital Village 2D</div>
       <div class="hud__buttons">
+        <button type="button" class="hud__btn" id="hudRestartBtn">Restart</button>
+        <button type="button" class="hud__btn" id="hudResumeBtn">Resume</button>
         <button type="button" class="hud__btn" id="hudHelpToggle" aria-expanded="false" aria-controls="hudHelpPanel">Help</button>
         <button type="button" class="hud__btn" id="hudTasksToggle" aria-pressed="false">Tasks</button>
         <button type="button" class="hud__btn" id="hudLabelsToggle" aria-pressed="false">Labels</button>
@@ -22,11 +24,33 @@
     <div class="hud__panel hidden" id="hudHelpPanel">
       <div class="hud__tips">Move: WASD / Arrows. Press E to talk to nearby staff and interact with triage, registration, and doctor entry. Follow the glowing highlight for the next objective.</div>
     </div>
+    <div class="hud__panel hud__npc-panel" id="hudNpcPanel">
+      <div class="hud__panel-title">Route NPC Control</div>
+      <div class="hud__npc-buttons">
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="registration">To Registration</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="triage">To Triage</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="lab">To Lab</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="consultation">To Consultation</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="ward">To Ward</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="hall">To Hall</button>
+      </div>
+    </div>
     <div class="hud__floor">
       <span id="floor-state">Current Zone: Main Campus</span>
     </div>
   </div>
   <canvas id="game" width="1280" height="720" aria-label="top down 2d hospital village sandbox"></canvas>
+
+  <div id="restartConfirmModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content" role="dialog" aria-modal="true" aria-labelledby="restartConfirmTitle">
+      <h2 id="restartConfirmTitle">Restart Session</h2>
+      <p class="triage-dialogue__status">Start a new run now? The current run will be saved as the last session and can be resumed later.</p>
+      <div class="triage-form__actions">
+        <button type="button" id="restartConfirmCancelBtn" class="triage-btn triage-btn--ghost">Cancel</button>
+        <button type="button" id="restartConfirmOkBtn" class="triage-btn triage-btn--primary">Start New Run</button>
+      </div>
+    </div>
+  </div>
 
   <div id="triageModal" class="triage-modal hidden" aria-hidden="true">
     <div class="triage-modal__content" role="dialog" aria-modal="true" aria-labelledby="triageModalTitle">

@@ -56,10 +56,35 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.hud__panel-title {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffe7b4;
+}
+
 .hud__tips {
   font-size: 12px;
   color: #f6e6bf;
   line-height: 1.6;
+}
+
+.hud__npc-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hud__btn--route {
+  border-color: rgba(255, 164, 164, 0.38);
+  background: rgba(198, 73, 73, 0.18);
+  color: #fff0eb;
+}
+
+.hud__btn--route:hover {
+  background: rgba(216, 94, 94, 0.3);
 }
 
 .hud__floor {
@@ -96,6 +121,12 @@ body {
   background: rgba(255, 213, 122, 0.24);
   border-color: rgba(255, 213, 122, 0.9);
   color: #fff7e5;
+}
+
+.hud__btn:disabled,
+.hud__btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 #game {
