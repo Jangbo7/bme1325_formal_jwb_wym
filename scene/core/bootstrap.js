@@ -13,11 +13,14 @@ import { renderNpcDialogue } from "../ui/npc-dialogue.js";
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const floorStateLabel = document.getElementById("floor-state");
+const hudRestartBtn = document.getElementById("hudRestartBtn");
+const hudResumeBtn = document.getElementById("hudResumeBtn");
 const hudHelpToggle = document.getElementById("hudHelpToggle");
 const hudHelpPanel = document.getElementById("hudHelpPanel");
 const hudTasksToggle = document.getElementById("hudTasksToggle");
 const hudLabelsToggle = document.getElementById("hudLabelsToggle");
 const hudDebugToggle = document.getElementById("hudDebugToggle");
+const hudNpcRouteButtons = Array.from(document.querySelectorAll("[data-route-target]"));
 
 const TILE = 32;
 const WALL_THICKNESS = TILE * 0.5;
@@ -47,13 +50,15 @@ const palette = {
   grassC: "#93c96d",
   dirt: "#b98a57",
   path: "#c9b184",
-  roomFloor: "#dfcfaa",
-  hallFloor: "#e8d7b6",
-  roomTrim: "#c09d6c",
-  wallFront: "#b97e4f",
-  wallSide: "#9f683f",
-  wallTop: "#d8b07c",
+  roomFloor: "#e6d9bb",
+  hallFloor: "#efe3c8",
+  roomTrim: "#b69263",
+  roomFloorAccent: "#d9c49a",
+  wallFront: "#c48c5e",
+  wallSide: "#a86f45",
+  wallTop: "#dfbc8f",
   wallEdge: "rgba(99, 57, 29, 0.45)",
+  wallHighlight: "rgba(255, 234, 194, 0.45)",
   bed: "#8ebed3",
   desk: "#9c7248",
   sofa: "#8fae69",
@@ -61,8 +66,10 @@ const palette = {
   screen: "#9fd2d8",
   cabinet: "#b9a17e",
   reception: "#c58d57",
-  doorFrame: "#8d5c37",
-  doorGlass: "#b7d7dc",
+  doorFrame: "#8f6844",
+  doorPanel: "#e6dfcf",
+  doorGlass: "#bddfe6",
+  doorRail: "#6f7b86",
   doorSensor: "#ffd46a",
   playerBody: "#4b79d8",
   playerAccent: "#9ec7ff",
@@ -200,6 +207,65 @@ const zoneState = {
   staySeconds: 0,
   lastEventText: "No zone event yet",
   lastEventAtMs: 0,
+};
+
+const microScene = {
+  mode: "campus",
+  returnPoint: null,
+  room: {
+    x: 12 * TILE,
+    y: 8 * TILE,
+    w: 20 * TILE,
+    h: 12 * TILE,
+  },
+  desk: {
+    x: 12 * TILE + 14 * TILE,
+    y: 8 * TILE + 4 * TILE,
+    w: 4 * TILE,
+    h: 2 * TILE,
+  },
+  interactPoint: {
+    x: 12 * TILE + 16 * TILE,
+    y: 8 * TILE + 7.5 * TILE,
+    floor: 1,
+    radius: 72,
+  },
+  exitPoint: {
+    x: 12 * TILE + 3 * TILE,
+    y: 8 * TILE + 10 * TILE,
+    floor: 1,
+    radius: 72,
+  },
+  gate: {
+    x: 4 * TILE,
+    y: 23 * TILE,
+    floor: 1,
+    radius: 80,
+  },
+  annex: {
+    room: {
+      x: 38 * TILE,
+      y: 8 * TILE,
+      w: 28 * TILE,
+      h: 18 * TILE,
+    },
+    exitPoint: {
+      x: 38 * TILE + 4 * TILE,
+      y: 8 * TILE + 15 * TILE,
+      floor: 1,
+      radius: 80,
+    },
+    npcList: [
+      { x: 38 * TILE + 8 * TILE, y: 8 * TILE + 5 * TILE, name: "Lena", role: "Visitor", color: "#e9a96d" },
+      { x: 38 * TILE + 18 * TILE, y: 8 * TILE + 6 * TILE, name: "Kai", role: "Waiting", color: "#78c49f" },
+      { x: 38 * TILE + 12 * TILE, y: 8 * TILE + 12 * TILE, name: "Mina", role: "Guest", color: "#8eb4f2" },
+    ],
+  },
+};
+
+const SESSION_STORAGE_KEYS = {
+  activeClientId: "scene_active_client_id",
+  lastClientId: "scene_last_client_id",
 };
 
 const taskBoard = {
@@ -367,6 +433,12 @@ const registrationUi = {
     idNumber: document.getElementById("registrationIdNumber"),
   },
 };
+const restartConfirmUi = {
+  open: false,
+  modal: document.getElementById("restartConfirmModal"),
+  okBtn: document.getElementById("restartConfirmOkBtn"),
+  cancelBtn: document.getElementById("restartConfirmCancelBtn"),
+};
 const triageDialogueUi = {
   open: false,
   awaitingResult: false,
@@ -388,6 +460,102 @@ function canInteractWithTriageDesk() {
 function canInteractWithRegistrationDesk() {
   if (player.floor !== registrationInteractPoint.floor) return false;
   return Math.hypot(player.x - registrationInteractPoint.x, player.y - registrationInteractPoint.y) <= registrationInteractPoint.radius;
+}
+
+function canInteractWithRegistrationRoomDesk() {
+  if (microScene.mode !== "registration_room") return false;
+  if (player.floor !== microScene.interactPoint.floor) return false;
+  return Math.hypot(player.x - microScene.interactPoint.x, player.y - microScene.interactPoint.y) <= microScene.interactPoint.radius;
+}
+
+function canSubmitRegistrationFromCurrentContext() {
+  return canInteractWithRegistrationDesk() || canInteractWithRegistrationRoomDesk();
+}
+
+function canInteractWithRegistrationRoomExit() {
+  if (microScene.mode !== "registration_room") return false;
+  if (player.floor !== microScene.exitPoint.floor) return false;
+  return Math.hypot(player.x - microScene.exitPoint.x, player.y - microScene.exitPoint.y) <= microScene.exitPoint.radius;
+}
+
+function canInteractWithAnnexGate() {
+  if (microScene.mode !== "campus") return false;
+  if (player.floor !== microScene.gate.floor) return false;
+  return Math.hypot(player.x - microScene.gate.x, player.y - microScene.gate.y) <= microScene.gate.radius;
+}
+
+function canInteractWithAnnexExit() {
+  if (microScene.mode !== "annex_room") return false;
+  if (player.floor !== microScene.annex.exitPoint.floor) return false;
+  return Math.hypot(player.x - microScene.annex.exitPoint.x, player.y - microScene.annex.exitPoint.y) <= microScene.annex.exitPoint.radius;
+}
+
+function enterRegistrationRoom() {
+  if (microScene.mode === "registration_room") return;
+  microScene.returnPoint = { x: player.x, y: player.y, floor: player.floor };
+  microScene.mode = "registration_room";
+  const spawn = {
+    x: microScene.room.x + TILE * 4,
+    y: microScene.room.y + microScene.room.h - TILE * 2,
+    floor: 1,
+  };
+  const safe = findNearestWalkable(spawn.x, spawn.y, spawn.floor);
+  player.x = safe.x;
+  player.y = safe.y;
+  player.floor = spawn.floor;
+  camera.x = player.x;
+  camera.y = player.y;
+  updateFloorHud();
+  pushStatusHint("Entered Registration Room. Press E to register, Q to return.");
+}
+
+function enterAnnexRoom() {
+  if (microScene.mode === "annex_room") return;
+  microScene.returnPoint = { x: player.x, y: player.y, floor: player.floor };
+  microScene.mode = "annex_room";
+  const spawn = {
+    x: microScene.annex.room.x + TILE * 5,
+    y: microScene.annex.room.y + microScene.annex.room.h - TILE * 3,
+    floor: 1,
+  };
+  const safe = findNearestWalkable(spawn.x, spawn.y, spawn.floor);
+  player.x = safe.x;
+  player.y = safe.y;
+  player.floor = spawn.floor;
+  camera.x = player.x;
+  camera.y = player.y;
+  updateFloorHud();
+  pushStatusHint("Entered Annex Yard. Press E at EXIT to return.");
+}
+
+function leaveRegistrationRoom() {
+  if (microScene.mode !== "registration_room") return;
+  const fallback = floorSpawns[1];
+  const target = microScene.returnPoint || { x: fallback.x, y: fallback.y, floor: 1 };
+  const safe = findNearestWalkable(target.x, target.y, target.floor || 1);
+  player.x = safe.x;
+  player.y = safe.y;
+  player.floor = target.floor || 1;
+  microScene.mode = "campus";
+  camera.x = player.x;
+  camera.y = player.y;
+  updateFloorHud();
+  pushStatusHint("Returned to Main Campus.");
+}
+
+function leaveAnnexRoom() {
+  if (microScene.mode !== "annex_room") return;
+  const fallback = floorSpawns[1];
+  const target = microScene.returnPoint || { x: fallback.x, y: fallback.y, floor: 1 };
+  const safe = findNearestWalkable(target.x, target.y, target.floor || 1);
+  player.x = safe.x;
+  player.y = safe.y;
+  player.floor = target.floor || 1;
+  microScene.mode = "campus";
+  camera.x = player.x;
+  camera.y = player.y;
+  updateFloorHud();
+  pushStatusHint("Returned to Main Campus.");
 }
 
 function canInteractWithDoctorEntry() {
@@ -617,6 +785,221 @@ function drawGroundBackdrop() {
   }
 }
 
+function drawRegistrationRoomScene() {
+  ctx.fillStyle = "#b68952";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const roomScreen = worldRectToScreenRect(microScene.room.x, microScene.room.y, microScene.room.w, microScene.room.h, 1);
+  drawRoomBorder(roomScreen, "#e6d4b0");
+  drawRoomTiles(roomScreen, "#e6d4b0", "#dcc79d", microScene.room.x, microScene.room.y);
+
+  const wallTop = 8;
+  ctx.fillStyle = palette.wallTop;
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y - wallTop, roomScreen.w + wallTop * 2, wallTop);
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y + roomScreen.h, roomScreen.w + wallTop * 2, wallTop);
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y, wallTop, roomScreen.h);
+  ctx.fillRect(roomScreen.x + roomScreen.w, roomScreen.y, wallTop, roomScreen.h);
+
+  const deskRect = worldRectToScreenRect(microScene.desk.x, microScene.desk.y, microScene.desk.w, microScene.desk.h, 1);
+  drawRect(deskRect, "#b57f4e", "#7b512f", 2);
+  ctx.fillStyle = "#d9b484";
+  ctx.fillRect(deskRect.x + 6, deskRect.y + 6, Math.max(10, deskRect.w - 12), Math.max(8, deskRect.h - 12));
+
+  const glowPoint = project(microScene.interactPoint.x, microScene.interactPoint.y, 0, 1);
+  const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.2;
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 236, 170, ${Math.min(1, pulse + 0.2)})`;
+  ctx.fillStyle = `rgba(255, 192, 96, ${0.2 + pulse * 0.15})`;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(glowPoint.x, glowPoint.y, 20 + pulse * 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "rgba(62, 41, 22, 0.92)";
+  ctx.fillRect(glowPoint.x - 120, glowPoint.y - 48, 240, 26);
+  ctx.strokeStyle = "rgba(255, 231, 176, 0.92)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(glowPoint.x - 120, glowPoint.y - 48, 240, 26);
+  ctx.fillStyle = "#fff7e5";
+  ctx.font = "600 13px 'Trebuchet MS'";
+  ctx.textAlign = "center";
+  ctx.fillText("Press E to submit registration, Q to return", glowPoint.x, glowPoint.y - 30);
+  ctx.restore();
+
+  const exitPoint = project(microScene.exitPoint.x, microScene.exitPoint.y, 0, 1);
+  ctx.save();
+  ctx.strokeStyle = "rgba(155, 237, 199, 0.92)";
+  ctx.fillStyle = "rgba(91, 187, 136, 0.22)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.roundRect(exitPoint.x - 34, exitPoint.y - 22, 68, 44, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#eafff2";
+  ctx.font = "700 12px 'Trebuchet MS'";
+  ctx.textAlign = "center";
+  ctx.fillText("EXIT", exitPoint.x, exitPoint.y + 4);
+  ctx.restore();
+}
+
+function drawAnnexRoomScene() {
+  ctx.fillStyle = "#8aa66a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const room = microScene.annex.room;
+  const roomScreen = worldRectToScreenRect(room.x, room.y, room.w, room.h, 1);
+  drawRoomBorder(roomScreen, "#d4c097");
+  drawRoomTiles(roomScreen, "#d4c097", "#cab287", room.x, room.y);
+
+  const wallTop = 8;
+  ctx.fillStyle = palette.wallTop;
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y - wallTop, roomScreen.w + wallTop * 2, wallTop);
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y + roomScreen.h, roomScreen.w + wallTop * 2, wallTop);
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y, wallTop, roomScreen.h);
+  ctx.fillRect(roomScreen.x + roomScreen.w, roomScreen.y, wallTop, roomScreen.h);
+
+  const subRooms = [
+    { x: room.x + TILE * 2, y: room.y + TILE * 2, w: TILE * 7, h: TILE * 5 },
+    { x: room.x + TILE * 10, y: room.y + TILE * 2, w: TILE * 7, h: TILE * 5 },
+    { x: room.x + TILE * 18, y: room.y + TILE * 2, w: TILE * 7, h: TILE * 5 },
+    { x: room.x + TILE * 6, y: room.y + TILE * 9, w: TILE * 8, h: TILE * 5 },
+    { x: room.x + TILE * 16, y: room.y + TILE * 10, w: TILE * 8, h: TILE * 4 },
+  ];
+
+  for (const subRoom of subRooms) {
+    const rect = worldRectToScreenRect(subRoom.x, subRoom.y, subRoom.w, subRoom.h, 1);
+    drawRect(rect, "#e1d2ad", "#9c7e55", 2);
+  }
+
+  for (const npc of microScene.annex.npcList) {
+    drawCharacterBody(npc.x, npc.y, 1, {
+      legColor: "#5f5449",
+      bodyColor: npc.color,
+      accentColor: "#f0ead7",
+      skinColor: "#f1d1bb",
+      hairColor: "#6a4a2f",
+      shadowColor: "rgba(0, 0, 0, 0.22)",
+    }, "down");
+    const top = project(npc.x, npc.y, 0, 1);
+    ctx.save();
+    ctx.fillStyle = "rgba(67, 45, 28, 0.86)";
+    ctx.fillRect(top.x - 36, top.y - 54, 72, 18);
+    ctx.strokeStyle = "rgba(255, 230, 179, 0.82)";
+    ctx.strokeRect(top.x - 36, top.y - 54, 72, 18);
+    ctx.fillStyle = "#fff7e5";
+    ctx.font = "600 10px 'Trebuchet MS'";
+    ctx.textAlign = "center";
+    ctx.fillText(npc.name, top.x, top.y - 41);
+    ctx.restore();
+  }
+
+  const exitPoint = project(microScene.annex.exitPoint.x, microScene.annex.exitPoint.y, 0, 1);
+  ctx.save();
+  ctx.strokeStyle = "rgba(155, 237, 199, 0.92)";
+  ctx.fillStyle = "rgba(91, 187, 136, 0.22)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.roundRect(exitPoint.x - 34, exitPoint.y - 22, 68, 44, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#eafff2";
+  ctx.font = "700 12px 'Trebuchet MS'";
+  ctx.textAlign = "center";
+  ctx.fillText("EXIT", exitPoint.x, exitPoint.y + 4);
+  ctx.restore();
+}
+
+function drawAnnexGateStructure() {
+  if (microScene.mode !== "campus") return;
+
+  const gateWidth = TILE * 5.1;
+  const postWidth = TILE * 0.72;
+  const beamHeight = TILE * 0.84;
+  const openingHeight = TILE * 2.1;
+  const postHeight = beamHeight + openingHeight + TILE * 0.18;
+  const gateLeft = microScene.gate.x - gateWidth * 0.5;
+  const openingTop = microScene.gate.y - openingHeight * 0.5;
+  const gateTop = openingTop - beamHeight;
+  const bannerX = gateLeft + postWidth + TILE * 0.18;
+  const bannerWidth = gateWidth - postWidth * 2 - TILE * 0.36;
+
+  const approachRect = worldRectToScreenRect(
+    gateLeft + gateWidth - 150,
+    openingTop + TILE * 0.06,
+    TILE * 4.6,
+    openingHeight - TILE * 0.12,
+    microScene.gate.floor
+  );
+  drawRect(approachRect, "#b99163", "#7d5737", 2);
+  ctx.fillStyle = "rgba(224, 205, 160, 0.55)";
+  for (let offset = 8; offset < approachRect.w - 8; offset += 14) {
+    ctx.fillRect(approachRect.x + offset, approachRect.y + 5, 4, Math.max(8, approachRect.h - 10));
+  }
+
+  const leftPost = worldRectToScreenRect(
+    gateLeft,
+    gateTop,
+    postWidth,
+    postHeight,
+    microScene.gate.floor
+  );
+  const rightPost = worldRectToScreenRect(
+    gateLeft + gateWidth - postWidth,
+    gateTop,
+    postWidth,
+    postHeight,
+    microScene.gate.floor
+  );
+  const beam = worldRectToScreenRect(
+    gateLeft,
+    gateTop,
+    gateWidth,
+    beamHeight,
+    microScene.gate.floor
+  );
+  const banner = worldRectToScreenRect(
+    bannerX,
+    gateTop + TILE * 0.35,
+    bannerWidth,
+    TILE * 0.8,
+    microScene.gate.floor
+  );
+
+  drawRect(leftPost, "#b97e4f", "#6b4327", 2);
+  drawRect(rightPost, "#b97e4f", "#6b4327", 2);
+  drawRect(beam, "#d7b07b", "#785335", 2);
+  drawRect(banner, "#5b8e47", "#274420", 2);
+
+  ctx.fillStyle = "#efdcae";
+  ctx.fillRect(leftPost.x + 5, leftPost.y + 6, Math.max(6, leftPost.w - 10), Math.max(8, leftPost.h - 14));
+  ctx.fillRect(rightPost.x + 5, rightPost.y + 6, Math.max(6, rightPost.w - 10), Math.max(8, rightPost.h - 14));
+
+  const pulse = 0.55 + Math.sin(performance.now() * 0.01) * 0.2;
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 228, 158, ${Math.min(1, 0.8 + pulse * 0.25)})`;
+  ctx.lineWidth = 5;
+  ctx.strokeRect(banner.x - 4, banner.y - 4, banner.w + 8, banner.h + 8);
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = "#f7f1da";
+  ctx.font = "700 12px 'Trebuchet MS'";
+  ctx.textAlign = "center";
+  ctx.fillText("MAIN GATE", banner.x + banner.w / 2, banner.y + banner.h / 2 + 4);
+  ctx.restore();
+
+  const beacon = project(microScene.gate.x, microScene.gate.y, 0, microScene.gate.floor);
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 243, 188, ${Math.min(1, 0.88 + pulse * 0.1)})`;
+  ctx.fillStyle = `rgba(255, 176, 79, ${0.22 + pulse * 0.2})`;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(beacon.x, beacon.y, 18 + pulse * 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
 function buildDoor(spec, index) {
   const room = rooms[spec.roomIndex];
   const rect = roomBounds(room);
@@ -717,7 +1100,34 @@ function canMoveTo(nextX, nextY, floor = activeFloor) {
   if (rect.x < 0 || rect.y < 0 || rect.x + rect.w > WORLD.width || rect.y + rect.h > WORLD.height) return false;
 
   const foot = { x: nextX, y: nextY, r: CHARACTER_FOOT_RADIUS };
-  const collisions = [...staticCollisions.filter((item) => item.floor === floor), ...doorCollidersForFloor(floor)];
+  let collisions = [...staticCollisions.filter((item) => item.floor === floor), ...doorCollidersForFloor(floor)];
+  if (microScene.mode === "registration_room") {
+    const room = microScene.room;
+    const desk = microScene.desk;
+    const wall = 10;
+    collisions = [
+      { floor, x: room.x - wall, y: room.y - wall, w: room.w + wall * 2, h: wall },
+      { floor, x: room.x - wall, y: room.y + room.h, w: room.w + wall * 2, h: wall },
+      { floor, x: room.x - wall, y: room.y, w: wall, h: room.h },
+      { floor, x: room.x + room.w, y: room.y, w: wall, h: room.h },
+      { floor, x: desk.x, y: desk.y, w: desk.w, h: desk.h },
+    ];
+  } else if (microScene.mode === "annex_room") {
+    const room = microScene.annex.room;
+    const wall = 10;
+    const blockers = [
+      { floor, x: room.x - wall, y: room.y - wall, w: room.w + wall * 2, h: wall },
+      { floor, x: room.x - wall, y: room.y + room.h, w: room.w + wall * 2, h: wall },
+      { floor, x: room.x - wall, y: room.y, w: wall, h: room.h },
+      { floor, x: room.x + room.w, y: room.y, w: wall, h: room.h },
+      { floor, x: room.x + TILE * 2, y: room.y + TILE * 2, w: TILE * 7, h: TILE * 5 },
+      { floor, x: room.x + TILE * 10, y: room.y + TILE * 2, w: TILE * 7, h: TILE * 5 },
+      { floor, x: room.x + TILE * 18, y: room.y + TILE * 2, w: TILE * 7, h: TILE * 5 },
+      { floor, x: room.x + TILE * 6, y: room.y + TILE * 9, w: TILE * 8, h: TILE * 5 },
+      { floor, x: room.x + TILE * 16, y: room.y + TILE * 10, w: TILE * 8, h: TILE * 4 },
+    ];
+    collisions = blockers;
+  }
   return !collisions.some((wall) => {
     const closestX = Math.max(wall.x, Math.min(foot.x, wall.x + wall.w));
     const closestY = Math.max(wall.y, Math.min(foot.y, wall.y + wall.h));
@@ -726,8 +1136,12 @@ function canMoveTo(nextX, nextY, floor = activeFloor) {
   });
 }
 
+function distanceToDoorFromPoint(door, point) {
+  return Math.hypot(point.x - door.pivot.x, point.y - door.pivot.y);
+}
+
 function distanceToDoor(door) {
-  return Math.hypot(player.x - door.pivot.x, player.y - door.pivot.y);
+  return distanceToDoorFromPoint(door, player);
 }
 
 function nearestDoor(maxDistance = DOOR_SENSOR_DISTANCE) {
@@ -744,13 +1158,20 @@ function nearestDoor(maxDistance = DOOR_SENSOR_DISTANCE) {
 }
 
 function updateDoors() {
+  const sensorPoints = [
+    { x: player.x, y: player.y, floor: player.floor },
+    ...(fixedNpcRuntime?.getNpcs?.() || []).map((npc) => ({ x: npc.x, y: npc.y, floor: npc.floor })),
+    ...(npcRuntime?.getNpcs?.() || []).map((npc) => ({ x: npc.x, y: npc.y, floor: npc.floor })),
+  ];
   for (const door of currentFloorDoors()) {
-    const distance = distanceToDoor(door);
-    if (distance <= DOOR_SENSOR_DISTANCE) {
+    const nearestSensorDistance = sensorPoints
+      .filter((point) => point.floor === door.floor)
+      .reduce((best, point) => Math.min(best, distanceToDoorFromPoint(door, point)), Infinity);
+    if (nearestSensorDistance <= DOOR_SENSOR_DISTANCE) {
       door.open = true;
       continue;
     }
-    if (distance >= DOOR_CLOSE_DISTANCE && !rectsIntersect(playerRect(), door.collider)) door.open = false;
+    if (nearestSensorDistance >= DOOR_CLOSE_DISTANCE && !rectsIntersect(playerRect(), door.collider)) door.open = false;
   }
 }
 
@@ -772,9 +1193,15 @@ function drawRoomFloor(room, dimmed) {
   const rect = roomBounds(room);
   const roomRect = worldRectToScreenRect(rect.x, rect.y, rect.w, rect.h, room.floor);
   const fillA = room.kind === "hall" ? palette.hallFloor : palette.roomFloor;
-  const fillB = room.kind === "hall" ? "#e2cca0" : "#d5c191";
+  const fillB = room.kind === "hall" ? "#ead6b0" : palette.roomFloorAccent;
   drawRoomBorder(roomRect, fillA);
   drawRoomTiles(roomRect, fillA, fillB, rect.x, rect.y);
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(roomRect.x + 6, roomRect.y + 6, roomRect.w - 12, roomRect.h - 12);
+  ctx.restore();
 
   if (dimmed) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
@@ -788,8 +1215,12 @@ function drawWall(segment) {
   ctx.fillStyle = segment.h <= WALL_THICKNESS ? palette.wallFront : palette.wallSide;
   if (segment.h <= WALL_THICKNESS) {
     ctx.fillRect(rect.x, rect.y + Math.max(2, rect.h - 6), rect.w, 4);
+    ctx.fillStyle = palette.wallHighlight;
+    ctx.fillRect(rect.x + 3, rect.y + 2, Math.max(6, rect.w - 6), 3);
   } else {
     ctx.fillRect(rect.x + Math.max(2, rect.w - 6), rect.y, 4, rect.h);
+    ctx.fillStyle = palette.wallHighlight;
+    ctx.fillRect(rect.x + 2, rect.y + 3, 3, Math.max(6, rect.h - 6));
   }
 }
 
@@ -804,14 +1235,42 @@ function drawDoor(door, activeDoor) {
     w: Math.max(4, opening.w - inset * 2),
     h: Math.max(4, opening.h - inset * 2),
   };
-  if (!door.open) {
-    drawRect(panelRect, palette.doorGlass, "rgba(255,255,255,0.25)", 1);
-  } else if (opening.w >= opening.h) {
-    drawRect({ x: panelRect.x, y: panelRect.y, w: Math.max(4, Math.round(panelRect.w * 0.34)), h: panelRect.h }, palette.doorGlass, null, 0);
-    drawRect({ x: panelRect.x + Math.round(panelRect.w * 0.66), y: panelRect.y, w: Math.max(4, Math.round(panelRect.w * 0.34)), h: panelRect.h }, palette.doorGlass, null, 0);
+  if (opening.w >= opening.h) {
+    const leftPanelWidth = Math.max(4, Math.round(panelRect.w * 0.46));
+    const rightPanelWidth = Math.max(4, Math.round(panelRect.w * 0.46));
+    const openGap = door.open ? Math.round(panelRect.w * 0.28) : 0;
+    const leftPanel = { x: panelRect.x, y: panelRect.y, w: leftPanelWidth, h: panelRect.h };
+    const rightPanel = { x: panelRect.x + panelRect.w - rightPanelWidth, y: panelRect.y, w: rightPanelWidth, h: panelRect.h };
+    if (door.open) {
+      leftPanel.x -= Math.round(openGap * 0.5);
+      rightPanel.x += Math.round(openGap * 0.5);
+    }
+    drawRect(leftPanel, palette.doorPanel, palette.doorRail, 1);
+    drawRect(rightPanel, palette.doorPanel, palette.doorRail, 1);
+    ctx.fillStyle = palette.doorGlass;
+    ctx.fillRect(leftPanel.x + 3, leftPanel.y + 3, Math.max(3, leftPanel.w - 6), Math.max(4, leftPanel.h - 6));
+    ctx.fillRect(rightPanel.x + 3, rightPanel.y + 3, Math.max(3, rightPanel.w - 6), Math.max(4, rightPanel.h - 6));
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillRect(leftPanel.x + 4, leftPanel.y + 4, Math.max(2, leftPanel.w - 12), 2);
+    ctx.fillRect(rightPanel.x + 4, rightPanel.y + 4, Math.max(2, rightPanel.w - 12), 2);
   } else {
-    drawRect({ x: panelRect.x, y: panelRect.y, w: panelRect.w, h: Math.max(4, Math.round(panelRect.h * 0.34)) }, palette.doorGlass, null, 0);
-    drawRect({ x: panelRect.x, y: panelRect.y + Math.round(panelRect.h * 0.66), w: panelRect.w, h: Math.max(4, Math.round(panelRect.h * 0.34)) }, palette.doorGlass, null, 0);
+    const topPanelHeight = Math.max(4, Math.round(panelRect.h * 0.46));
+    const bottomPanelHeight = Math.max(4, Math.round(panelRect.h * 0.46));
+    const openGap = door.open ? Math.round(panelRect.h * 0.28) : 0;
+    const topPanel = { x: panelRect.x, y: panelRect.y, w: panelRect.w, h: topPanelHeight };
+    const bottomPanel = { x: panelRect.x, y: panelRect.y + panelRect.h - bottomPanelHeight, w: panelRect.w, h: bottomPanelHeight };
+    if (door.open) {
+      topPanel.y -= Math.round(openGap * 0.5);
+      bottomPanel.y += Math.round(openGap * 0.5);
+    }
+    drawRect(topPanel, palette.doorPanel, palette.doorRail, 1);
+    drawRect(bottomPanel, palette.doorPanel, palette.doorRail, 1);
+    ctx.fillStyle = palette.doorGlass;
+    ctx.fillRect(topPanel.x + 3, topPanel.y + 3, Math.max(4, topPanel.w - 6), Math.max(3, topPanel.h - 6));
+    ctx.fillRect(bottomPanel.x + 3, bottomPanel.y + 3, Math.max(4, bottomPanel.w - 6), Math.max(3, bottomPanel.h - 6));
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillRect(topPanel.x + 4, topPanel.y + 4, Math.max(2, topPanel.w - 8), 2);
+    ctx.fillRect(bottomPanel.x + 4, bottomPanel.y + 4, Math.max(2, bottomPanel.w - 8), 2);
   }
 
   const sensor = project(door.pivot.x, door.pivot.y, 0, door.floor);
@@ -867,66 +1326,126 @@ function drawCharacterBody(x, y, floor, colors = {}, facing = "down") {
   const accentColor = colors.accentColor || palette.playerAccent;
   const skinColor = colors.skinColor || palette.playerHead;
   const hairColor = colors.hairColor || palette.playerHair;
+  const hairStyle = colors.hairStyle || "default";
 
   ctx.fillStyle = shadowColor;
   ctx.beginPath();
-  ctx.ellipse(px, py + 12, 12, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(px, py + 14, 11, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = legColor;
-  ctx.fillRect(px - 8, py + 6, 5, 12);
-  ctx.fillRect(px + 3, py + 6, 5, 12);
-  ctx.fillRect(px - 10, py + 15, 7, 3);
-  ctx.fillRect(px + 3, py + 15, 7, 3);
+  ctx.fillRect(px - 6, py + 9, 4, 10);
+  ctx.fillRect(px + 2, py + 9, 4, 10);
+  ctx.fillRect(px - 8, py + 18, 6, 3);
+  ctx.fillRect(px + 2, py + 18, 6, 3);
 
   ctx.fillStyle = bodyColor;
-  ctx.fillRect(px - 11, py - 13, 22, 20);
+  ctx.fillRect(px - 9, py - 6, 18, 18);
+  ctx.fillStyle = skinColor;
+  ctx.fillRect(px - 3, py - 10, 6, 6);
   ctx.fillStyle = accentColor;
-  ctx.fillRect(px - 9, py - 11, 18, 7);
-  ctx.fillRect(px - 3, py - 4, 6, 11);
+  ctx.fillRect(px - 7, py - 2, 14, 4);
+  ctx.fillRect(px - 2, py + 2, 4, 10);
+  ctx.fillStyle = "#f7f3ea";
+  ctx.fillRect(px - 2, py - 2, 4, 5);
+  ctx.fillStyle = accentColor;
+  ctx.fillRect(px - 10, py + 2, 3, 8);
+  ctx.fillRect(px + 7, py + 2, 3, 8);
 
   if (facing === "left") {
     ctx.fillStyle = accentColor;
-    ctx.fillRect(px - 15, py - 10, 4, 10);
+    ctx.fillRect(px - 12, py, 3, 8);
   } else if (facing === "right") {
     ctx.fillStyle = accentColor;
-    ctx.fillRect(px + 11, py - 10, 4, 10);
+    ctx.fillRect(px + 9, py, 3, 8);
   }
 
   ctx.fillStyle = skinColor;
-  ctx.fillRect(px - 8, py - 25, 16, 15);
-  ctx.fillStyle = hairColor;
-  ctx.fillRect(px - 8, py - 25, 16, 5);
+  ctx.fillRect(px - 9, py - 24, 18, 16);
+  if (hairStyle === "baogaitou") {
+    ctx.fillStyle = colors.hatColor || accentColor;
+    ctx.fillRect(px - 12, py - 29, 24, 5);
+    ctx.fillRect(px - 10, py - 24, 20, 4);
+    ctx.fillRect(px - 11, py - 20, 22, 5);
+    ctx.fillRect(px - 10, py - 16, 5, 4);
+    ctx.fillRect(px + 5, py - 16, 5, 4);
+  } else if (hairStyle === "bald") {
+    // Intentionally no hair layers for the player.
+  } else {
+    ctx.fillStyle = hairColor;
+    ctx.fillRect(px - 10, py - 25, 20, 6);
+    ctx.fillRect(px - 10, py - 19, 4, 7);
+    ctx.fillRect(px + 6, py - 19, 4, 7);
+  }
+  if (hairStyle === "long_side_bangs") {
+    ctx.fillRect(px - 12, py - 24, 24, 3);
+    ctx.fillRect(px - 12, py - 18, 3, 8);
+    ctx.fillRect(px + 9, py - 18, 3, 8);
+    ctx.fillRect(px - 8, py - 12, 16, 3);
+  }
+  ctx.fillStyle = colors.hatColor || accentColor;
+  if (hairStyle !== "baogaitou") {
+    ctx.fillRect(px - 11, py - 27, 22, 3);
+    ctx.fillRect(px - 8, py - 30, 16, 4);
+  }
   if (facing !== "up") {
-    const eyeY = py - 20;
-    ctx.fillStyle = "rgba(255,255,255,0.96)";
+    const eyeY = py - 18;
+    ctx.fillStyle = "#2b2018";
     if (facing === "left") {
-      ctx.fillRect(px - 7, eyeY, 4, 4);
+      ctx.fillRect(px - 6, eyeY, 2, 2);
     } else if (facing === "right") {
-      ctx.fillRect(px + 3, eyeY, 4, 4);
+      ctx.fillRect(px + 4, eyeY, 2, 2);
     } else {
-      ctx.fillRect(px - 7, eyeY, 4, 4);
-      ctx.fillRect(px + 3, eyeY, 4, 4);
-    }
-
-    ctx.fillStyle = "#2f2117";
-    if (facing === "left") {
-      ctx.fillRect(px - 6, eyeY + 1, 2, 2);
-    } else if (facing === "right") {
-      ctx.fillRect(px + 4, eyeY + 1, 2, 2);
-    } else {
-      ctx.fillRect(px - 6, eyeY + 1, 2, 2);
-      ctx.fillRect(px + 4, eyeY + 1, 2, 2);
+      ctx.fillRect(px - 6, eyeY, 2, 2);
+      ctx.fillRect(px + 4, eyeY, 2, 2);
       ctx.fillStyle = "#8f5b3e";
-      ctx.fillRect(px - 2, py - 14, 4, 2);
+      ctx.fillRect(px - 1, py - 12, 2, 2);
     }
   }
   if (facing === "left") {
-    ctx.fillStyle = hairColor;
-    ctx.fillRect(px - 10, py - 23, 3, 8);
+    if (hairStyle === "baogaitou") {
+      ctx.fillStyle = colors.hatColor || accentColor;
+      ctx.fillRect(px - 14, py - 27, 8, 16);
+      ctx.fillRect(px - 10, py - 29, 18, 5);
+      ctx.fillRect(px - 8, py - 22, 11, 5);
+      ctx.fillRect(px + 4, py - 20, 6, 10);
+      ctx.fillRect(px + 1, py - 14, 5, 4);
+    } else if (hairStyle === "bald") {
+      // No side hair.
+    } else if (hairStyle === "long_side_bangs") {
+      ctx.fillStyle = hairColor;
+      ctx.fillRect(px - 14, py - 24, 7, 13);
+      ctx.fillRect(px - 10, py - 26, 8, 5);
+      ctx.fillRect(px + 1, py - 25, 7, 4);
+      ctx.fillRect(px + 6, py - 18, 4, 8);
+    } else {
+      ctx.fillStyle = hairColor;
+      ctx.fillRect(px - 12, py - 23, 6, 11);
+      ctx.fillRect(px - 7, py - 24, 5, 4);
+      ctx.fillRect(px + 2, py - 24, 6, 3);
+    }
   } else if (facing === "right") {
-    ctx.fillStyle = hairColor;
-    ctx.fillRect(px + 7, py - 23, 3, 8);
+    if (hairStyle === "baogaitou") {
+      ctx.fillStyle = colors.hatColor || accentColor;
+      ctx.fillRect(px + 6, py - 27, 8, 16);
+      ctx.fillRect(px - 8, py - 29, 18, 5);
+      ctx.fillRect(px - 3, py - 22, 11, 5);
+      ctx.fillRect(px - 10, py - 20, 6, 10);
+      ctx.fillRect(px - 6, py - 14, 5, 4);
+    } else if (hairStyle === "bald") {
+      // No side hair.
+    } else if (hairStyle === "long_side_bangs") {
+      ctx.fillStyle = hairColor;
+      ctx.fillRect(px + 7, py - 24, 7, 13);
+      ctx.fillRect(px + 2, py - 26, 8, 5);
+      ctx.fillRect(px - 8, py - 25, 7, 4);
+      ctx.fillRect(px - 10, py - 18, 4, 8);
+    } else {
+      ctx.fillStyle = hairColor;
+      ctx.fillRect(px + 6, py - 23, 6, 11);
+      ctx.fillRect(px + 2, py - 24, 5, 4);
+      ctx.fillRect(px - 8, py - 24, 6, 3);
+    }
   }
 
   return { x: px, y: py - 18 };
@@ -975,11 +1494,11 @@ function drawTexturedHead(top, facing = "down") {
 }
 
 function drawPlayer() {
-  const top = drawCharacterBody(player.x, player.y, player.floor, {
+  drawCharacterBody(player.x, player.y, player.floor, {
     hairColor: palette.playerHair,
     skinColor: palette.playerHead,
+    hairStyle: "default",
   }, player.facing);
-  drawTexturedHead(top, player.facing);
 }
 
 function drawFixedNpcLabel(npc, top) {
@@ -1079,6 +1598,14 @@ function drawMinimap() {
     ctx.fillRect(left + door.opening.x * scale, top + door.opening.y * scale, Math.max(2, door.opening.w * scale), Math.max(2, door.opening.h * scale));
   }
 
+  if (microScene.mode === "campus") {
+    ctx.fillStyle = "#6fcf97";
+    ctx.fillRect(left + (microScene.gate.x - 10) * scale, top + (microScene.gate.y - 10) * scale, 20 * scale, 20 * scale);
+    ctx.strokeStyle = "#fff0b9";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(left + (microScene.gate.x - 12) * scale, top + (microScene.gate.y - 12) * scale, 24 * scale, 24 * scale);
+  }
+
   ctx.fillStyle = "#4b79d8";
   ctx.beginPath();
   ctx.arc(left + player.x * scale, top + player.y * scale, 4, 0, Math.PI * 2);
@@ -1130,6 +1657,7 @@ function drawTriageHint() {
 }
 
 function drawRegistrationHint() {
+  if (microScene.mode !== "campus") return;
   if (!canInteractWithRegistrationDesk()) return;
   const point = project(registrationInteractPoint.x, registrationInteractPoint.y, 0, registrationInteractPoint.floor);
   const selfPatient = getCurrentSelfPatient();
@@ -1316,6 +1844,57 @@ function getRoomCenterPoint(roomKind) {
   };
 }
 
+function drawAnnexGateHint() {
+  if (microScene.mode !== "campus") return;
+  if (!canInteractWithAnnexGate()) return;
+  const point = project(microScene.gate.x, microScene.gate.y, 0, microScene.gate.floor);
+  const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
+  const boxWidth = 232;
+  const boxHeight = 28;
+  const boxLeft = point.x - boxWidth / 2;
+  const boxTop = point.y - boxHeight / 2;
+
+  ctx.fillStyle = "rgba(67, 45, 28, 0.94)";
+  ctx.fillRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.strokeStyle = `rgba(128, 240, 193, ${Math.min(0.95, pulse + 0.22)})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.fillStyle = "#effff5";
+  ctx.font = "600 13px 'Trebuchet MS'";
+  ctx.textAlign = "center";
+  ctx.fillText("Press E to enter Annex Yard", point.x, point.y + 5);
+}
+
+function getRegistrationRoomCenterPoint() {
+  return {
+    floor: 1,
+    roomKind: "registration_room",
+    x: microScene.room.x + microScene.room.w * 0.5,
+    y: microScene.room.y + microScene.room.h * 0.5,
+    w: microScene.room.w,
+    h: microScene.room.h,
+  };
+}
+
+function getRegistrationRoomExitPoint() {
+  return {
+    x: microScene.exitPoint.x,
+    y: microScene.exitPoint.y,
+    floor: 1,
+  };
+}
+
+function getAnnexRoomCenterPoint() {
+  return {
+    floor: 1,
+    roomKind: "annex_room",
+    x: microScene.annex.room.x + microScene.annex.room.w * 0.5,
+    y: microScene.annex.room.y + microScene.annex.room.h * 0.5,
+    w: microScene.annex.room.w,
+    h: microScene.annex.room.h,
+  };
+}
+
 function getObjectiveTarget() {
   const patient = getCurrentSelfPatient();
   const visit = getCurrentVisit();
@@ -1328,15 +1907,28 @@ function getObjectiveTarget() {
     || (Array.isArray(patient?.triageEvidence) && patient.triageEvidence.length > 0)
   );
 
+  if (microScene.mode === "annex_room") {
+    return { label: "Press E at EXIT to Return", point: microScene.annex.exitPoint, room: getAnnexRoomCenterPoint() };
+  }
+
   if (!hasTriageRecord && !triageConversationState.sessionId) {
     return { label: "Go to Triage", point: triageInteractPoint, room: getRoomCenterPoint("triage") };
   }
 
   if (!patient || !visitState || visitState === "arrived" || visitState === "triaging" || visitState === "waiting_followup") {
+    if (microScene.mode === "registration_room") {
+      return { label: "Press Q to Return to Campus", point: getRegistrationRoomExitPoint(), room: getRegistrationRoomCenterPoint() };
+    }
     return { label: "Go to Triage", point: triageInteractPoint, room: getRoomCenterPoint("triage") };
   }
   if (visitState === "triaged") {
-    return { label: "Go to Registration", point: registrationInteractPoint, room: getRoomCenterPoint("registration") };
+    if (microScene.mode === "registration_room") {
+      return { label: "Register at Desk", point: microScene.interactPoint, room: getRegistrationRoomCenterPoint() };
+    }
+    return { label: "Go to Registration Room", point: registrationInteractPoint, room: getRoomCenterPoint("registration") };
+  }
+  if (microScene.mode === "registration_room" && (visitState === "registered" || visitState === "waiting_consultation" || visitState === "in_consultation")) {
+    return { label: "Press Q to Return to Hall", point: getRegistrationRoomExitPoint(), room: getRegistrationRoomCenterPoint() };
   }
   if (visitState === "registered" || lifecycle === "queued") {
     const room = getRoomCenterPoint("hall");
@@ -1435,8 +2027,9 @@ function drawObjectiveHighlight() {
   if (!target?.point) return;
   const pulse = 0.55 + Math.sin(performance.now() * 0.008) * 0.3;
   const worldDistance = Math.hypot(player.x - target.point.x, player.y - target.point.y);
+  const inRegistrationRoom = microScene.mode === "registration_room";
 
-  if (target.room) {
+  if (target.room && !inRegistrationRoom) {
     const roomLeft = target.room.x - target.room.w / 2;
     const roomTop = target.room.y - target.room.h / 2;
     const rect = worldRectToScreenRect(roomLeft, roomTop, target.room.w, target.room.h, target.room.floor);
@@ -1607,7 +2200,28 @@ function drawFloorLayer(floor, activeDoor, dimmed) {
 }
 
 function updateFloorHud() {
-  if (floorStateLabel) floorStateLabel.textContent = "Current Zone: Main Campus";
+  if (!floorStateLabel) return;
+  floorStateLabel.textContent = microScene.mode === "registration_room"
+    ? "Current Zone: Registration Room"
+    : microScene.mode === "annex_room"
+      ? "Current Zone: Annex Yard"
+      : "Current Zone: Main Campus";
+}
+
+function openRestartConfirmModal() {
+  if (!restartConfirmUi.modal || restartConfirmUi.open) return;
+  restartConfirmUi.open = true;
+  restartConfirmUi.modal.classList.remove("hidden");
+  restartConfirmUi.modal.setAttribute("aria-hidden", "false");
+  keys.clear();
+}
+
+function closeRestartConfirmModal() {
+  if (!restartConfirmUi.modal) return;
+  restartConfirmUi.open = false;
+  restartConfirmUi.modal.classList.add("hidden");
+  restartConfirmUi.modal.setAttribute("aria-hidden", "true");
+  keys.clear();
 }
 
 function syncHudToggleButton(button, active, ariaName = "pressed") {
@@ -1622,6 +2236,11 @@ function syncOverlayUi() {
   syncHudToggleButton(hudTasksToggle, overlayState.tasksOpen);
   syncHudToggleButton(hudLabelsToggle, overlayState.labelsOpen);
   syncHudToggleButton(hudDebugToggle, overlayState.debugOpen);
+  if (hudResumeBtn) {
+    const hasLastSession = Boolean(localStorage.getItem(SESSION_STORAGE_KEYS.lastClientId));
+    hudResumeBtn.disabled = !hasLastSession;
+    hudResumeBtn.setAttribute("aria-disabled", String(!hasLastSession));
+  }
 }
 
 function closeOverlayPanels() {
@@ -1653,6 +2272,34 @@ function bindHudControls() {
   hudDebugToggle?.addEventListener("click", () => {
     overlayState.debugOpen = !overlayState.debugOpen;
     syncOverlayUi();
+  });
+
+  hudRestartBtn?.addEventListener("click", () => {
+    openRestartConfirmModal();
+  });
+
+  hudResumeBtn?.addEventListener("click", () => {
+    const lastClientId = localStorage.getItem(SESSION_STORAGE_KEYS.lastClientId);
+    if (!lastClientId) {
+      pushStatusHint("No saved previous run is available.");
+      syncOverlayUi();
+      return;
+    }
+    localStorage.setItem(SESSION_STORAGE_KEYS.activeClientId, lastClientId);
+    window.location.search = "?resume=1";
+  });
+
+  hudNpcRouteButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.routeTarget;
+      if (!target) return;
+      const routed = npcRuntime.routeGuideNpcsTo?.(target) || 0;
+      if (routed > 0) {
+        pushStatusHint(`${routed} route NPCs are moving to ${ROOM_KIND_LABELS[target] || target}.`);
+      } else {
+        pushStatusHint(`No route NPC could be sent to ${ROOM_KIND_LABELS[target] || target}.`);
+      }
+    });
   });
 
   syncOverlayUi();
@@ -1690,18 +2337,46 @@ function update(delta, nowMs) {
 
   camera.x += (player.x - camera.x) * 0.12;
   camera.y += (player.y - camera.y) * 0.12;
-  updateZoneTriggers(nowMs);
+  if (microScene.mode === "campus") {
+    updateZoneTriggers(nowMs);
+  }
 }
 
 function render() {
+  if (microScene.mode === "annex_room") {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawAnnexRoomScene();
+    drawPlayer();
+    drawObjectiveHighlight();
+    drawTaskBoard();
+    drawRuntimeDebugPanel();
+    drawZoneStatusPanel();
+    runtimeDebug.lastRenderAt = performance.now();
+    return;
+  }
+
+  if (microScene.mode === "registration_room") {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawRegistrationRoomScene();
+    drawPlayer();
+    drawObjectiveHighlight();
+    drawTaskBoard();
+    drawRuntimeDebugPanel();
+    drawZoneStatusPanel();
+    runtimeDebug.lastRenderAt = performance.now();
+    return;
+  }
+
   const activeDoor = nearestDoor();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGroundBackdrop();
   drawFloorLayer(activeFloor, activeDoor, false);
+  drawAnnexGateStructure();
   drawLabels();
   drawObjectiveHighlight();
   drawHudHint(activeDoor);
   drawRegistrationHint();
+  drawAnnexGateHint();
   drawTriageHint();
   drawLabHint();
   drawDoctorEntryHint();
@@ -1771,11 +2446,32 @@ const visitSessionState = {
 function getClientId() {
   const params = new URLSearchParams(window.location.search);
   const forceNew = params.get("fresh") === "1" || params.get("newSession") === "1";
-  let clientId = localStorage.getItem("client_id");
+  const resumeSaved = params.get("resume") === "1";
+  const activeKey = SESSION_STORAGE_KEYS.activeClientId;
+  const lastKey = SESSION_STORAGE_KEYS.lastClientId;
+  let clientId = localStorage.getItem(activeKey);
 
-  if (forceNew || !clientId) {
+  if (resumeSaved) {
+    const savedClientId = localStorage.getItem(lastKey);
+    if (savedClientId) {
+      localStorage.setItem(activeKey, savedClientId);
+      return savedClientId;
+    }
+  }
+
+  if (forceNew) {
+    const previous = localStorage.getItem(activeKey);
+    if (previous) {
+      localStorage.setItem(lastKey, previous);
+    }
     clientId = crypto.randomUUID();
-    localStorage.setItem("client_id", clientId);
+    localStorage.setItem(activeKey, clientId);
+    return clientId;
+  }
+
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem(activeKey, clientId);
   }
   return clientId;
 }
@@ -2216,7 +2912,7 @@ async function openLatestSimulatedReportModal() {
 }
 
 async function submitRegistrationRequest(registrationPayload) {
-  if (backendState.submitting || !canInteractWithRegistrationDesk()) return;
+  if (backendState.submitting || !canSubmitRegistrationFromCurrentContext()) return;
   backendState.submitting = true;
   try {
     const visitId = await ensureVisitContext();
@@ -2363,13 +3059,35 @@ async function submitCreateDoctorSessionRequest() {
 function submitEActionRequest() {
   if (backendState.submitting || triageUi.open || registrationUi.open || triageDialogueUi.open || doctorDialogueUi.open || testReportUi.open || npcDialogueUi.open || fixedNpcRuntime?.isDialogueOpen?.()) return;
 
+  if (microScene.mode === "annex_room") {
+    if (canInteractWithAnnexExit()) {
+      leaveAnnexRoom();
+    } else {
+      pushStatusHint("Explore the annex yard or move to the EXIT door.");
+    }
+    return;
+  }
+
+  if (microScene.mode === "registration_room") {
+    if (canInteractWithRegistrationRoomExit()) {
+      leaveRegistrationRoom();
+      return;
+    }
+    if (canInteractWithRegistrationRoomDesk()) {
+      openRegistrationModal();
+    } else {
+      pushStatusHint("Move closer to the registration desk or exit door.");
+    }
+    return;
+  }
+
   if (fixedNpcRuntime?.tryInteract?.(player)) {
     openNpcDialogueModal();
     return;
   }
 
-  if (canInteractWithRegistrationDesk()) {
-    openRegistrationModal();
+  if (canInteractWithAnnexGate()) {
+    enterAnnexRoom();
     return;
   }
 
@@ -2385,6 +3103,17 @@ function submitEActionRequest() {
       return;
     }
     openTriageModal();
+    return;
+  }
+
+  if (canInteractWithRegistrationDesk()) {
+    const selfPatient = getCurrentSelfPatient();
+    const visitState = getCurrentVisit()?.state || selfPatient?.visit_state || "";
+    if (visitState !== "triaged") {
+      pushStatusHint("Finish triage before entering registration.");
+      return;
+    }
+    enterRegistrationRoom();
     return;
   }
 
@@ -2734,7 +3463,9 @@ fixedNpcRuntime = createFixedNpcRuntime({
 const npcRuntime = createNpcRuntime({
   rooms,
   roomBounds,
+  doors,
   canMoveTo,
+  canPathfindTo: canMoveTo,
   project,
   constants: {
     CHARACTER_BODY_HEIGHT,
@@ -2788,6 +3519,14 @@ function loop(now) {
 window.addEventListener("keydown", (event) => {
   if (!event.repeat && event.code === "Escape" && closeOverlayPanels()) {
     event.preventDefault();
+    return;
+  }
+
+  if (restartConfirmUi.open) {
+    if (event.code === "Escape" && !event.repeat) {
+      closeRestartConfirmModal();
+      event.preventDefault();
+    }
     return;
   }
 
@@ -2870,6 +3609,11 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyE" && !event.repeat) {
     submitTriageRequest();
     event.preventDefault();
+    return;
+  }
+  if (event.code === "KeyQ" && !event.repeat && microScene.mode === "registration_room") {
+    leaveRegistrationRoom();
+    event.preventDefault();
   }
 });
 
@@ -2937,6 +3681,25 @@ if (registrationUi.cancelBtn) {
 if (registrationUi.modal) {
   registrationUi.modal.addEventListener("click", (event) => {
     if (event.target === registrationUi.modal) closeRegistrationModal();
+  });
+}
+
+if (restartConfirmUi.okBtn) {
+  restartConfirmUi.okBtn.addEventListener("click", () => {
+    closeRestartConfirmModal();
+    window.location.search = "?fresh=1";
+  });
+}
+
+if (restartConfirmUi.cancelBtn) {
+  restartConfirmUi.cancelBtn.addEventListener("click", () => {
+    closeRestartConfirmModal();
+  });
+}
+
+if (restartConfirmUi.modal) {
+  restartConfirmUi.modal.addEventListener("click", (event) => {
+    if (event.target === restartConfirmUi.modal) closeRestartConfirmModal();
   });
 }
 
@@ -3031,5 +3794,8 @@ bindHudControls();
 updateFloorHud();
 eventSubscriber.connect();
 pollBackendStatuses(true);
+if (window.location.search.includes("fresh=1") || window.location.search.includes("resume=1") || window.location.search.includes("newSession=1")) {
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
 window.dispatchEvent(new Event("resize"));
 requestAnimationFrame(loop);

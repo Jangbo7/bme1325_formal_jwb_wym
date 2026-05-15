@@ -38,7 +38,10 @@ def build_follow_up_system_prompt() -> str:
         "4. \u4ee5\u4e2d\u6587\u4e3a\u4e3b\uff0c\u53ef\u4fdd\u7559\u82f1\u6587\u79d1\u5ba4\u540d\uff1b"
         "5. \u5982\u679c\u5f53\u524d\u5206\u8bca\u5efa\u8bae\u6ca1\u6709\u53d8\u5316\uff0c\u9ed8\u8ba4\u4e0d\u8981\u91cd\u590d\u79d1\u5ba4\u548c\u4f18\u5148\u7ea7\uff1b"
         "6. \u5982\u679c\u98ce\u9669\u8f83\u9ad8\uff0c\u53ef\u4ee5\u5148\u7528\u4e00\u53e5\u77ed\u63d0\u793a\uff0c\u518d\u8ffd\u95ee\u4e00\u4e2a\u5173\u952e\u95ee\u9898\uff1b"
-        "7. \u8fd4\u56de\u4e25\u683c JSON\uff0c\u5305\u542b assistant_message, question_focus, mention_recommendation, style_tag\u3002"
+        "7. \u8bed\u6c14\u50cf\u771f\u5b9e\u62a4\u58eb\uff0c\u5141\u8bb8\u7b80\u77ed\u53e3\u8bed\u5316\u8868\u8fbe\uff0c\u907f\u514d\u673a\u68b0\u586b\u7a7a\u611f\uff1b"
+        "8. \u5148\u68c0\u67e5\u6700\u8fd1\u5bf9\u8bdd\u91cc\u60a3\u8005\u662f\u5426\u5df2\u7ecf\u63d0\u4f9b\u8fc7\u76f8\u5173\u4fe1\u606f\uff0c\u907f\u514d\u91cd\u590d\u95ee\u540c\u4e00\u4ef6\u4e8b\uff1b"
+        "9. \u5982\u679c\u60a3\u8005\u56de\u7b54\u6a21\u7cca\uff0c\u53ef\u4ee5\u6362\u4e00\u79cd\u95ee\u6cd5\uff0c\u4f46\u4ecd\u7136\u53ea\u8ffd\u4e00\u4e2a\u6838\u5fc3\u5b57\u6bb5\uff1b"
+        "10. \u8fd4\u56de\u4e25\u683c JSON\uff0c\u5305\u542b assistant_message, question_focus, mention_recommendation, style_tag\u3002"
     )
 
 
@@ -53,6 +56,7 @@ def build_follow_up_user_prompt(
     last_question_text: str | None,
     asked_fields_history: list[str],
     recommendation_changed: bool,
+    patient_tone: str | None = None,
 ) -> str:
     recent_turns = turns[-5:] if turns else []
     return (
@@ -66,13 +70,18 @@ def build_follow_up_user_prompt(
         f" \u4e0a\u4e00\u8f6e\u8ffd\u95ee\u539f\u6587: {last_question_text}."
         f" \u5df2\u8ffd\u95ee\u5386\u53f2: {asked_fields_history}."
         f" recommendation_changed: {recommendation_changed}."
+        f" patient_tone: {patient_tone}."
+        " \u5982\u679c\u60a3\u8005\u5728\u8868\u8fbe\u75db\u82e6\u3001\u7126\u8651\u3001\u50ac\u836f\u3001\u8d28\u7591\u4e3a\u4ec0\u4e48\u8fd8\u5728\u95ee\uff0c"
+        " \u5148\u7528\u4e00\u53e5\u77ed\u53e5\u63a5\u4f4f\u60c5\u7eea\u6216\u8bf4\u660e\u5206\u8bca\u62a4\u58eb\u73b0\u5728\u4e0d\u76f4\u63a5\u5f00\u836f\uff0c"
+        " \u7136\u540e\u518d\u8ffd\u95ee\u4e00\u4e2a\u5173\u952e\u95ee\u9898\u3002"
     )
 
 
 def build_final_message(triage_result: dict) -> str:
     return (
-        f"\u5206\u8bca\u5b8c\u6210\u3002\u5efa\u8bae\u79d1\u5ba4\uff1a{triage_result['department']}\u3002"
-        f"Triage Level {triage_result['triage_level']}\uff0cPriority {triage_result['priority']}\u3002"
+        f"\u597d\u7684\uff0c\u8fd9\u8fb9\u5148\u4e3a\u60a8\u5b8c\u6210\u5206\u8bca\u3002"
+        f"\u76ee\u524d\u66f4\u5efa\u8bae\u60a8\u53bb {triage_result['department']}\uff0c"
+        f"\u5206\u8bca\u7b49\u7ea7\u4e3a {triage_result['triage_level']} \u7ea7\uff0c\u4f18\u5148\u7ea7 {triage_result['priority']}\u3002"
         f"{triage_result['note']}"
     )
 
@@ -85,6 +94,7 @@ def build_fallback_follow_up_message(
     last_question_focus: str | None,
     asked_fields_history: list[str],
     recommendation_changed: bool,
+    patient_tone: str | None = None,
 ) -> dict:
     if not missing_fields:
         return {
@@ -100,10 +110,16 @@ def build_fallback_follow_up_message(
     variants = FIELD_PROMPTS.get(focus, ["\u8bf7\u518d\u8865\u5145\u4e00\u70b9\u76f8\u5173\u4fe1\u606f\u3002"])
     prompt_text = variants[min(asked_count, len(variants) - 1)]
     prefix = ""
+    if patient_tone == "medication_request":
+        prefix = "\u6211\u660e\u767d\u4f60\u73b0\u5728\u5f88\u96be\u53d7\uff0c\u4f46\u5206\u8bca\u8fd9\u4e00\u6b65\u4e3b\u8981\u662f\u5148\u5224\u65ad\u8be5\u53bb\u54ea\u91cc\uff0c\u8fd8\u5f97\u518d\u786e\u8ba4\u4e00\u4e2a\u5173\u952e\u4fe1\u606f\u3002"
+    elif patient_tone == "distress":
+        prefix = "\u77e5\u9053\u4f60\u73b0\u5728\u5f88\u96be\u53d7\uff0c\u6211\u5148\u5feb\u901f\u786e\u8ba4\u4e00\u4e2a\u5173\u952e\u70b9\u3002"
+    elif patient_tone == "challenge":
+        prefix = "\u6211\u7406\u89e3\u4f60\u4f1a\u89c9\u5f97\u6211\u95ee\u5f97\u591a\uff0c\u4f46\u518d\u786e\u8ba4\u8fd9\u4e00\u70b9\uff0c\u5206\u8bca\u4f1a\u66f4\u51c6\u3002"
     if recommendation_changed:
-        prefix = f"\u76ee\u524d\u5efa\u8bae\u79d1\u5ba4\uff1a{triage_result['department']}\u3002"
+        prefix = f"\u5148\u6309\u73b0\u5728\u7684\u4fe1\u606f\u770b\uff0c\u66f4\u50cf\u662f\u53bb {triage_result['department']}\uff0c\u4e0d\u8fc7\u6211\u8fd8\u60f3\u518d\u786e\u8ba4\u4e00\u4e0b\u3002"
     elif risk_flags:
-        prefix = "\u6211\u5148\u6293\u4e00\u4e2a\u5bf9\u5206\u8bca\u66f4\u5173\u952e\u7684\u4fe1\u606f\u3002"
+        prefix = "\u6211\u5148\u786e\u8ba4\u4e00\u4e2a\u5bf9\u5206\u8bca\u66f4\u5173\u952e\u7684\u4fe1\u606f\u3002"
     if focus == last_question_focus and asked_count >= 1:
         prefix = "\u6211\u6362\u4e2a\u95ee\u6cd5\u786e\u8ba4\u4e00\u4e0b\u3002"
     assistant_message = f"{prefix}{prompt_text}" if prefix else prompt_text
