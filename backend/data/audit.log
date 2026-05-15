@@ -12438,3 +12438,50 @@
 2026-05-15T09:02:02.147695+00:00 queue.ticket_called {'patient_id': 'P-NPC-492', 'visit_id': 'E-20260515170155-f348', 'ticket': {'id': 'QT-9e8d45f4', 'patient_id': 'P-NPC-492', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 494, 'status': 'called', 'created_at': '2026-05-15T09:01:56.018090+00:00', 'updated_at': '2026-05-15T09:02:02.140711+00:00', 'visit_id': 'E-20260515170155-f348'}}
 2026-05-15T09:02:02.171456+00:00 patient.state_changed {'patient_id': 'P-NPC-492', 'lifecycle_state': 'called'}
 2026-05-15T09:02:02.182515+00:00 visit.state_changed {'visit_id': 'E-20260515170155-f348', 'patient_id': 'P-NPC-492', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-05-15T09:02:05.263633+00:00 patient.state_changed {'patient_id': 'P-NPC-492', 'lifecycle_state': 'in_consultation'}
+2026-05-15T09:02:05.275860+00:00 visit.state_changed {'visit_id': 'E-20260515170155-f348', 'patient_id': 'P-NPC-492', 'state': 'in_consultation', 'event': 'start_consultation'}
+2026-05-15T09:02:05.312602+00:00 patient.state_changed {'patient_id': 'P-NPC-491', 'lifecycle_state': 'completed'}
+2026-05-15T09:02:05.324042+00:00 visit.state_changed {'visit_id': 'E-20260515170146-fe9b', 'patient_id': 'P-NPC-491', 'state': 'completed', 'event': 'complete_visit'}
+2026-05-15T09:02:08.383975+00:00 visit.state_changed {'visit_id': 'E-20260515170208-7da0', 'patient_id': 'P-NPC-493', 'state': 'triaged', 'event': 'simulator_spawned'}
+2026-05-15T09:02:08.404898+00:00 visit.state_changed {'visit_id': 'E-20260515170208-7da0', 'patient_id': 'P-NPC-493', 'state': 'registered', 'event': 'register_completed'}
+2026-05-15T09:02:08.449543+00:00 patient.state_changed {'patient_id': 'P-NPC-493', 'lifecycle_state': 'queued'}
+2026-05-15T09:02:14.491329+00:00 queue.ticket_called {'patient_id': 'P-NPC-493', 'visit_id': 'E-20260515170208-7da0', 'ticket': {'id': 'QT-662e5ad6', 'patient_id': 'P-NPC-493', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 495, 'status': 'called', 'created_at': '2026-05-15T09:02:08.411007+00:00', 'updated_at': '2026-05-15T09:02:14.480689+00:00', 'visit_id': 'E-20260515170208-7da0'}}
+2026-05-15T09:02:14.518837+00:00 patient.state_changed {'patient_id': 'P-NPC-493', 'lifecycle_state': 'called'}
+2026-05-15T09:02:14.532098+00:00 visit.state_changed {'visit_id': 'E-20260515170208-7da0', 'patient_id': 'P-NPC-493', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-05-15T09:02:14.566857+00:00 patient.state_changed {'patient_id': 'P-NPC-492', 'lifecycle_state': 'completed'}
+2026-05-15T09:02:14.579473+00:00 visit.state_changed {'visit_id': 'E-20260515170155-f348', 'patient_id': 'P-NPC-492', 'state': 'completed', 'event': 'complete_visit'}
+2026-05-15T09:02:17.633552+00:00 visit.state_changed {'visit_id': 'E-20260515170217-b64a', 'patient_id': 'P-NPC-494', 'state': 'triaged', 'event': 'simulator_spawned'}
+2026-05-15T09:02:17.651857+00:00 visit.state_changed {'visit_id': 'E-20260515170217-b64a', 'patient_id': 'P-NPC-494', 'state': 'registered', 'event': 'register_completed'}
+2026-05-15T09:02:17.694180+00:00 patient.state_changed {'patient_id': 'P-NPC-494', 'lifecycle_state': 'queued'}
+2026-05-15T09:02:17.740661+00:00 patient.state_changed {'patient_id': 'P-NPC-493', 'lifecycle_state': 'in_consultation'}
+2026-05-15T09:02:17.753878+00:00 visit.state_changed {'visit_id': 'E-20260515170208-7da0', 'patient_id': 'P-NPC-493', 'state': 'in_consultation', 'event': 'start_consultation'}
+2026-05-15T09:02:23.798546+00:00 queue.ticket_called {'patient_id': 'P-NPC-494', 'visit_id': 'E-20260515170217-b64a', 'ticket': {'id': 'QT-b2e18895', 'patient_id': 'P-NPC-494', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 496, 'status': 'called', 'created_at': '2026-05-15T09:02:17.655506+00:00', 'updated_at': '2026-05-15T09:02:23.789101+00:00', 'visit_id': 'E-20260515170217-b64a'}}
+2026-05-15T09:02:23.824767+00:00 patient.state_changed {'patient_id': 'P-NPC-494', 'lifecycle_state': 'called'}
+2026-05-15T09:02:23.837701+00:00 visit.state_changed {'visit_id': 'E-20260515170217-b64a', 'patient_id': 'P-NPC-494', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-05-15T09:02:26.908655+00:00 patient.state_changed {'patient_id': 'P-NPC-494', 'lifecycle_state': 'in_consultation'}
+2026-05-15T09:02:26.919967+00:00 visit.state_changed {'visit_id': 'E-20260515170217-b64a', 'patient_id': 'P-NPC-494', 'state': 'in_consultation', 'event': 'start_consultation'}
+2026-05-15T09:02:26.950261+00:00 patient.state_changed {'patient_id': 'P-NPC-493', 'lifecycle_state': 'completed'}
+2026-05-15T09:02:26.964790+00:00 visit.state_changed {'visit_id': 'E-20260515170208-7da0', 'patient_id': 'P-NPC-493', 'state': 'completed', 'event': 'complete_visit'}
+2026-05-15T09:02:30.021844+00:00 visit.state_changed {'visit_id': 'E-20260515170229-2d9c', 'patient_id': 'P-NPC-495', 'state': 'triaged', 'event': 'simulator_spawned'}
+2026-05-15T09:02:30.039663+00:00 visit.state_changed {'visit_id': 'E-20260515170229-2d9c', 'patient_id': 'P-NPC-495', 'state': 'registered', 'event': 'register_completed'}
+2026-05-15T09:02:30.084149+00:00 patient.state_changed {'patient_id': 'P-NPC-495', 'lifecycle_state': 'queued'}
+2026-05-15T09:02:36.127156+00:00 queue.ticket_called {'patient_id': 'P-NPC-495', 'visit_id': 'E-20260515170229-2d9c', 'ticket': {'id': 'QT-375baf84', 'patient_id': 'P-NPC-495', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 497, 'status': 'called', 'created_at': '2026-05-15T09:02:30.045679+00:00', 'updated_at': '2026-05-15T09:02:36.117167+00:00', 'visit_id': 'E-20260515170229-2d9c'}}
+2026-05-15T09:02:36.152202+00:00 patient.state_changed {'patient_id': 'P-NPC-495', 'lifecycle_state': 'called'}
+2026-05-15T09:02:36.164761+00:00 visit.state_changed {'visit_id': 'E-20260515170229-2d9c', 'patient_id': 'P-NPC-495', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-05-15T09:02:36.193788+00:00 patient.state_changed {'patient_id': 'P-NPC-494', 'lifecycle_state': 'completed'}
+2026-05-15T09:02:36.207873+00:00 visit.state_changed {'visit_id': 'E-20260515170217-b64a', 'patient_id': 'P-NPC-494', 'state': 'completed', 'event': 'complete_visit'}
+2026-05-15T09:02:39.266089+00:00 visit.state_changed {'visit_id': 'E-20260515170239-9ed4', 'patient_id': 'P-NPC-496', 'state': 'triaged', 'event': 'simulator_spawned'}
+2026-05-15T09:02:39.287357+00:00 visit.state_changed {'visit_id': 'E-20260515170239-9ed4', 'patient_id': 'P-NPC-496', 'state': 'registered', 'event': 'register_completed'}
+2026-05-15T09:02:39.329891+00:00 patient.state_changed {'patient_id': 'P-NPC-496', 'lifecycle_state': 'queued'}
+2026-05-15T09:02:39.381230+00:00 patient.state_changed {'patient_id': 'P-NPC-495', 'lifecycle_state': 'in_consultation'}
+2026-05-15T09:02:39.393047+00:00 visit.state_changed {'visit_id': 'E-20260515170229-2d9c', 'patient_id': 'P-NPC-495', 'state': 'in_consultation', 'event': 'start_consultation'}
+2026-05-15T09:02:45.429408+00:00 queue.ticket_called {'patient_id': 'P-NPC-496', 'visit_id': 'E-20260515170239-9ed4', 'ticket': {'id': 'QT-908dfa26', 'patient_id': 'P-NPC-496', 'department_id': 'doctor_entry', 'department_name': 'Doctor Entry', 'number': 498, 'status': 'called', 'created_at': '2026-05-15T09:02:39.293080+00:00', 'updated_at': '2026-05-15T09:02:45.418090+00:00', 'visit_id': 'E-20260515170239-9ed4'}}
+2026-05-15T09:02:45.459247+00:00 patient.state_changed {'patient_id': 'P-NPC-496', 'lifecycle_state': 'called'}
+2026-05-15T09:02:45.472855+00:00 visit.state_changed {'visit_id': 'E-20260515170239-9ed4', 'patient_id': 'P-NPC-496', 'state': 'waiting_consultation', 'event': 'queue_wait_elapsed'}
+2026-05-15T09:02:48.547867+00:00 patient.state_changed {'patient_id': 'P-NPC-496', 'lifecycle_state': 'in_consultation'}
+2026-05-15T09:02:48.561358+00:00 visit.state_changed {'visit_id': 'E-20260515170239-9ed4', 'patient_id': 'P-NPC-496', 'state': 'in_consultation', 'event': 'start_consultation'}
+2026-05-15T09:02:48.595184+00:00 patient.state_changed {'patient_id': 'P-NPC-495', 'lifecycle_state': 'completed'}
+2026-05-15T09:02:48.609348+00:00 visit.state_changed {'visit_id': 'E-20260515170229-2d9c', 'patient_id': 'P-NPC-495', 'state': 'completed', 'event': 'complete_visit'}
+2026-05-15T09:02:51.653777+00:00 visit.state_changed {'visit_id': 'E-20260515170251-ed63', 'patient_id': 'P-NPC-497', 'state': 'triaged', 'event': 'simulator_spawned'}
+2026-05-15T09:02:51.671320+00:00 visit.state_changed {'visit_id': 'E-20260515170251-ed63', 'patient_id': 'P-NPC-497', 'state': 'registered', 'event': 'register_completed'}
+2026-05-15T09:02:51.711350+00:00 patient.state_changed {'patient_id': 'P-NPC-497', 'lifecycle_state': 'queued'}
