@@ -16,6 +16,7 @@ def create_internal_medicine_service(
     visit_state_machine,
     bus,
     encounter_orchestration_service=None,
+    medical_record_repo=None,
 ):
     dialogue_state_machine = InternalMedicineDialogueStateMachine()
     graph = InternalMedicineGraph(service=None, dialogue_state_machine=dialogue_state_machine)
@@ -32,6 +33,7 @@ def create_internal_medicine_service(
         bus=bus,
         graph=graph,
         encounter_orchestration_service=encounter_orchestration_service,
+        medical_record_repo=medical_record_repo,
     )
     graph.service = service
     return service

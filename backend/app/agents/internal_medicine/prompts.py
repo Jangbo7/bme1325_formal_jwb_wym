@@ -79,6 +79,7 @@ def build_consultation_user_prompt(
     message: str,
     missing_fields: list[str],
     *,
+    historical_records_template: dict | None = None,
     previous_final_result: dict | None = None,
     post_final_reassessment: bool = False,
 ) -> str:
@@ -89,6 +90,7 @@ def build_consultation_user_prompt(
     )
     return (
         f"Patient shared facts: {shared_memory}\n"
+        f"Historical medical records template: {historical_records_template or {}}\n"
         f"Latest patient message: {message}\n"
         f"Missing fields: {missing_fields}\n"
         f"Previous final result: {previous_final_result or {}}\n"

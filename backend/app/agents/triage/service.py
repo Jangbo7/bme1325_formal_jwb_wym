@@ -55,6 +55,7 @@ class TriageService:
         visit_state_machine,
         bus,
         graph,
+        medical_record_repo=None,
     ):
         self.llm_settings = llm_settings
         self.patient_repo = patient_repo
@@ -67,6 +68,7 @@ class TriageService:
         self.visit_state_machine = visit_state_machine
         self.bus = bus
         self.graph = graph
+        self.medical_record_repo = medical_record_repo
 
     def ensure_visit_for_payload(self, payload: dict) -> dict:
         patient_id = payload["patient_id"]
@@ -732,6 +734,33 @@ class TriageService:
                     "priority": triage_result.get("priority"),
                 },
             )
+            if self.medical_record_repo and visit_id:
+                clinical = shared.get("clinical_memory") or {}
+                self.medical_record_repo.append_entry(
+                    patient_id=patient_id,
+                    visit_id=visit_id,
+                    phase="triage",
+                    entry_type="triage_note",
+                    actor="triage_agent",
+                    title="Triage Summary",
+                    content_text=(
+                        f"chief_complaint={clinical.get('chief_complaint') or ''}; "
+                        f"triage_level={triage_result.get('triage_level')}; "
+                        f"priority={triage_result.get('priority')}; "
+                        f"department={triage_result.get('department')}"
+                    ),
+                    content={
+                        "chief_complaint": clinical.get("chief_complaint"),
+                        "symptoms": clinical.get("symptoms") or [],
+                        "onset_time": clinical.get("onset_time"),
+                        "vitals": clinical.get("vitals") or {},
+                        "risk_flags": clinical.get("risk_flags") or [],
+                        "triage_level": triage_result.get("triage_level"),
+                        "priority": triage_result.get("priority"),
+                        "department": triage_result.get("department"),
+                        "note": triage_result.get("note"),
+                    },
+                )
 
     def build_response(self, patient_id: str, session_id: str):
         patient_view = self.get_patient_view(patient_id)

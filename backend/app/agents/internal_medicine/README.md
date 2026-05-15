@@ -2,13 +2,14 @@
 
 ## 功能介绍
 
-内科目录 (`internal_medicine`) 实现了内科医生的智能诊疗系统，主要功能包括：
+内科目录 (`internal_medicine`) 负责分诊后的门诊内科问诊与辅助检查接力，主要功能包括：
 
-- 患者内科问诊和咨询
-- 症状分析和诊断建议
-- 基于规则和LLM的智能决策
-- 患者状态管理和追踪
-- 医疗记录的持久化存储
+- 患者内科问诊和追问
+- 症状、体征和风险评估
+- 基于规则和 LLM 的诊疗建议生成
+- 辅助检查仿真与报告落库
+- 患者状态和就诊状态更新
+- 诊疗结果和会话数据持久化
 
 ## 目录结构
 
@@ -29,13 +30,7 @@ internal_medicine/
 
 ### 1. InternalMedicineService
 
-核心服务类，提供以下功能：
-- `create_session()`: 创建内科问诊会话
-- `continue_session()`: 继续已有的问诊会话
-- `get_patient_view()`: 获取患者视图信息
-- `prepare_context()`: 准备问诊上下文
-- `evaluate()`: 评估患者症状并生成诊断
-- `persist_result()`: 持久化诊疗结果
+核心服务类负责会话评估、结果持久化、visit 记忆更新、状态推进和响应构造。当前实现会在完成时生成 simulated_report，并把诊疗上下文写回 `visit.data_json`。
 
 ### 2. 规则系统
 
@@ -54,48 +49,45 @@ internal_medicine/
 
 - `WorkingMemory`: 工作内存，存储会话过程中的临时数据
 - `ConsultationProgress`: 咨询进度跟踪
+- `visit.data_json`: 跨步骤载体，保存 `diagnostic_session`、`simulated_report`、`test_category` 和 `test_items`
 
 ## 工作流程
 
-1. **会话创建**：患者进入内科，创建新的问诊会话
-2. **信息收集**：收集患者基本信息、症状、生命体征等
+1. **会话进入**：患者完成分诊和叫号后进入内科会话
+2. **信息收集**：收集患者基本信息、症状、生命体征和缺失字段
 3. **风险评估**：基于症状和体征评估风险等级
 4. **规则匹配**：匹配相关的内科诊疗规则
-5. **LLM咨询**：如有必要，向LLM请求进一步的诊疗建议
-6. **诊断生成**：生成诊断结果和治疗建议
-7. **结果持久化**：将诊疗结果存储到数据库
-8. **状态更新**：更新患者和访问状态
+5. **LLM 咨询**：如有必要，向 LLM 请求进一步的诊疗建议
+6. **诊疗结论**：生成诊疗结论、追问结果和后续计划
+7. **辅助检查仿真**：将结果交给 `test_simulator` 生成一级检查分区和 simulated_report
+8. **结果持久化**：将诊疗结果存储到数据库并更新患者/就诊状态
 
 ## API接口
 
-- `POST /internal-medicine-sessions`: 创建新的内科问诊会话
-- `PUT /internal-medicine-sessions/{session_id}`: 继续内科问诊会话
-- `GET /internal-medicine-sessions/{session_id}`: 获取会话详情
+- `POST /api/v1/internal-medicine-sessions`: 创建新的内科问诊会话
+- `POST /api/v1/internal-medicine-sessions/{session_id}/messages`: 继续内科问诊会话
+- `GET /api/v1/internal-medicine-sessions/{session_id}`: 获取会话详情
 
 ## 示例请求
 
 ### 创建内科问诊会话
 
 ```json
-POST /internal-medicine-sessions
+POST /api/v1/internal-medicine-sessions
 {
   "patient_id": "patient-123",
+  "visit_id": "visit-123",
   "name": "张三",
   "age": 45,
   "sex": "male",
-  "symptoms": "头痛、发热、咳嗽",
-  "vitals": {
-    "temperature": 38.5,
-    "blood_pressure": "120/80",
-    "heart_rate": 85
-  }
+  "chief_complaint": "头痛、发热、咳嗽"
 }
 ```
 
 ### 继续内科问诊会话
 
 ```json
-PUT /internal-medicine-sessions/im-session-456
+POST /api/v1/internal-medicine-sessions/im-session-456/messages
 {
   "patient_id": "patient-123",
   "message": "我还有恶心和呕吐的症状"

@@ -175,6 +175,39 @@ class Database:
                         expires_at TEXT NOT NULL,
                         PRIMARY KEY (idempotency_key, method, path)
                     );
+
+                    CREATE TABLE IF NOT EXISTS medical_records (
+                        id TEXT PRIMARY KEY,
+                        patient_id TEXT NOT NULL,
+                        visit_id TEXT NOT NULL UNIQUE,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS medical_record_entries (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        record_id TEXT NOT NULL,
+                        patient_id TEXT NOT NULL,
+                        visit_id TEXT NOT NULL,
+                        phase TEXT NOT NULL,
+                        entry_type TEXT NOT NULL,
+                        actor TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        content_text TEXT NOT NULL,
+                        content_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS patient_agent_cases (
+                        id TEXT PRIMARY KEY,
+                        patient_id TEXT NOT NULL,
+                        visit_id TEXT,
+                        mode TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        case_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
                     """
                 )
                 self._ensure_column(conn, "patients", "visit_id", "TEXT")
@@ -202,6 +235,9 @@ class Database:
             "triage_history",
             "patients",
             "idempotency_records",
+            "medical_record_entries",
+            "medical_records",
+            "patient_agent_cases",
         ]
 
         with self.lock:
@@ -210,8 +246,8 @@ class Database:
                 for table_name in runtime_tables:
                     conn.execute(f"DELETE FROM {table_name}")
                 conn.execute(
-                    "DELETE FROM sqlite_sequence WHERE name IN (?, ?)",
-                    ("session_turns", "triage_history"),
+                    "DELETE FROM sqlite_sequence WHERE name IN (?, ?, ?)",
+                    ("session_turns", "triage_history", "medical_record_entries"),
                 )
                 conn.commit()
             finally:

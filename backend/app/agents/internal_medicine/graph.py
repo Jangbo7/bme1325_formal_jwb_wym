@@ -65,7 +65,7 @@ class InternalMedicineGraph:
         if mode == "continue_session":
             self.service.apply_chat_updates(payload, memory)
         memory.private_memory["consultation_progress"] = memory.consultation_progress.to_dict()
-        merged_payload = self.service.build_merged_payload(payload, memory.shared_memory)
+        merged_payload = self.service.build_merged_payload(payload, memory.shared_memory, memory.private_memory)
         state = InternalMedicineGraphState(
             payload=payload,
             patient_row=self.service.patient_repo.get(patient_id),

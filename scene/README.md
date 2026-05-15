@@ -1,18 +1,16 @@
-# 医院伪 3D 沙盒原型
+# 医院门诊前端
 
-当前版本使用原生 `HTML + Canvas` 实现一个第三人称伪 3D 医院箱庭原型，目标是先把空间层次、房间体积感和后续系统扩展的基础搭起来。
+当前版本使用原生 `HTML + Canvas` + ES modules 实现医院门诊前端，目标是把分诊、排队、病历、NPC 和后端状态展示拆成独立模块。
 
 ## 已实现
 
-- 多房间箱庭式医院布局
-- 第三人称伪 3D 轴测渲染
-- 主角移动（`WASD` / 方向键）
-- 优化后的门洞墙体切分与房门碰撞
-- 医院风格自动玻璃门（靠近自动开启，离开自动关闭）
-- 简单碰撞体积（墙体、家具、关闭中的门）
-- 跟随镜头
-- 小地图与房间标签
-- 偏霓虹紫调的医院箱庭美术氛围
+- 模块化的前端装配入口
+- 分诊表单与分诊对话
+- 队列、叫号和就诊状态展示
+- 固定 NPC 对话与随机 NPC 流动
+- 病历卡展示 triage、internal medicine 和 simulated_report
+- 私有 API 配置隔离
+- 前端只负责呈现状态，业务逻辑仍在后端
 
 ## 启动方式
 
@@ -47,32 +45,45 @@ window.HOS_PRIVATE_API = {
 ## 项目结构
 
 ```
-hos_formal/
-├── index.html          # 主HTML文件
-├── main.js            # 主入口文件，负责初始化游戏
-├── constants.js       # 游戏常量和配置
-├── gameObjects.js     # 游戏对象定义（玩家、房间、门、道具）
-├── utils.js           # 辅助函数
-├── collision.js       # 碰撞检测相关函数
-├── render.js          # 渲染相关函数
-├── gameLogic.js       # 游戏逻辑相关函数
-└── styles.css         # 样式文件
+scene/
+├── main.js
+├── core/
+│   └── bootstrap.js
+├── agent/
+│   ├── client.js
+│   ├── store.js
+│   ├── triage-dialogue.js
+│   └── triage-form.js
+├── queue/
+│   └── runtime.js
+├── npc/
+│   ├── runtime.js
+│   └── fixed-runtime.js
+├── ui/
+│   ├── task-board.js
+│   └── medical-record.js
+├── img/
+│   ├── process-assets.py
+│   └── process-assets.js
+├── api.private.example.js
+└── api.private.js
 ```
 
 ### 文件说明
 
-- **constants.js**: 包含游戏的常量和配置，如瓦片大小、颜色 palette 等
-- **gameObjects.js**: 定义游戏中的各种对象，如玩家、房间、门和道具
-- **utils.js**: 提供各种辅助函数，如构建门、墙壁段等
-- **collision.js**: 处理碰撞检测相关的逻辑
-- **render.js**: 负责游戏的渲染，包括绘制房间、墙壁、门、道具和玩家等
-- **gameLogic.js**: 包含游戏的核心逻辑，如更新门的状态、处理玩家移动等
-- **main.js**: 主入口文件，负责初始化游戏和启动游戏循环
+- **main.js**: 浏览器入口，负责启动前端运行时
+- **core/bootstrap.js**: 组合后端客户端、分诊、队列、NPC 和 UI 模块
+- **agent/client.js**: 后端 API 封装
+- **agent/store.js**: 对话和会话状态存储
+- **queue/runtime.js**: 排队与叫号展示
+- **npc/runtime.js**: 随机 NPC 的移动逻辑
+- **npc/fixed-runtime.js**: 固定 NPC 对话和交互逻辑
+- **ui/task-board.js**: 当前患者、会话、agent 状态看板
+- **ui/medical-record.js**: 病历卡渲染
+- **img/**: 素材处理脚本与生成的头像资源
 
 ## 下一步建议
 
-1. 加入护士站、收费、诊室等功能房间的可交互点
-2. 加入 NPC、寻路和日程系统
-3. 将房间数据抽成配置，转成真正的医院模拟底层
-4. 添加更多的游戏功能，如任务系统、物品系统等
-5. 优化性能，特别是在处理大量游戏对象时
+1. 新增 UI 时优先放进 `agent/` 或 `ui/`，不要把逻辑继续堆回单文件。
+2. 如果要接新的 agent，先补后端契约，再补前端展示。
+3. 若要替换头像或素材，优先调整 `img/` 里的处理脚本和生成产物。

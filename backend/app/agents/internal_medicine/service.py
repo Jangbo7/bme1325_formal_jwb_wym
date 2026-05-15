@@ -62,6 +62,7 @@ class InternalMedicineService:
         graph,
         test_simulator=None,
         encounter_orchestration_service=None,
+        medical_record_repo=None,
     ):
         self.llm_settings = llm_settings
         self.patient_repo = patient_repo
@@ -76,6 +77,7 @@ class InternalMedicineService:
         self.graph = graph
         self.test_simulator = test_simulator or TestSimulationAgent()
         self.encounter_orchestration_service = encounter_orchestration_service
+        self.medical_record_repo = medical_record_repo
 
     def create_session(self, payload: dict):
         return self.graph.invoke({"mode": "create_session", "payload": payload})
@@ -261,6 +263,13 @@ class InternalMedicineService:
         private_memory.setdefault("final_result", {})
         private_memory.setdefault("consultation_round", int(payload.get("_consultation_round") or 1))
         private_memory["dialogue_state"] = dialogue_state.value
+        if payload.get("debug_read_historical_records"):
+            template = self._build_historical_records_template(
+                patient_id=patient_id,
+                visit_id=str(payload.get("visit_id") or ""),
+            )
+            private_memory["historical_records_template"] = template
+            private_memory["historical_records_note"] = template.get("clinician_note") or ""
 
         progress = ConsultationProgress.from_dict(private_memory.get("consultation_progress"))
 
@@ -293,7 +302,7 @@ class InternalMedicineService:
         memory.consultation_progress.patient_reply_count += 1
         memory.consultation_progress.last_extracted_fields = extracted.get("extracted_fields", [])
 
-    def build_merged_payload(self, payload: dict, shared_memory: dict) -> dict:
+    def build_merged_payload(self, payload: dict, shared_memory: dict, private_memory: dict | None = None) -> dict:
         clinical = shared_memory["clinical_memory"]
         merged = dict(payload)
         merged["symptoms"] = payload.get("symptoms") or ", ".join(clinical.get("symptoms") or [])
@@ -312,6 +321,8 @@ class InternalMedicineService:
                 merged["simulated_report"] = simulated_report
             if isinstance(diagnostic_session, dict):
                 merged["diagnostic_session"] = diagnostic_session
+        if private_memory and isinstance(private_memory.get("historical_records_template"), dict):
+            merged["historical_records_template"] = private_memory.get("historical_records_template")
         return merged
 
     def request_consultation_from_llm(
@@ -320,6 +331,7 @@ class InternalMedicineService:
         shared_memory: dict,
         missing_fields: list[str],
         *,
+        historical_records_template: dict | None = None,
         previous_final_result: dict | None = None,
         post_final_reassessment: bool = False,
     ) -> dict | None:
@@ -338,6 +350,7 @@ class InternalMedicineService:
                                 shared_memory,
                                 payload.get("message", ""),
                                 missing_fields,
+                                historical_records_template=historical_records_template,
                                 previous_final_result=previous_final_result,
                                 post_final_reassessment=post_final_reassessment,
                             ),
@@ -407,6 +420,9 @@ class InternalMedicineService:
 
         if mode == "create_session":
             assistant_message = build_initial_message(memory.shared_memory, progress)
+            historical_note = str(memory.private_memory.get("historical_records_note") or "").strip()
+            if historical_note:
+                assistant_message = f"[History reviewed] {historical_note}\n{assistant_message}"
             return (
                 fallback,
                 evidence,
@@ -422,6 +438,7 @@ class InternalMedicineService:
                     merged_payload,
                     memory.shared_memory,
                     missing_fields,
+                    historical_records_template=merged_payload.get("historical_records_template"),
                     previous_final_result=previous_final_result,
                     post_final_reassessment=True,
                 )
@@ -456,7 +473,12 @@ class InternalMedicineService:
 
         llm_result = None
         try:
-            llm_result = self.request_consultation_from_llm(merged_payload, memory.shared_memory, missing_fields)
+            llm_result = self.request_consultation_from_llm(
+                merged_payload,
+                memory.shared_memory,
+                missing_fields,
+                historical_records_template=merged_payload.get("historical_records_template"),
+            )
         except Exception:
             llm_result = None
         final_result = validate_internal_medicine_result(llm_result, fallback, merged_payload)
@@ -553,7 +575,32 @@ class InternalMedicineService:
                 },
             )
 
-        visit_row = self.visit_repo.get(payload.get("visit_id")) if payload.get("visit_id") else None
+        visit_id = payload.get("visit_id")
+        if complete and not was_completed and consultation_round == 1:
+            self._append_medical_record_entry(
+                patient_id=patient_id,
+                visit_id=visit_id,
+                phase="internal_medicine_round1",
+                entry_type="initial_consult_note",
+                title="Initial Internal Medicine Assessment",
+                content_text=(
+                    f"department={consultation_result.get('department')}; "
+                    f"priority={consultation_result.get('priority')}; "
+                    f"diagnosis_level={consultation_result.get('diagnosis_level')}"
+                ),
+                content={
+                    "department": consultation_result.get("department"),
+                    "priority": consultation_result.get("priority"),
+                    "diagnosis_level": consultation_result.get("diagnosis_level"),
+                    "impression": consultation_result.get("impression"),
+                    "differentials": consultation_result.get("differentials", []),
+                    "test_required": consultation_result.get("test_required", True),
+                    "test_category": consultation_result.get("test_category"),
+                    "assistant_message": assistant_message,
+                },
+            )
+
+        visit_row = self.visit_repo.get(visit_id) if visit_id else None
         if visit_row:
             if consultation_round == 1 and complete and not was_completed:
                 visit_data = self._get_visit_data(visit_row)
@@ -613,6 +660,26 @@ class InternalMedicineService:
                         "report_summary": simulation_report.get("report_summary", {}),
                     },
                 )
+                self._append_medical_record_entry(
+                    patient_id=patient_id,
+                    visit_id=visit_row["id"],
+                    phase="testing",
+                    entry_type="test_result_note",
+                    title="Auxiliary Test Report",
+                    content_text=(
+                        f"category={assigned_category}; "
+                        f"window={simulation_report.get('window_label')}; "
+                        f"summary={simulation_report.get('report_summary')}"
+                    ),
+                    content={
+                        "test_category": assigned_category,
+                        "window_code": simulation_report.get("window_code"),
+                        "window_label": simulation_report.get("window_label"),
+                        "test_items": simulation_report.get("test_items", []),
+                        "report_summary": simulation_report.get("report_summary", {}),
+                        "generated_at": simulation_report.get("generated_at", timestamp),
+                    },
+                )
                 self.bus.publish(
                     INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
                     {
@@ -648,6 +715,29 @@ class InternalMedicineService:
                     current_department="Payment",
                     active_agent_type=None,
                     extra_data=self._get_visit_data(finalized_visit),
+                )
+                self._append_medical_record_entry(
+                    patient_id=patient_id,
+                    visit_id=visit_row["id"],
+                    phase="internal_medicine_round2",
+                    entry_type="second_consult_note",
+                    title="Second Consultation And Plan",
+                    content_text=(
+                        f"department={consultation_result.get('department')}; "
+                        f"priority={consultation_result.get('priority')}; "
+                        f"diagnosis_level={consultation_result.get('diagnosis_level')}; "
+                        "status=waiting_payment"
+                    ),
+                    content={
+                        "department": consultation_result.get("department"),
+                        "priority": consultation_result.get("priority"),
+                        "diagnosis_level": consultation_result.get("diagnosis_level"),
+                        "final_diagnosis": consultation_result.get("final_diagnosis"),
+                        "plan": consultation_result.get("plan"),
+                        "prescriptions": consultation_result.get("prescriptions", []),
+                        "assistant_message": assistant_message,
+                        "visit_state_after_consult": "waiting_payment",
+                    },
                 )
                 self.bus.publish(
                     INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
@@ -686,6 +776,84 @@ class InternalMedicineService:
             "patient": patient_view.model_dump() if patient_view else None,
             "dialogue": dialogue,
         }
+
+    def _build_historical_records_template(self, *, patient_id: str, visit_id: str) -> dict:
+        if not self.medical_record_repo or not visit_id:
+            return {"current_visit": None, "previous_visits": [], "clinician_note": ""}
+
+        def compact_timeline(timeline: dict | None) -> dict | None:
+            if not timeline:
+                return None
+            summary = dict(timeline.get("summary") or {})
+            entries = list(timeline.get("entries") or [])
+            highlights = []
+            for entry in entries[-4:]:
+                highlights.append(
+                    {
+                        "phase": entry.get("phase"),
+                        "entry_type": entry.get("entry_type"),
+                        "title": entry.get("title"),
+                        "content_text": entry.get("content_text"),
+                        "created_at": entry.get("created_at"),
+                    }
+                )
+            return {
+                "summary": summary,
+                "highlights": highlights,
+            }
+
+        current_timeline = compact_timeline(self.medical_record_repo.get_visit_timeline(visit_id))
+        previous_visits: list[dict] = []
+        for previous_visit_id in self.medical_record_repo.list_recent_visit_ids_by_patient(
+            patient_id,
+            exclude_visit_id=visit_id,
+            limit=2,
+        ):
+            previous_timeline = compact_timeline(self.medical_record_repo.get_visit_timeline(previous_visit_id))
+            if previous_timeline:
+                previous_visits.append(previous_timeline)
+
+        current_summary = (current_timeline or {}).get("summary") or {}
+        previous_labels = []
+        for timeline in previous_visits:
+            summary = timeline.get("summary") or {}
+            previous_labels.append(
+                f"{summary.get('visit_id')}({summary.get('entry_count', 0)} entries)"
+            )
+        clinician_note = (
+            f"current_visit={current_summary.get('visit_id') or visit_id}, "
+            f"current_entries={current_summary.get('entry_count', 0)}, "
+            f"previous_visits={', '.join(previous_labels) if previous_labels else 'none'}"
+        )
+        return {
+            "current_visit": current_timeline,
+            "previous_visits": previous_visits,
+            "clinician_note": clinician_note,
+        }
+
+    def _append_medical_record_entry(
+        self,
+        *,
+        patient_id: str,
+        visit_id: str | None,
+        phase: str,
+        entry_type: str,
+        title: str,
+        content_text: str,
+        content: dict,
+    ) -> None:
+        if not self.medical_record_repo or not visit_id:
+            return
+        self.medical_record_repo.append_entry(
+            patient_id=patient_id,
+            visit_id=visit_id,
+            phase=phase,
+            entry_type=entry_type,
+            actor="internal_medicine_agent",
+            title=title,
+            content_text=content_text,
+            content=content,
+        )
 
     def _update_visit_agent_context(self, visit_row: dict, session_id: str, active_agent_type: str | None) -> dict:
         data = self._get_visit_data(visit_row)

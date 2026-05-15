@@ -7,6 +7,9 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.internal_medicine import create_internal_medicine_service
+from app.agents.multi_patient_debug import MultiPatientDebugController
+from app.agents.patient_agent import PatientAgentDebugController
+from app.agents.npc_patient import NpcPatientDebugController
 from app.agents.icu_doctor import create_icub_doctor_service
 from app.agents.triage.graph import LANGGRAPH_AVAILABLE, TriageGraph
 from app.agents.triage.service import TriageService
@@ -16,6 +19,10 @@ from app.api.routes.encounters import router as encounters_router
 from app.api.routes.events import router as events_router
 from app.api.routes.icu import router as icu_router
 from app.api.routes.internal_medicine import router as internal_medicine_router
+from app.api.routes.medical_records import router as medical_records_router
+from app.api.routes.multi_patient_debug import router as multi_patient_debug_router
+from app.api.routes.npc_debug import router as npc_debug_router
+from app.api.routes.patient_agent_debug import router as patient_agent_debug_router
 from app.api.routes.openemr import router as openemr_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.queues import router as queues_router
@@ -54,12 +61,14 @@ from app.events.types import (
     VISIT_STATE_CHANGED,
 )
 from app.repositories.agent_memory import AgentMemoryRepository
+from app.repositories.medical_records import MedicalRecordRepository
+from app.repositories.patient_agent_cases import PatientAgentCaseRepository
 from app.repositories.patients import PatientRepository
 from app.repositories.queues import QueueRepository
 from app.repositories.sessions import SessionRepository
 from app.repositories.visits import VisitRepository
 from app.integrations.openemr import EMRService, OpenEMRClient
-from app.services import EncounterOrchestrationService, NpcPatientSimulator
+from app.services import EncounterOrchestrationService, NpcPatientSimulator, PatientAgentService
 
 
 def create_container():
@@ -72,6 +81,8 @@ def create_container():
     patient_repo = PatientRepository(db)
     session_repo = SessionRepository(db)
     memory_repo = AgentMemoryRepository(db)
+    medical_record_repo = MedicalRecordRepository(db)
+    patient_agent_case_repo = PatientAgentCaseRepository(db)
     queue_repo = QueueRepository(db)
     visit_repo = VisitRepository(db)
     bus = EventBus()
@@ -114,6 +125,7 @@ def create_container():
         visit_state_machine=visit_state_machine,
         bus=bus,
         graph=None,
+        medical_record_repo=medical_record_repo,
     )
     triage_graph = TriageGraph(triage_service, dialogue_state_machine)
     triage_service.graph = triage_graph
@@ -133,6 +145,7 @@ def create_container():
         visit_state_machine=visit_state_machine,
         bus=bus,
         encounter_orchestration_service=encounter_orchestration_service,
+        medical_record_repo=medical_record_repo,
     )
 
     icu_doctor_service = create_icub_doctor_service(
@@ -163,6 +176,57 @@ def create_container():
         max_active_patients=settings["simulator_max_active_patients"],
         queue_wait_seconds=settings["simulator_queue_wait_seconds"],
         consult_seconds=settings["simulator_consult_seconds"],
+    )
+    npc_patient_debug_controller = NpcPatientDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "queue_repo": queue_repo,
+            "visit_repo": visit_repo,
+            "triage_service": triage_service,
+            "internal_medicine_service": internal_medicine_service,
+            "encounter_orchestration_service": encounter_orchestration_service,
+            "event_bus": bus,
+            "medical_record_repo": medical_record_repo,
+        }
+    )
+    patient_agent_service = PatientAgentService(
+        llm_settings={
+            "endpoint": settings["llm_endpoint"],
+            "model": settings["llm_model"],
+            "api_key": settings["llm_api_key"],
+        },
+        case_repo=patient_agent_case_repo,
+        session_repo=session_repo,
+        medical_record_repo=medical_record_repo,
+    )
+    patient_agent_debug_controller = PatientAgentDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "queue_repo": queue_repo,
+            "visit_repo": visit_repo,
+            "triage_service": triage_service,
+            "internal_medicine_service": internal_medicine_service,
+            "encounter_orchestration_service": encounter_orchestration_service,
+            "event_bus": bus,
+            "medical_record_repo": medical_record_repo,
+            "patient_agent_service": patient_agent_service,
+        }
+    )
+    multi_patient_debug_controller = MultiPatientDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "queue_repo": queue_repo,
+            "visit_repo": visit_repo,
+            "triage_service": triage_service,
+            "internal_medicine_service": internal_medicine_service,
+            "encounter_orchestration_service": encounter_orchestration_service,
+            "event_bus": bus,
+            "medical_record_repo": medical_record_repo,
+            "patient_agent_service": patient_agent_service,
+        }
     )
 
     patient_projection = PatientProjectionSubscriber(patient_repo, patient_state_machine)
@@ -221,6 +285,8 @@ def create_container():
         "patient_repo": patient_repo,
         "session_repo": session_repo,
         "memory_repo": memory_repo,
+        "medical_record_repo": medical_record_repo,
+        "patient_agent_case_repo": patient_agent_case_repo,
         "queue_repo": queue_repo,
         "visit_repo": visit_repo,
         "encounter_orchestration_service": encounter_orchestration_service,
@@ -232,6 +298,10 @@ def create_container():
         "internal_medicine_service": internal_medicine_service,
         "icu_doctor_service": icu_doctor_service,
         "npc_simulator": npc_simulator,
+        "npc_patient_debug_controller": npc_patient_debug_controller,
+        "patient_agent_service": patient_agent_service,
+        "patient_agent_debug_controller": patient_agent_debug_controller,
+        "multi_patient_debug_controller": multi_patient_debug_controller,
         "visit_state_machine": visit_state_machine,
         "langgraph_available": LANGGRAPH_AVAILABLE,
     }
@@ -256,6 +326,7 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     async def stop_npc_simulator():
         container["npc_simulator"].stop()
+        container["multi_patient_debug_controller"].shutdown()
 
     @app.middleware("http")
     async def require_api_key(request: Request, call_next):
@@ -437,6 +508,10 @@ def create_app() -> FastAPI:
     app.include_router(visits_router)
     app.include_router(triage_router)
     app.include_router(internal_medicine_router)
+    app.include_router(medical_records_router)
+    app.include_router(npc_debug_router)
+    app.include_router(patient_agent_debug_router)
+    app.include_router(multi_patient_debug_router)
     app.include_router(icu_router)
     app.include_router(patients_router)
     app.include_router(queues_router)

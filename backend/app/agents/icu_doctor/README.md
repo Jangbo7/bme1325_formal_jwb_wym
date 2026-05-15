@@ -2,13 +2,13 @@
 
 ## 功能介绍
 
-ICU医生目录 (`icu_doctor`) 实现了重症监护室医生的智能诊疗系统，主要功能包括：
+ICU医生目录 (`icu_doctor`) 负责高风险患者的重症会诊与治疗方案制定，主要功能包括：
 
 - 重症患者评估和会诊
 - 紧急程度分级和风险评估
 - 治疗方案制定
-- 患者状态管理和追踪
-- 重症监护记录的持久化存储
+- 患者状态和就诊状态更新
+- 重症会诊记录的持久化存储
 
 ## 目录结构
 
@@ -28,13 +28,7 @@ icu_doctor/
 
 ### 1. ICUDoctorService
 
-核心服务类，提供以下功能：
-- `create_session()`: 创建ICU会诊会话
-- `continue_session()`: 继续已有的会诊会话
-- `get_patient_view()`: 获取患者视图信息
-- `prepare_context()`: 准备会诊上下文
-- `evaluate()`: 评估患者状况并生成治疗方案
-- `persist_result()`: 持久化诊疗结果
+核心服务类负责会话评估、风险分级、治疗方案构造、结果持久化和状态推进。它会把重症会诊结果写回数据库，并同步更新患者/就诊状态。
 
 ### 2. 规则系统
 
@@ -53,33 +47,36 @@ icu_doctor/
 ### 4. 状态管理
 
 - `WorkingMemory`: 工作内存，存储会话过程中的临时数据
-- 患者状态机：管理患者在ICU的状态变化
+- 患者状态机：管理患者在 ICU 的状态变化
+- 就诊状态机：管理 ICU 会诊前后的 visit 状态
 
 ## 工作流程
 
-1. **会话创建**：患者进入ICU，创建新的会诊会话
+1. **会话创建**：患者进入 ICU 分支，创建新的会诊会话
 2. **信息收集**：收集患者基本信息、症状、生命体征等
 3. **风险评估**：基于症状和体征评估风险等级
-4. **规则匹配**：匹配相关的ICU诊疗规则
-5. **LLM咨询**：向LLM请求重症诊疗建议
+4. **规则匹配**：匹配相关的 ICU 诊疗规则
+5. **LLM 咨询**：向 LLM 请求重症诊疗建议
 6. **分级与方案**：生成紧急程度分级和治疗方案
-7. **结果持久化**：将诊疗结果存储到数据库
-8. **状态更新**：更新患者状态和位置信息
+7. **结果持久化**：将诊疗结果存储到数据库并更新状态
+8. **状态更新**：更新患者状态和就诊位置信息
 
 ## API接口
 
-- `POST /icu-sessions`: 创建新的ICU会诊会话
-- `PUT /icu-sessions/{session_id}`: 继续ICU会诊会话
-- `GET /icu-sessions/{session_id}`: 获取会话详情
+- `POST /api/v1/icu-sessions`: 创建新的ICU会诊会话
+- `POST /api/v1/icu-sessions/{session_id}/messages`: 继续ICU会诊会话
+- `GET /api/v1/icu-sessions/{session_id}`: 获取会话详情
+- `GET /api/v1/icu-patients`: 获取 ICU 患者列表
 
 ## 示例请求
 
 ### 创建ICU会诊会话
 
 ```json
-POST /icu-sessions
+POST /api/v1/icu-sessions
 {
   "patient_id": "patient-456",
+  "visit_id": "visit-456",
   "name": "李四",
   "age": 65,
   "sex": "female",
@@ -96,7 +93,7 @@ POST /icu-sessions
 ### 继续ICU会诊会话
 
 ```json
-PUT /icu-sessions/icu-session-789
+POST /api/v1/icu-sessions/icu-session-789/messages
 {
   "patient_id": "patient-456",
   "message": "患者血氧饱和度下降到85%"

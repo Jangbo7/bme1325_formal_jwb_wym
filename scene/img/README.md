@@ -22,7 +22,7 @@ python process-assets.py
 处理完成后，在 `img/` 目录会生成以下文件：
 
 ```
-photo-head@1x.png     (64×64)   - 小地图
+head_photo-head@1x.png (64×64)   - 默认 NPC / 头像一倍图
 photo-head@2x.png     (128×128) - 游戏标准（推荐）
 photo-head@4x.png     (256×256) - 高清版
 ```
@@ -33,7 +33,7 @@ photo-head@4x.png     (256×256) - 高清版
 
 | 文件 | 尺寸 | 用途 |
 |------|------|------|
-| `*-head@1x.png` | 64×64 | 小地图、远景 |
+| `head_photo-head@1x.png` | 64×64 | 默认 NPC 头像、远景 |
 | `*-head@2x.png` | 128×128 | **游戏主显示（推荐）** |
 | `*-head@4x.png` | 256×256 | 高清缩放 |
 
@@ -43,113 +43,13 @@ photo-head@4x.png     (256×256) - 高清版
 ✅ **透明背景** - PNG 格式可无缝合成  
 ✅ **面部优化** - 自动检测并保留面部区域  
 
-## 在游戏中使用
+## 在前端中使用
 
-### 🎯 推荐方案：修改 render.js
+当前 scene 会在 `scene/core/bootstrap.js` 中预加载 `head_photo-head@1x.png` 作为默认头像资源，并在固定 NPC、任务板和病历卡模块中复用。若你重新生成资源：
 
-找到 `drawPlayer` 函数（约第 164 行），进行以下修改：
-
-**顶部添加全局加载：**
-```javascript
-// 在 render.js 最顶部添加（在导入后）
-window.playerHeadImage = new Image();
-window.playerHeadImage.onload = () => {
-  console.log('✓ 玩家头像已加载');
-};
-window.playerHeadImage.onerror = () => {
-  console.warn('⚠ 玩家头像加载失败，使用默认样式');
-};
-window.playerHeadImage.src = './img/photo-head@2x.png';  // 改成你的文件名
-```
-
-**修改 drawPlayer 函数中的头部绘制部分：**
-
-原代码（约第 189-192 行）：
-```javascript
-  ctx.fillStyle = palette.playerHead;
-  ctx.beginPath();
-  ctx.arc(top.x, top.y - 4, 8, 0, Math.PI * 2);
-  ctx.fill();
-```
-
-替换为：
-```javascript
-  // 使用图像头像，降级使用颜色填充
-  if (window.playerHeadImage?.complete) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(top.x, top.y - 4, 8, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(window.playerHeadImage, top.x - 8, top.y - 12, 16, 16);
-    ctx.restore();
-  } else {
-    // 图像未加载时使用默认颜色
-    ctx.fillStyle = palette.playerHead;
-    ctx.beginPath();
-    ctx.arc(top.x, top.y - 4, 8, 0, Math.PI * 2);
-    ctx.fill();
-  }
-```
-
-### 📝 完整的 drawPlayer 函数示例
-
-```javascript
-export function drawPlayer(ctx, player, camera, canvas) {
-  const base = project(player.x, player.y, 0, camera, canvas);
-  const top = project(player.x, player.y, 32, camera, canvas);
-
-  // 阴影
-  ctx.fillStyle = palette.shadow;
-  ctx.beginPath();
-  ctx.ellipse(base.x, base.y + 10, 18, 9, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 腿部
-  ctx.strokeStyle = palette.playerLeg;
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(base.x - 5, base.y + 2);
-  ctx.lineTo(base.x - 7, base.y + 18);
-  ctx.moveTo(base.x + 5, base.y + 2);
-  ctx.lineTo(base.x + 7, base.y + 18);
-  ctx.stroke();
-
-  // 身体
-  ctx.strokeStyle = palette.playerBody;
-  ctx.lineWidth = 9;
-  ctx.beginPath();
-  ctx.moveTo(base.x, base.y - 2);
-  ctx.lineTo(top.x, top.y + 6);
-  ctx.stroke();
-
-  // 头部（用图像替换）
-  if (window.playerHeadImage?.complete) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(top.x, top.y - 4, 8, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.drawImage(window.playerHeadImage, top.x - 8, top.y - 12, 16, 16);
-    ctx.restore();
-  } else {
-    ctx.fillStyle = palette.playerHead;
-    ctx.beginPath();
-    ctx.arc(top.x, top.y - 4, 8, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-```
-
-### 或者：在 index.html 中预加载
-
-在 `<head>` 中添加：
-```html
-<script>
-  const playerHeadImage = new Image();
-  playerHeadImage.crossOrigin = 'anonymous';
-  playerHeadImage.src = './img/photo-head@2x.png';
-  window.playerHeadImage = playerHeadImage;
-</script>
-```
+1. 保持产物文件名和前端预加载路径一致。
+2. 如果你要改命名规则，顺手更新 `scene/core/bootstrap.js` 和对应的 NPC / UI 模块。
+3. `@2x` 和 `@4x` 版本适合更清晰的缩放显示，`@1x` 版本更适合默认占位。
 
 ## 故障排除
 
