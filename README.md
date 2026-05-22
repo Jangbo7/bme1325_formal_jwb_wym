@@ -170,6 +170,9 @@ three agents debug:
 - http://127.0.0.1:8787/triage-agent-debug
 - http://127.0.0.1:8787/internal-medicine-agent-debug
 - http://127.0.0.1:8787/patient-agent-chat-debug
+- http://127.0.0.1:8787/department-runtime-debug
+
+
 
 ## Frontend Startup
 ```powershell

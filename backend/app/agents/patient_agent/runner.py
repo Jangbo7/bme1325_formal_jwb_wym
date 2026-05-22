@@ -7,13 +7,13 @@ from datetime import datetime, timedelta, timezone
 from app.agents.npc_patient.planner import NpcPlanningContext, PlannedNpcAction, plan_next_action
 from app.agents.patient_agent.debug_state import PatientAgentDebugState
 from app.domain.identifiers import generate_patient_id
-from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED
-from app.schemas.common import PatientLifecycleState, QueueTicketStatus, VisitLifecycleState
+from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, QUEUE_TICKET_COMPLETED, QUEUE_TICKET_CREATED
+from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
+from app.services.department_assignment import resolve_assigned_department_for_visit
 
 
 WAIT_SECONDS = 10
-FIXED_QUEUE_DEPARTMENT_ID = "doctor_entry"
-FIXED_QUEUE_DEPARTMENT_NAME = "Doctor Entry"
+CONSULTATION_ROOM = "Consultation Room"
 
 
 def now_iso() -> str:
@@ -70,31 +70,33 @@ class PatientAgentDebugRunner:
         return state
 
     def step(self, state: PatientAgentDebugState) -> PatientAgentDebugState:
+        context = self.build_context(state)
+        planned = plan_next_action(context)
+        return self.execute_planned_action(state, planned)
+
+    def build_context(self, state: PatientAgentDebugState) -> NpcPlanningContext:
+        return self._build_context(state)
+
+    def execute_planned_action(self, state: PatientAgentDebugState, planned: PlannedNpcAction) -> PatientAgentDebugState:
         if state.finished:
             state.last_action = "finished"
             state.status = "finished"
             self._sync_state(state, preserve_dialogue=False)
             return state
-
-        context = self._build_context(state)
-        planned = plan_next_action(context)
         state.last_action = planned.action
         state.last_error = None
-
         if planned.action == "finished":
             state.finished = True
             state.phase = "finished"
             state.status = "finished"
             self._sync_state(state, preserve_dialogue=False)
             return state
-
         if planned.action == "idle":
             state.step_count += 1
             state.phase = self._phase_for_visit_state(state.visit_state)
             state.status = "idle"
             self._sync_state(state, preserve_dialogue=False)
             return state
-
         dispatch = {
             "create_encounter": self._create_encounter,
             "create_triage_session": self._create_triage_session,
@@ -219,19 +221,25 @@ class PatientAgentDebugRunner:
             "age": case_card.patient_profile.age,
             "id_number": "PATIENT-AGENT-REG-001",
         }
+        assigned_department = self._assigned_department(visit_row)
         visit_row = self._transition_visit(
             visit_row,
             "register_completed",
             current_node="registration_queue",
-            current_department=FIXED_QUEUE_DEPARTMENT_NAME,
+            current_department=assigned_department["label"],
             active_agent_type=None,
             data=visit_data,
         )
-        self.queue_repo.create_ticket(
+        ticket = self.queue_repo.create_ticket(
             patient_id=state.patient_id,
             visit_id=visit_row["id"],
-            department_id=FIXED_QUEUE_DEPARTMENT_ID,
-            department_name=FIXED_QUEUE_DEPARTMENT_NAME,
+            department_id=assigned_department["queue_department_id"],
+            department_name=assigned_department["label"],
+            queue_kind=QueueTicketKind.INITIAL_CONSULTATION.value,
+        )
+        self.bus.publish(
+            QUEUE_TICKET_CREATED,
+            {"patient_id": state.patient_id, "visit_id": visit_row["id"], "ticket": ticket},
         )
         patient_row = self.patient_repo.get(state.patient_id)
         if patient_row and patient_row["lifecycle_state"] == PatientLifecycleState.TRIAGED.value:
@@ -240,7 +248,7 @@ class PatientAgentDebugRunner:
                 state.patient_id,
                 name=case_card.patient_profile.name,
                 lifecycle_state=next_state.value,
-                location=FIXED_QUEUE_DEPARTMENT_NAME,
+                location=assigned_department["label"],
                 visit_id=visit_row["id"],
             )
             self.bus.publish(
@@ -257,6 +265,7 @@ class PatientAgentDebugRunner:
             return
         visit_data = self._decode_visit_data(visit_row)
         visit_data["registration_completed_at"] = (datetime.now(timezone.utc) - timedelta(seconds=WAIT_SECONDS + 1)).isoformat()
+        assigned_department = self._assigned_department(visit_row)
         ticket = self.queue_repo.get_active_ticket_for_patient(state.patient_id, visit_id=visit_row["id"])
         if ticket and ticket.get("status") == QueueTicketStatus.WAITING.value:
             called_ticket = self.queue_repo.mark_called(ticket["id"]) or ticket
@@ -270,7 +279,7 @@ class PatientAgentDebugRunner:
             self.patient_repo.update_patient(
                 state.patient_id,
                 lifecycle_state=next_state.value,
-                location=FIXED_QUEUE_DEPARTMENT_NAME,
+                location=assigned_department["label"],
                 visit_id=visit_row["id"],
             )
             self.bus.publish(
@@ -280,8 +289,8 @@ class PatientAgentDebugRunner:
         self._transition_visit(
             visit_row,
             "queue_wait_elapsed",
-            current_node="doctor_entry_gate",
-            current_department=FIXED_QUEUE_DEPARTMENT_NAME,
+            current_node=f"{assigned_department['id']}_queue_gate",
+            current_department=assigned_department["label"],
             active_agent_type=None,
             data=visit_data,
         )
@@ -301,11 +310,12 @@ class PatientAgentDebugRunner:
             return
         if ticket.get("status") != QueueTicketStatus.CALLED.value:
             return
+        assigned_department = self._assigned_department(visit_row)
         next_state = self.patient_state_machine.transition(PatientLifecycleState.CALLED, "start_consultation")
         self.patient_repo.update_patient(
             state.patient_id,
             lifecycle_state=next_state.value,
-            location="Consultation",
+            location=CONSULTATION_ROOM,
             visit_id=visit_row["id"],
         )
         self.bus.publish(
@@ -315,12 +325,17 @@ class PatientAgentDebugRunner:
         self._transition_visit(
             visit_row,
             "start_consultation",
-            current_node="consultation_room",
-            current_department="Consultation",
+            current_node=f"{assigned_department['id']}_consultation_room",
+            current_department=CONSULTATION_ROOM,
             active_agent_type="doctor",
             data=self._decode_visit_data(visit_row),
         )
-        self.queue_repo.mark_completed(ticket["id"])
+        completed_ticket = self.queue_repo.mark_completed(ticket["id"])
+        if completed_ticket:
+            self.bus.publish(
+                QUEUE_TICKET_COMPLETED,
+                {"patient_id": state.patient_id, "visit_id": visit_row["id"], "ticket": completed_ticket},
+            )
         state.phase = "internal_medicine_round1"
         state.status = VisitLifecycleState.IN_CONSULTATION.value
         state.clear_dialogue()
@@ -381,12 +396,69 @@ class PatientAgentDebugRunner:
 
     def _trigger_encounter_event(self, state: PatientAgentDebugState, planned: PlannedNpcAction) -> None:
         event = planned.payload["event"]
+        visit_row = self._require_visit_row(state)
+        assigned_department = self._assigned_department(visit_row)
+        if event == "queue_second_consultation":
+            self.encounter_orchestration_service.transition(
+                state.encounter_id,
+                event,
+                context={"source": "patient_agent_debug"},
+            )
+            ticket = self.queue_repo.create_ticket(
+                patient_id=state.patient_id,
+                visit_id=visit_row["id"],
+                department_id=assigned_department["queue_department_id"],
+                department_name=assigned_department["label"],
+                queue_kind=QueueTicketKind.RETURN_CONSULTATION.value,
+            )
+            self.bus.publish(
+                QUEUE_TICKET_CREATED,
+                {"patient_id": state.patient_id, "visit_id": visit_row["id"], "ticket": ticket},
+            )
+            state.phase = "testing"
+            state.status = VisitLifecycleState.WAITING_SECOND_CONSULTATION.value
+            state.clear_dialogue()
+            return
+        if event == "start_second_consultation":
+            ticket = self.queue_repo.get_active_ticket_for_patient(
+                state.patient_id,
+                visit_id=visit_row["id"],
+                queue_kind=QueueTicketKind.RETURN_CONSULTATION.value,
+            )
+            if not ticket:
+                raise ValueError("return consultation ticket not found")
+            if ticket.get("status") == QueueTicketStatus.WAITING.value:
+                called_ticket = self.queue_repo.mark_called(ticket["id"]) or ticket
+                self.bus.publish(
+                    QUEUE_TICKET_CALLED,
+                    {"patient_id": state.patient_id, "visit_id": visit_row["id"], "ticket": called_ticket},
+                )
+                ticket = called_ticket
+            patient_row = self.patient_repo.get(state.patient_id)
+            if patient_row and patient_row["lifecycle_state"] == PatientLifecycleState.IN_TEST.value:
+                next_state = self.patient_state_machine.transition(PatientLifecycleState.IN_TEST, "start_second_consultation")
+                self.patient_repo.update_patient(
+                    state.patient_id,
+                    lifecycle_state=next_state.value,
+                    location=CONSULTATION_ROOM,
+                    visit_id=visit_row["id"],
+                )
+                self.bus.publish(
+                    PATIENT_STATE_CHANGED,
+                    {"patient_id": state.patient_id, "lifecycle_state": next_state.value},
+                )
         self.encounter_orchestration_service.transition(
             state.encounter_id,
             event,
             context={"source": "patient_agent_debug"},
         )
         if event == "start_second_consultation":
+            completed_ticket = self.queue_repo.mark_completed(ticket["id"])
+            if completed_ticket:
+                self.bus.publish(
+                    QUEUE_TICKET_COMPLETED,
+                    {"patient_id": state.patient_id, "visit_id": visit_row["id"], "ticket": completed_ticket},
+                )
             state.phase = "internal_medicine_round2"
             state.status = VisitLifecycleState.IN_SECOND_CONSULTATION.value
         else:
@@ -567,3 +639,7 @@ class PatientAgentDebugRunner:
         if visit_state == "waiting_payment":
             return "finished"
         return "system"
+
+    def _assigned_department(self, visit_row: dict) -> dict:
+        patient_row = self.patient_repo.get(visit_row["patient_id"])
+        return resolve_assigned_department_for_visit(visit_row, patient_row)

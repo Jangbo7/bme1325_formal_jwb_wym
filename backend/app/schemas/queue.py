@@ -8,6 +8,7 @@ class QueueTicketView(BaseModel):
     visit_id: str | None = None
     department_id: str
     department_name: str
+    queue_kind: str
     number: int
     status: str
     created_at: str

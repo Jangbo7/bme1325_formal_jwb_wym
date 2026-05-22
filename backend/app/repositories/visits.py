@@ -24,6 +24,8 @@ class VisitRepository:
         self,
         patient_id: str,
         state: VisitLifecycleState = VisitLifecycleState.ARRIVED,
+        assigned_department_id: str | None = None,
+        assigned_department_name: str | None = None,
         current_node: str | None = "lobby",
         current_department: str | None = None,
         active_agent_type: str | None = None,
@@ -35,6 +37,8 @@ class VisitRepository:
             "id": visit_id,
             "patient_id": patient_id,
             "state": state.value,
+            "assigned_department_id": assigned_department_id,
+            "assigned_department_name": assigned_department_name,
             "current_node": current_node,
             "current_department": current_department,
             "active_agent_type": active_agent_type,
@@ -46,8 +50,11 @@ class VisitRepository:
         try:
             conn.execute(
                 """
-                INSERT INTO visits (id, patient_id, state, current_node, current_department, active_agent_type, data_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO visits (
+                    id, patient_id, state, assigned_department_id, assigned_department_name,
+                    current_node, current_department, active_agent_type, data_json, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 tuple(payload.values()),
             )
@@ -94,6 +101,8 @@ class VisitRepository:
             "id": existing["id"],
             "patient_id": kwargs.get("patient_id", existing["patient_id"]),
             "state": kwargs.get("state", existing["state"]),
+            "assigned_department_id": kwargs.get("assigned_department_id", existing.get("assigned_department_id")),
+            "assigned_department_name": kwargs.get("assigned_department_name", existing.get("assigned_department_name")),
             "current_node": kwargs.get("current_node", existing["current_node"]),
             "current_department": kwargs.get("current_department", existing["current_department"]),
             "active_agent_type": kwargs.get("active_agent_type", existing["active_agent_type"]),
@@ -106,12 +115,15 @@ class VisitRepository:
             conn.execute(
                 """
                 UPDATE visits
-                SET patient_id = ?, state = ?, current_node = ?, current_department = ?, active_agent_type = ?, data_json = ?, updated_at = ?
+                SET patient_id = ?, state = ?, assigned_department_id = ?, assigned_department_name = ?,
+                    current_node = ?, current_department = ?, active_agent_type = ?, data_json = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     payload["patient_id"],
                     payload["state"],
+                    payload["assigned_department_id"],
+                    payload["assigned_department_name"],
                     payload["current_node"],
                     payload["current_department"],
                     payload["active_agent_type"],
@@ -186,6 +198,8 @@ class VisitRepository:
             encounter_id=row["id"],
             patient_id=row["patient_id"],
             state=VisitLifecycleState(row["state"]),
+            assigned_department_id=row.get("assigned_department_id"),
+            assigned_department_name=row.get("assigned_department_name"),
             current_node=row.get("current_node"),
             current_department=row.get("current_department"),
             active_agent_type=row.get("active_agent_type"),

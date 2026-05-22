@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 
 from app.api.contract import require_encounter_id, require_patient_id
-from app.events.types import PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, VISIT_STATE_CHANGED
-from app.schemas.common import PatientLifecycleState, QueueTicketStatus, VisitLifecycleState
+from app.events.types import PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, QUEUE_TICKET_COMPLETED, QUEUE_TICKET_CREATED, VISIT_STATE_CHANGED
+from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
 from app.schemas.visit import CreateVisitRequest, RegisterVisitRequest
+from app.services.department_assignment import resolve_assigned_department_for_visit
 
 
 router = APIRouter()
@@ -15,6 +16,7 @@ router = APIRouter()
 WAIT_SECONDS = 10
 FIXED_QUEUE_DEPARTMENT_ID = "doctor_entry"
 FIXED_QUEUE_DEPARTMENT_NAME = "Doctor Entry"
+CONSULTATION_ROOM = "Consultation Room"
 
 
 def now_iso() -> str:
@@ -186,12 +188,13 @@ def register_visit(visit_id: str, body: RegisterVisitRequest, request: Request):
     visit_data = _get_visit_data(visit_row)
     visit_data["registration_completed_at"] = now_iso()
     visit_data["registration_profile"] = registration_profile
+    assigned_department = resolve_assigned_department_for_visit(visit_row, patient_row)
     visit_row = _transition_visit(
         container,
         visit_row,
         "register_completed",
         current_node="registration_queue",
-        current_department=FIXED_QUEUE_DEPARTMENT_NAME,
+        current_department=assigned_department["label"],
         active_agent_type=None,
         data=visit_data,
     )
@@ -199,8 +202,17 @@ def register_visit(visit_id: str, body: RegisterVisitRequest, request: Request):
     ticket = queue_repo.create_ticket(
         patient_id=patient_id,
         visit_id=visit_row["id"],
-        department_id=FIXED_QUEUE_DEPARTMENT_ID,
-        department_name=FIXED_QUEUE_DEPARTMENT_NAME,
+        department_id=assigned_department["queue_department_id"],
+        department_name=assigned_department["label"],
+        queue_kind=QueueTicketKind.INITIAL_CONSULTATION.value,
+    )
+    bus.publish(
+        QUEUE_TICKET_CREATED,
+        {
+            "patient_id": patient_id,
+            "visit_id": visit_row["id"],
+            "ticket": ticket,
+        },
     )
 
     current_patient_state = PatientLifecycleState(patient_row["lifecycle_state"])
@@ -208,12 +220,11 @@ def register_visit(visit_id: str, body: RegisterVisitRequest, request: Request):
         next_state = patient_state_machine.transition(current_patient_state, "queue_created")
     else:
         next_state = current_patient_state
-
     patient_repo.update_patient(
         patient_id,
         name=registration_profile["name"],
         lifecycle_state=next_state.value,
-        location=FIXED_QUEUE_DEPARTMENT_NAME,
+        location=assigned_department["label"],
         visit_id=visit_row["id"],
     )
     bus.publish(
@@ -261,6 +272,7 @@ def progress_visit(visit_id: str, request: Request):
     if elapsed < WAIT_SECONDS:
         return _build_action_response(container, patient_id, visit_row)
 
+    assigned_department = resolve_assigned_department_for_visit(visit_row, patient_row)
     ticket = queue_repo.get_active_ticket_for_patient(patient_id, visit_id=visit_id)
     if ticket and ticket.get("status") == QueueTicketStatus.WAITING.value:
         ticket = queue_repo.mark_called(ticket["id"]) or ticket
@@ -279,7 +291,7 @@ def progress_visit(visit_id: str, request: Request):
         patient_repo.update_patient(
             patient_id,
             lifecycle_state=next_state.value,
-            location=FIXED_QUEUE_DEPARTMENT_NAME,
+            location=assigned_department["label"],
             visit_id=visit_id,
         )
         bus.publish(
@@ -294,8 +306,8 @@ def progress_visit(visit_id: str, request: Request):
         container,
         visit_row,
         "queue_wait_elapsed",
-        current_node="doctor_entry_gate",
-        current_department=FIXED_QUEUE_DEPARTMENT_NAME,
+        current_node=f"{assigned_department['id']}_queue_gate",
+        current_department=assigned_department["label"],
         active_agent_type=None,
         data=visit_data,
     )
@@ -335,10 +347,11 @@ def enter_consultation(visit_id: str, request: Request):
         raise HTTPException(status_code=409, detail="queue ticket is not in called status")
 
     next_patient_state = patient_state_machine.transition(patient_state, "start_consultation")
+    assigned_department = resolve_assigned_department_for_visit(visit_row, patient_row)
     patient_repo.update_patient(
         patient_id,
         lifecycle_state=next_patient_state.value,
-        location="Consultation",
+        location=CONSULTATION_ROOM,
         visit_id=visit_id,
     )
     bus.publish(
@@ -353,12 +366,21 @@ def enter_consultation(visit_id: str, request: Request):
         container,
         visit_row,
         "start_consultation",
-        current_node="consultation_room",
-        current_department="Consultation",
+        current_node=f"{assigned_department['id']}_consultation_room",
+        current_department=CONSULTATION_ROOM,
         active_agent_type="doctor",
         data=_get_visit_data(visit_row),
     )
-    queue_repo.mark_completed(ticket["id"])
+    completed_ticket = queue_repo.mark_completed(ticket["id"])
+    if completed_ticket:
+        bus.publish(
+            QUEUE_TICKET_COMPLETED,
+            {
+                "patient_id": patient_id,
+                "visit_id": visit_id,
+                "ticket": completed_ticket,
+            },
+        )
 
     return _build_action_response(container, patient_id, visit_row)
 

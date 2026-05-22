@@ -30,6 +30,7 @@ class QueueTicketRef(BaseModel):
     id: str
     department_id: str
     department_name: str
+    queue_kind: str
     number: int
     status: str
 

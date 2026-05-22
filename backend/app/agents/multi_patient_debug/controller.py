@@ -10,6 +10,8 @@ from app.agents.npc_patient.profile import NpcPatientProfile, list_profiles
 from app.agents.npc_patient.runner import NpcPatientRunner
 from app.agents.patient_agent.debug_state import PatientAgentDebugState
 from app.agents.patient_agent.runner import PatientAgentDebugRunner
+from app.services.department_assignment import resolve_assigned_department_for_visit
+from app.services.patient_flow_engine import FlowDecisionEngine, FlowExecutor
 from app.schemas.multi_patient_debug import (
     MultiPatientDebugPatientSnapshot,
     MultiPatientDebugSnapshot,
@@ -41,6 +43,9 @@ class MultiPatientDebugController:
     def __init__(self, container: dict):
         self._legacy_runner = NpcPatientRunner(container)
         self._intelligent_runner = PatientAgentDebugRunner(container)
+        self._department_runtime_service = container.get("department_runtime_service")
+        self._flow_engine = container.get("flow_decision_engine") or FlowDecisionEngine()
+        self._flow_executor = container.get("flow_executor") or FlowExecutor()
 
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -82,15 +87,19 @@ class MultiPatientDebugController:
             self._last_spawn_at = None
             self._last_tick_at = None
             self._next_spawn_at = now_utc()
+            if self._department_runtime_service:
+                self._department_runtime_service.clear_all()
         self._ensure_thread_running()
         return self.get_snapshot()
 
     def stop(self) -> MultiPatientDebugSnapshot:
         with self._lock:
             self._running = False
+        self._stop_background_thread()
         return self.get_snapshot()
 
     def reset(self) -> MultiPatientDebugSnapshot:
+        self._stop_background_thread()
         with self._lock:
             self._running = False
             self._slots = []
@@ -99,6 +108,8 @@ class MultiPatientDebugController:
             self._last_spawn_at = None
             self._last_tick_at = None
             self._next_spawn_at = None
+            if self._department_runtime_service:
+                self._department_runtime_service.clear_all()
         return self.get_snapshot()
 
     def get_snapshot(self) -> MultiPatientDebugSnapshot:
@@ -128,10 +139,15 @@ class MultiPatientDebugController:
             self._step_due_patients()
 
     def shutdown(self) -> None:
-        self._running = False
+        with self._lock:
+            self._running = False
+        self._stop_background_thread()
+
+    def _stop_background_thread(self) -> None:
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2)
+        self._thread = None
 
     def _ensure_thread_running(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -167,6 +183,7 @@ class MultiPatientDebugController:
         self._total_spawned += 1
         self._last_spawn_at = now.isoformat()
         self._next_spawn_at = now + timedelta(seconds=self._spawn_interval_seconds)
+        self._sync_runtime_for_slot(slot)
 
     def _spawn_slot(self, npc_id: str) -> _PatientSlot:
         now = now_utc()
@@ -203,15 +220,54 @@ class MultiPatientDebugController:
                 slot.state.status = "error"
                 slot.state.finished = True
                 self._last_error = str(exc)
+            self._sync_runtime_for_slot(slot)
             slot.next_step_at = now + timedelta(seconds=self._step_interval_seconds)
 
     def _step_slot(self, slot: _PatientSlot) -> None:
+        visit_row = None
+        patient_row = None
+        assigned_department_id = None
         if slot.mode == "legacy_template":
             if slot.profile is None:
                 raise RuntimeError("legacy slot missing profile")
-            self._legacy_runner.step(slot.state, slot.profile)
+            visit_row = self._legacy_runner._get_visit_row(slot.state)  # noqa: SLF001
+            patient_row = self._legacy_runner.patient_repo.get(slot.state.patient_id)
+            if visit_row:
+                assigned_department_id = resolve_assigned_department_for_visit(visit_row, patient_row)["id"]
+            context = self._legacy_runner.build_context(slot.state)
+            planned, decision = self._flow_engine.decide_with_plan(
+                assigned_department_id=assigned_department_id,
+                runner_context=context,
+            )
+            result = self._flow_executor.execute_legacy(
+                runner=self._legacy_runner,
+                state=slot.state,
+                profile=slot.profile,
+                planned=planned,
+                decision=decision,
+            )
+            if not result.ok:
+                slot.state.status = "idle"
+                slot.state.last_error = result.error
             return
-        self._intelligent_runner.step(slot.state)
+        visit_row = self._intelligent_runner._get_visit_row(slot.state)  # noqa: SLF001
+        patient_row = self._intelligent_runner.patient_repo.get(slot.state.patient_id)
+        if visit_row:
+            assigned_department_id = resolve_assigned_department_for_visit(visit_row, patient_row)["id"]
+        context = self._intelligent_runner.build_context(slot.state)
+        planned, decision = self._flow_engine.decide_with_plan(
+            assigned_department_id=assigned_department_id,
+            runner_context=context,
+        )
+        result = self._flow_executor.execute_intelligent(
+            runner=self._intelligent_runner,
+            state=slot.state,
+            planned=planned,
+            decision=decision,
+        )
+        if not result.ok:
+            slot.state.status = "idle"
+            slot.state.last_error = result.error
 
     def _to_patient_snapshot(self, slot: _PatientSlot) -> MultiPatientDebugPatientSnapshot:
         profile_id = slot.profile.profile_id if slot.profile else None
@@ -233,4 +289,21 @@ class MultiPatientDebugController:
             step_count=slot.state.step_count,
             finished=slot.state.finished,
             case_summary=case_summary,
+        )
+
+    def _sync_runtime_for_slot(self, slot: _PatientSlot) -> None:
+        if not self._department_runtime_service:
+            return
+        current_dialogue = slot.state.current_dialogue
+        if hasattr(current_dialogue, "model_dump"):
+            current_dialogue_payload = current_dialogue.model_dump()
+        else:
+            current_dialogue_payload = current_dialogue or {}
+        self._department_runtime_service.sync_patient_runtime(
+            patient_id=slot.state.patient_id,
+            visit_id=slot.state.encounter_id,
+            current_counterparty=slot.state.current_counterparty,
+            current_dialogue_preview=current_dialogue_payload.get("message"),
+            last_transition_action=slot.state.last_action,
+            transition_version=now_iso(),
         )

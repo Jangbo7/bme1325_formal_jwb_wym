@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone
 from urllib import request as urlrequest
 
+from app.departments.registry import resolve_department
 from app.agents.triage.prompts import (
     build_fallback_follow_up_message,
     build_final_message,
@@ -104,6 +105,8 @@ class TriageService:
         visit_id: str | None,
         event: str,
         *,
+        assigned_department_id: str | None = None,
+        assigned_department_name: str | None = None,
         current_node: str | None = None,
         current_department: str | None = None,
         active_agent_type: str | None = None,
@@ -131,6 +134,8 @@ class TriageService:
         updated = self.visit_repo.update_visit(
             visit_id,
             state=next_state.value,
+            assigned_department_id=assigned_department_id,
+            assigned_department_name=assigned_department_name,
             current_node=current_node if current_node is not None else visit_row.get("current_node"),
             current_department=current_department if current_department is not None else visit_row.get("current_department"),
             active_agent_type=active_agent_type,
@@ -726,12 +731,18 @@ class TriageService:
         )
         self.session_repo.update_state(session_id, dialogue_state.value)
 
+        assigned_department = resolve_department(
+            triage_result.get("department"),
+            triage_result.get("priority", "M"),
+        )
         visit_event = "followup_requested" if missing_fields else "triage_completed"
         visit_state_row = self.transition_visit_state(
             visit_id,
             visit_event,
+            assigned_department_id=assigned_department["id"] if not missing_fields else None,
+            assigned_department_name=assigned_department["label"] if not missing_fields else None,
             current_node="triage" if missing_fields else "triage_done",
-            current_department=triage_result.get("department"),
+            current_department="Triage" if missing_fields else "Registration",
             active_agent_type="triage" if missing_fields else None,
             extra_data={"triage_session_id": session_id},
         )

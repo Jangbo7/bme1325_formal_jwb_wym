@@ -21,7 +21,10 @@ from app.agents.triage.graph import LANGGRAPH_AVAILABLE, TriageGraph
 from app.agents.triage.service import TriageService
 from app.agents.triage.state_machine import TriageDialogueStateMachine
 from app.api.routes.health import router as health_router
+from app.api.routes.hospital_runtime_debug import router as hospital_runtime_debug_router
+from app.api.routes.department_runtime_debug import router as department_runtime_debug_router
 from app.api.routes.encounters import router as encounters_router
+from app.api.routes.departments import router as departments_router
 from app.api.routes.events import router as events_router
 from app.api.routes.icu import router as icu_router
 from app.api.routes.internal_medicine_agent_debug import router as internal_medicine_agent_debug_router
@@ -57,12 +60,14 @@ from app.domain.visit.state_machine import VisitStateMachine
 from app.events.bus import EventBus
 from app.events.bridge import HospitalEventBridge, RedisMirrorPublisher
 from app.events.subscribers.audit import AuditSubscriber
+from app.events.subscribers.department_runtime import DepartmentRuntimeProjector
 from app.events.subscribers.openemr_sync import OpenEMRSyncSubscriber
 from app.events.subscribers.patient_projection import PatientProjectionSubscriber
 from app.events.types import (
     ICU_CONSULTATION_COMPLETED,
     INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
     PATIENT_STATE_CHANGED,
+    QUEUE_TICKET_COMPLETED,
     QUEUE_TICKET_CALLED,
     QUEUE_TICKET_CREATED,
     TEST_REPORT_GENERATED,
@@ -71,6 +76,7 @@ from app.events.types import (
     VISIT_STATE_CHANGED,
 )
 from app.repositories.agent_memory import AgentMemoryRepository
+from app.repositories.department_runtime import DepartmentRuntimeRepository
 from app.repositories.medical_records import MedicalRecordRepository
 from app.repositories.patient_agent_cases import PatientAgentCaseRepository
 from app.repositories.patients import PatientRepository
@@ -78,7 +84,14 @@ from app.repositories.queues import QueueRepository
 from app.repositories.sessions import SessionRepository
 from app.repositories.visits import VisitRepository
 from app.integrations.openemr import EMRService, OpenEMRClient
-from app.services import EncounterOrchestrationService, NpcPatientSimulator, PatientAgentService, SceneSnapshotService
+from app.services import (
+    DepartmentRuntimeService,
+    EncounterOrchestrationService,
+    NpcPatientSimulator,
+    PatientAgentService,
+    SceneSnapshotService,
+)
+from app.services.patient_flow_engine import FlowDecisionEngine, FlowExecutor
 
 
 def create_container():
@@ -93,6 +106,7 @@ def create_container():
     memory_repo = AgentMemoryRepository(db)
     medical_record_repo = MedicalRecordRepository(db)
     patient_agent_case_repo = PatientAgentCaseRepository(db)
+    department_runtime_repo = DepartmentRuntimeRepository(db)
     queue_repo = QueueRepository(db)
     visit_repo = VisitRepository(db)
     bus = EventBus()
@@ -210,6 +224,12 @@ def create_container():
         session_repo=session_repo,
         medical_record_repo=medical_record_repo,
     )
+    department_runtime_service = DepartmentRuntimeService(
+        runtime_repo=department_runtime_repo,
+        patient_repo=patient_repo,
+        visit_repo=visit_repo,
+        queue_repo=queue_repo,
+    )
     scene_snapshot_service = SceneSnapshotService(
         patient_repo=patient_repo,
         queue_repo=queue_repo,
@@ -231,6 +251,7 @@ def create_container():
             "medical_record_repo": medical_record_repo,
             "patient_agent_service": patient_agent_service,
             "patient_agent_case_repo": patient_agent_case_repo,
+            "department_runtime_service": department_runtime_service,
         }
     )
     triage_agent_debug_controller = TriageAgentDebugController(
@@ -264,6 +285,8 @@ def create_container():
             "patient_agent_case_repo": patient_agent_case_repo,
         }
     )
+    flow_decision_engine = FlowDecisionEngine()
+    flow_executor = FlowExecutor()
     multi_patient_debug_controller = MultiPatientDebugController(
         {
             "patient_repo": patient_repo,
@@ -278,10 +301,14 @@ def create_container():
             "medical_record_repo": medical_record_repo,
             "patient_agent_service": patient_agent_service,
             "patient_agent_case_repo": patient_agent_case_repo,
+            "department_runtime_service": department_runtime_service,
+            "flow_decision_engine": flow_decision_engine,
+            "flow_executor": flow_executor,
         }
     )
 
     patient_projection = PatientProjectionSubscriber(patient_repo, patient_state_machine)
+    department_runtime_projector = DepartmentRuntimeProjector(department_runtime_service)
     audit = AuditSubscriber(Path(__file__).resolve().parents[2])
     openemr_client = OpenEMRClient(
         enabled=settings["openemr_enabled"],
@@ -324,8 +351,15 @@ def create_container():
     bus.subscribe(VISIT_STATE_CHANGED, lambda payload: audit.write(VISIT_STATE_CHANGED, payload))
     bus.subscribe(QUEUE_TICKET_CREATED, lambda payload: audit.write(QUEUE_TICKET_CREATED, payload))
     bus.subscribe(QUEUE_TICKET_CALLED, lambda payload: audit.write(QUEUE_TICKET_CALLED, payload))
+    bus.subscribe(QUEUE_TICKET_COMPLETED, lambda payload: audit.write(QUEUE_TICKET_COMPLETED, payload))
     bus.subscribe(TEST_ZONE_ASSIGNED, lambda payload: audit.write(TEST_ZONE_ASSIGNED, payload))
     bus.subscribe(TEST_REPORT_GENERATED, lambda payload: audit.write(TEST_REPORT_GENERATED, payload))
+    bus.subscribe(TRIAGE_COMPLETED, department_runtime_projector.handle_triage_completed)
+    bus.subscribe(PATIENT_STATE_CHANGED, department_runtime_projector.handle_patient_state_changed)
+    bus.subscribe(VISIT_STATE_CHANGED, department_runtime_projector.handle_visit_state_changed)
+    bus.subscribe(QUEUE_TICKET_CREATED, department_runtime_projector.handle_queue_ticket_created)
+    bus.subscribe(QUEUE_TICKET_CALLED, department_runtime_projector.handle_queue_ticket_called)
+    bus.subscribe(QUEUE_TICKET_COMPLETED, department_runtime_projector.handle_queue_ticket_completed)
     bus.subscribe(TRIAGE_COMPLETED, openemr_sync_subscriber.handle_triage_completed)
     bus.subscribe(INTERNAL_MEDICINE_CONSULTATION_COMPLETED, openemr_sync_subscriber.handle_internal_medicine_completed)
     bus.subscribe(TEST_REPORT_GENERATED, openemr_sync_subscriber.handle_test_report_generated)
@@ -339,6 +373,7 @@ def create_container():
         "memory_repo": memory_repo,
         "medical_record_repo": medical_record_repo,
         "patient_agent_case_repo": patient_agent_case_repo,
+        "department_runtime_repo": department_runtime_repo,
         "queue_repo": queue_repo,
         "visit_repo": visit_repo,
         "encounter_orchestration_service": encounter_orchestration_service,
@@ -352,12 +387,15 @@ def create_container():
         "npc_simulator": npc_simulator,
         "npc_patient_debug_controller": npc_patient_debug_controller,
         "patient_agent_service": patient_agent_service,
+        "department_runtime_service": department_runtime_service,
         "scene_snapshot_service": scene_snapshot_service,
         "patient_agent_debug_controller": patient_agent_debug_controller,
         "triage_agent_debug_controller": triage_agent_debug_controller,
         "internal_medicine_agent_debug_controller": internal_medicine_agent_debug_controller,
         "patient_agent_chat_debug_controller": patient_agent_chat_debug_controller,
         "multi_patient_debug_controller": multi_patient_debug_controller,
+        "flow_decision_engine": flow_decision_engine,
+        "flow_executor": flow_executor,
         "visit_state_machine": visit_state_machine,
         "langgraph_available": LANGGRAPH_AVAILABLE,
     }
@@ -561,6 +599,9 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(health_router)
+    app.include_router(hospital_runtime_debug_router)
+    app.include_router(department_runtime_debug_router)
+    app.include_router(departments_router)
     app.include_router(encounters_router)
     app.include_router(events_router)
     app.include_router(scene_snapshot_router)

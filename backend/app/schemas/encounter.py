@@ -21,6 +21,8 @@ class EncounterView(BaseModel):
     encounter_id: str
     patient_id: str
     state: str
+    assigned_department_id: str | None = None
+    assigned_department_name: str | None = None
     current_node: str | None = None
     current_department: str | None = None
     active_agent_type: str | None = None

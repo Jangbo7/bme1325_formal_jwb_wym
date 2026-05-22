@@ -11,8 +11,8 @@
 说明：
 - 本文描述的是“当前有效架构”，不是历史遗留结构。
 - `scene/.history/`、旧版扁平 JS 文件只视为历史残留，不是主要维护入口。
-- 当前主线 Agent 已扩展为 `triage`、`internal_medicine`、`icu_doctor`，另有 `test_simulator` 作为辅助检查仿真服务。
-- 前端仍以分诊场景为主，但已经能同步展示内科会话和仿真检查报告；辅助检查的独立操作页还没有完全成型。
+- 当前主线 Agent 已扩展为 `triage`、`internal_medicine`、`icu_doctor`，并配有 `patient_agent`、`npc_patient`、`test_simulator`、`multi_patient_debug` 等辅助模块。
+- 前端仍以分诊场景为主，但已经能同步展示内科会话、`simulated_report` 和病历卡时间线；没有单独成型的检验科操作页。
 
 ---
 
@@ -39,7 +39,7 @@
 | 持久化 | SQLite（通过 Repository 层封装） |
 | 事件机制 | 进程内同步 EventBus |
 | 状态控制 | 显式状态机 |
-| LLM 调用 | 当前对接校内 GenAI API / GPT 模型 |
+| LLM 调用 | 仍以配置化 endpoint 为准，triage / internal_medicine / ICU / patient_agent 共用同类请求封装，仓库里同时存在主线与 legacy 直连路径 |
 | 测试 | pytest + 前端模块测试文件 |
 
 ---
@@ -196,7 +196,7 @@ backend/app/
 ### `scene/ui/task-board.js`
 - 负责顶部任务板/工作流板展示
 - 将 patient、visit、session、active agent 状态与任务文本进行映射展示
-- 目前更偏向状态同步面板，不是独立的检验操作面板
+- 目前更偏向状态同步面板；辅助检查结果由 `simulated_report` 驱动显示，而不是独立的检验操作面板
 
 ### `scene/ui/medical-record.js`
 - 负责病历卡展示
@@ -210,16 +210,17 @@ backend/app/
 5. 提交分诊卡后创建 triage session
 6. 前端轮询 patients / queues
 7. 分诊对话页随着后端状态变化同步刷新
-8. 分诊完成后进入内科会话或继续展示 recommendation 和 queue 状态
+8. 分诊完成后进入内科会话；内科完成后由 `test_simulator` 生成 `simulated_report`
 9. 当 visit.data 里出现 `simulated_report` 时，病历卡可以直接展示检查报告
+10. 回诊、支付和后续处置继续由 visit / queue / state machine 驱动
 
 ## 5.4 当前前端的一个现实情况
 虽然前端已经拆出模块，但 `scene/core/bootstrap.js` 仍然偏大，当前属于“模块化过渡态”。
 
 另外，辅助检查相关的 UI 还处在“数据展示 + 预留接口”阶段：
 - `scene/ui/medical-record.js` 已能展示仿真报告
-- `scene/agent/client.js` 已预留 `getSimulatedReport` 和 `completeAuxiliaryTest` 封装
-- 但还没有完整的独立检验科操作页
+- `scene/agent/client.js` 已有 `getSimulatedReport` 的真实封装；`completeAuxiliaryTest` 仍是历史占位，当前后端没有对应业务路由
+- 仍然没有完整的独立检验科操作页，前端更像是在读结果并引导回诊
 
 因此在可视化里建议这样表达：
 - `bootstrap.js` 是“前端 orchestration layer”
@@ -529,6 +530,7 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 - `internal_medicine_session_id`
 - `diagnostic_session`
 - `simulated_report`
+- `internal_medicine_round2_summary`
 - `test_category`
 - `test_items`
 - `registration_completed_at`
@@ -699,6 +701,6 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 
 如果你只想给模型一句压缩描述，可以直接使用：
 
-> 当前项目是一个基于 FastAPI + SQLite + EventBus + 显式状态机的医院分诊与门诊流程模拟系统，前端使用原生 Canvas/ESM 实现。系统核心从 triage 扩展到 internal_medicine、ICU 和辅助检查仿真，前端通过 bootstrap 连接分诊对话、内科会话、病历卡和队列展示，后端通过 repository、memory、LLM 和状态机协作完成 visit、patient、queue 和 simulated_report 的联动。
+> 当前项目是一个基于 FastAPI + SQLite + EventBus + 显式状态机的医院分诊与门诊流程模拟系统，前端使用原生 Canvas/ESM 实现。系统核心从 triage 扩展到 internal_medicine、ICU、patient_agent、NPC 模拟和辅助检查仿真，前端通过 bootstrap 连接分诊对话、内科会话、病历卡和队列展示，后端通过 repository、memory、LLM、事件桥和状态机协作完成 visit、patient、queue 和 simulated_report 的联动。
 
 这是一套可持续扩展的基础架构。

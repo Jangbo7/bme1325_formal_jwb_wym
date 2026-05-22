@@ -81,6 +81,25 @@ class QueueTicketStatus(str, Enum):
     COMPLETED = "completed"
 
 
+class QueueTicketKind(str, Enum):
+    INITIAL_CONSULTATION = "initial_consultation"
+    RETURN_CONSULTATION = "return_consultation"
+
+
+class DepartmentFlowStatus(str, Enum):
+    ASSIGNED_PENDING_REGISTRATION = "assigned_pending_registration"
+    WAITING_QUEUE_ROUND1 = "waiting_queue_round1"
+    CALLED_ROUND1 = "called_round1"
+    IN_CONSULTATION_ROUND1 = "in_consultation_round1"
+    IN_TEST = "in_test"
+    WAITING_QUEUE_ROUND2 = "waiting_queue_round2"
+    CALLED_ROUND2 = "called_round2"
+    IN_CONSULTATION_ROUND2 = "in_consultation_round2"
+    FINISHED = "finished"
+    CANCELLED = "cancelled"
+    ERROR = "error"
+
+
 class PriorityLevel(str, Enum):
     HIGH = "H"
     MEDIUM = "M"

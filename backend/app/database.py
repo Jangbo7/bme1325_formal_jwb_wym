@@ -95,6 +95,8 @@ class Database:
                         id TEXT PRIMARY KEY,
                         patient_id TEXT NOT NULL,
                         state TEXT NOT NULL,
+                        assigned_department_id TEXT,
+                        assigned_department_name TEXT,
                         current_node TEXT,
                         current_department TEXT,
                         active_agent_type TEXT,
@@ -142,6 +144,7 @@ class Database:
                         visit_id TEXT,
                         department_id TEXT NOT NULL,
                         department_name TEXT NOT NULL,
+                        queue_kind TEXT NOT NULL,
                         number INTEGER NOT NULL,
                         status TEXT NOT NULL,
                         created_at TEXT NOT NULL,
@@ -208,12 +211,110 @@ class Database:
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     );
+
+                    CREATE TABLE IF NOT EXISTS department_patient_runtime (
+                        patient_id TEXT NOT NULL,
+                        visit_id TEXT NOT NULL,
+                        assigned_department_id TEXT NOT NULL,
+                        assigned_department_name TEXT NOT NULL,
+                        queue_kind TEXT,
+                        department_status TEXT NOT NULL DEFAULT 'assigned_pending_registration',
+                        department_round TEXT NOT NULL DEFAULT 'none',
+                        department_flow_status TEXT NOT NULL,
+                        queue_ticket_id TEXT,
+                        visit_state TEXT,
+                        patient_lifecycle_state TEXT,
+                        active_agent_type TEXT,
+                        current_node TEXT,
+                        current_node_id TEXT,
+                        target_node_id TEXT,
+                        last_transition_action TEXT,
+                        transition_version TEXT,
+                        current_counterparty TEXT,
+                        current_dialogue_preview TEXT,
+                        entered_department_at TEXT,
+                        updated_at TEXT NOT NULL,
+                        source_of_truth_version TEXT,
+                        finished_at TEXT,
+                        PRIMARY KEY (patient_id, visit_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS department_runtime_summary (
+                        department_id TEXT PRIMARY KEY,
+                        department_name TEXT NOT NULL,
+                        active_count INTEGER NOT NULL,
+                        pending_registration_count INTEGER NOT NULL,
+                        waiting_round1_count INTEGER NOT NULL DEFAULT 0,
+                        waiting_round2_count INTEGER NOT NULL DEFAULT 0,
+                        called_round1_count INTEGER NOT NULL DEFAULT 0,
+                        called_round2_count INTEGER NOT NULL DEFAULT 0,
+                        in_consultation_round1_count INTEGER NOT NULL DEFAULT 0,
+                        in_consultation_round2_count INTEGER NOT NULL DEFAULT 0,
+                        waiting_count INTEGER NOT NULL,
+                        called_count INTEGER NOT NULL,
+                        in_consultation_count INTEGER NOT NULL,
+                        in_test_count INTEGER NOT NULL,
+                        finished_count INTEGER NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
                     """
                 )
                 self._ensure_column(conn, "patients", "visit_id", "TEXT")
                 self._ensure_column(conn, "patients", "openemr_patient_id", "TEXT")
                 self._ensure_column(conn, "triage_sessions", "visit_id", "TEXT")
                 self._ensure_column(conn, "queue_tickets", "visit_id", "TEXT")
+                self._ensure_column(conn, "queue_tickets", "queue_kind", "TEXT NOT NULL DEFAULT 'initial_consultation'")
+                self._ensure_column(conn, "visits", "assigned_department_id", "TEXT")
+                self._ensure_column(conn, "visits", "assigned_department_name", "TEXT")
+                self._ensure_column(
+                    conn,
+                    "department_patient_runtime",
+                    "department_status",
+                    "TEXT NOT NULL DEFAULT 'assigned_pending_registration'",
+                )
+                self._ensure_column(conn, "department_patient_runtime", "department_round", "TEXT NOT NULL DEFAULT 'none'")
+                self._ensure_column(conn, "department_patient_runtime", "entered_department_at", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "source_of_truth_version", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "current_node_id", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "target_node_id", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "last_transition_action", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "transition_version", "TEXT")
+                self._ensure_column(
+                    conn,
+                    "department_runtime_summary",
+                    "waiting_round1_count",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
+                self._ensure_column(
+                    conn,
+                    "department_runtime_summary",
+                    "waiting_round2_count",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
+                self._ensure_column(
+                    conn,
+                    "department_runtime_summary",
+                    "called_round1_count",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
+                self._ensure_column(
+                    conn,
+                    "department_runtime_summary",
+                    "called_round2_count",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
+                self._ensure_column(
+                    conn,
+                    "department_runtime_summary",
+                    "in_consultation_round1_count",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
+                self._ensure_column(
+                    conn,
+                    "department_runtime_summary",
+                    "in_consultation_round2_count",
+                    "INTEGER NOT NULL DEFAULT 0",
+                )
                 self._ensure_column(conn, "visits", "openemr_encounter_id", "TEXT")
                 self._ensure_column(conn, "visits", "emr_sync_status", "TEXT")
                 self._ensure_column(conn, "visits", "emr_synced_at", "TEXT")
@@ -238,6 +339,8 @@ class Database:
             "medical_record_entries",
             "medical_records",
             "patient_agent_cases",
+            "department_patient_runtime",
+            "department_runtime_summary",
         ]
 
         with self.lock:

@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 
 from app.api.contract import require_encounter_id, require_patient_id
-from app.events.types import ENCOUNTER_OPENED, ENCOUNTER_TRANSFERRED, PATIENT_STATE_CHANGED
+from app.events.types import ENCOUNTER_OPENED, ENCOUNTER_TRANSFERRED, PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, QUEUE_TICKET_COMPLETED, QUEUE_TICKET_CREATED
+from app.schemas.common import QueueTicketKind, QueueTicketStatus
 from app.schemas.encounter import CreateEncounterRequest, EncounterView, TransferCommand
 from app.schemas.common import PatientLifecycleState
 from app.schemas.orchestration import EncounterEventRequest, TransitionDebugRequest
+from app.services.department_assignment import resolve_assigned_department_for_visit
 
 
 router = APIRouter()
@@ -38,6 +40,8 @@ def _to_encounter_view(visit_repo, visit_row: dict) -> EncounterView:
         encounter_id=visit_view.id,
         patient_id=visit_view.patient_id,
         state=visit_view.state.value.upper(),
+        assigned_department_id=visit_view.assigned_department_id,
+        assigned_department_name=visit_view.assigned_department_name,
         current_node=visit_view.current_node,
         current_department=visit_view.current_department,
         active_agent_type=visit_view.active_agent_type,
@@ -92,6 +96,7 @@ def trigger_encounter_event(encounter_id: str, body: EncounterEventRequest, requ
     orchestration = container["encounter_orchestration_service"]
     visit_repo = container["visit_repo"]
     patient_repo = container["patient_repo"]
+    queue_repo = container["queue_repo"]
     patient_state_machine = container["triage_service"].patient_state_machine
     bus = container["event_bus"]
     visit_row = visit_repo.get(encounter_id)
@@ -108,8 +113,49 @@ def trigger_encounter_event(encounter_id: str, body: EncounterEventRequest, requ
     updated = visit_repo.get(encounter_id)
     if not updated:
         raise HTTPException(status_code=404, detail="ENCOUNTER_NOT_FOUND")
+    patient_row = patient_repo.get(updated["patient_id"])
+    assigned_department = resolve_assigned_department_for_visit(updated, patient_row)
+    updated = visit_repo.update_visit(
+        encounter_id,
+        assigned_department_id=assigned_department["id"],
+        assigned_department_name=assigned_department["label"],
+    )
+    if body.event == "queue_second_consultation":
+        ticket = queue_repo.create_ticket(
+            patient_id=updated["patient_id"],
+            visit_id=updated["id"],
+            department_id=assigned_department["queue_department_id"],
+            department_name=assigned_department["label"],
+            queue_kind=QueueTicketKind.RETURN_CONSULTATION.value,
+        )
+        bus.publish(
+            QUEUE_TICKET_CREATED,
+            {
+                "patient_id": updated["patient_id"],
+                "visit_id": updated["id"],
+                "ticket": ticket,
+            },
+        )
     if body.event == "start_second_consultation":
-        patient_row = patient_repo.get(updated["patient_id"])
+        ticket = queue_repo.get_active_ticket_for_patient(
+            updated["patient_id"],
+            visit_id=updated["id"],
+            queue_kind=QueueTicketKind.RETURN_CONSULTATION.value,
+        )
+        if not ticket:
+            raise HTTPException(status_code=409, detail="return consultation ticket not found")
+        if ticket.get("status") == QueueTicketStatus.WAITING.value:
+            ticket = queue_repo.mark_called(ticket["id"]) or ticket
+            bus.publish(
+                QUEUE_TICKET_CALLED,
+                {
+                    "patient_id": updated["patient_id"],
+                    "visit_id": updated["id"],
+                    "ticket": ticket,
+                },
+            )
+        if ticket.get("status") != QueueTicketStatus.CALLED.value:
+            raise HTTPException(status_code=409, detail="return consultation ticket is not callable")
         if patient_row:
             current_patient_state = patient_row.get("lifecycle_state")
             try:
@@ -133,6 +179,16 @@ def trigger_encounter_event(encounter_id: str, body: EncounterEventRequest, requ
                         "lifecycle_state": next_patient_state.value,
                     },
                 )
+        completed_ticket = queue_repo.mark_completed(ticket["id"])
+        if completed_ticket:
+            bus.publish(
+                QUEUE_TICKET_COMPLETED,
+                {
+                    "patient_id": updated["patient_id"],
+                    "visit_id": updated["id"],
+                    "ticket": completed_ticket,
+                },
+            )
     return {
         "ok": True,
         "encounter": _to_encounter_view(visit_repo, updated).model_dump(),

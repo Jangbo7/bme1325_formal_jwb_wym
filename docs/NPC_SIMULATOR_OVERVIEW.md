@@ -7,12 +7,12 @@
 1. 定时生成 NPC 病人。
 2. 定时推进 NPC 病人的就诊流程（不渲染实体）。
 3. 在前端排队面板中可见 NPC 名字。
-4. 约束：同时活跃的模拟病人最多 2 个。
+4. 约束：默认同时活跃的模拟病人最多 2 个，可通过配置调整。
 
 ## 关键约束
 
 - 活跃 NPC 定义：`patient_id` 前缀为 `P-NPC-`，且 `lifecycle_state` 不在 `completed/cancelled/error`。
-- 上限策略：最多 2 个活跃 NPC。达到上限时，本轮 tick 不再创建新 NPC。
+- 上限策略：默认最多 2 个活跃 NPC。达到上限时，本轮 tick 不再创建新 NPC。
 - 释放策略：当 NPC 完成流程后，会释放活跃名额，后续 tick 可以再生成新 NPC。
 
 ## 主要模块
@@ -75,6 +75,7 @@
 - `SIMULATOR_TICK_SECONDS`：tick 间隔。
 - `SIMULATOR_SPAWN_INTERVAL_SECONDS`：生成间隔。
 - `SIMULATOR_MAX_ACTIVE_PATIENTS`：活跃上限（当前默认 2）。
+- `SIMULATOR_MAX_ACTIVE_PATIENTS`：活跃上限（默认 2，可配置覆盖）。
 - `SIMULATOR_QUEUE_WAIT_SECONDS`：注册后等待叫号时长。
 - `SIMULATOR_CONSULT_SECONDS`：诊间停留时长。
 
@@ -82,7 +83,7 @@
 
 新增测试建议与已实现方向：
 
-- 活跃上限不超过 2。
+- 活跃上限不超过配置值。
 - 完成后可再生成，且仍不超过上限。
 - 队列视图返回并可消费 `patient_name`。
 

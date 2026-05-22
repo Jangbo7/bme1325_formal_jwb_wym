@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class DepartmentPatientState(BaseModel):
+    patient_id: str
+    visit_id: str
+    assigned_department_id: str
+    assigned_department_name: str
+    queue_kind: str | None = None
+    department_status: str
+    department_round: str = "none"
+    # Backward-compatible alias field used by existing debug views
+    department_flow_status: str | None = None
+    queue_ticket_id: str | None = None
+    visit_state: str | None = None
+    patient_lifecycle_state: str | None = None
+    active_agent_type: str | None = None
+    current_node: str | None = None
+    current_node_id: str | None = None
+    target_node_id: str | None = None
+    last_transition_action: str | None = None
+    transition_version: str | None = None
+    current_counterparty: str | None = None
+    current_dialogue: dict | None = None
+    current_dialogue_preview: str | None = None
+    entered_department_at: str | None = None
+    updated_at: str
+    source_of_truth_version: str | None = None
+    finished_at: str | None = None
+    npc_id: str | None = None
+    last_action: str | None = None
+    finished: bool = False
+
+
+class DepartmentRuntimeState(BaseModel):
+    department_id: str
+    department_name: str
+    active_count: int
+    pending_registration_count: int
+    waiting_round1_count: int
+    waiting_round2_count: int
+    called_round1_count: int
+    called_round2_count: int
+    in_consultation_round1_count: int
+    in_consultation_round2_count: int
+    # Backward-compatible aggregate counters
+    waiting_count: int
+    called_count: int
+    in_consultation_count: int
+    in_test_count: int
+    finished_count: int
+    updated_at: str
+
+
+class DepartmentRuntimePatientView(DepartmentPatientState):
+    pass
+
+
+class DepartmentRuntimeSummaryView(DepartmentRuntimeState):
+    pass
+
+
+class DepartmentRuntimeDepartmentView(BaseModel):
+    department_id: str
+    department_name: str
+    summary: DepartmentRuntimeSummaryView
+    patients: list[DepartmentRuntimePatientView] = Field(default_factory=list)
+
+
+class DepartmentRuntimeSnapshot(BaseModel):
+    running: bool
+    mode: str
+    spawn_interval_seconds: float
+    step_interval_seconds: float
+    max_active_patients: int
+    total_spawned: int
+    active_count: int
+    last_spawn_at: str | None = None
+    last_tick_at: str | None = None
+    last_error: str | None = None
+    formal_departments: list[dict] = Field(default_factory=list)
+    departments: list[DepartmentRuntimeDepartmentView] = Field(default_factory=list)
+    unassigned_patients: list[DepartmentRuntimePatientView] = Field(default_factory=list)

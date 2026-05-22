@@ -4,10 +4,13 @@ from datetime import datetime, timezone
 import threading
 import uuid
 
-from app.events.types import PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, VISIT_STATE_CHANGED
+from app.departments.registry import resolve_department
+from app.events.types import PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, QUEUE_TICKET_COMPLETED, QUEUE_TICKET_CREATED, VISIT_STATE_CHANGED
+from app.services.department_assignment import resolve_assigned_department_for_visit
 from app.schemas.common import (
     InternalMedicineDialogueState,
     PatientLifecycleState,
+    QueueTicketKind,
     QueueTicketStatus,
     TriageDialogueState,
     VisitLifecycleState,
@@ -17,6 +20,7 @@ from app.schemas.common import (
 SIMULATED_PATIENT_ID_PREFIX = "P-NPC-"
 REGISTER_QUEUE_DEPARTMENT_ID = "doctor_entry"
 REGISTER_QUEUE_DEPARTMENT_NAME = "Doctor Entry"
+CONSULTATION_ROOM = "Consultation Room"
 TERMINAL_PATIENT_STATES = {
     PatientLifecycleState.COMPLETED.value,
     PatientLifecycleState.CANCELLED.value,
@@ -188,8 +192,10 @@ class NpcPatientSimulator:
         visit_row = self.visit_repo.create(
             patient_id=patient_id,
             state=VisitLifecycleState.TRIAGED,
+            assigned_department_id=resolve_department(archetype["target_department"], archetype["priority"])["id"],
+            assigned_department_name=resolve_department(archetype["target_department"], archetype["priority"])["label"],
             current_node="triage_done",
-            current_department=archetype["target_department"],
+            current_department="Registration",
             active_agent_type="triage",
             data=visit_data,
         )
@@ -277,20 +283,26 @@ class NpcPatientSimulator:
     def _register_visit(self, patient_row: dict, visit_row: dict) -> None:
         visit_data = self._get_visit_data(visit_row)
         visit_data["registration_completed_at"] = now_iso()
+        assigned_department = self._assigned_department(visit_row, patient_row)
         self._transition_visit(
             visit_row,
             "register_completed",
             current_node="registration_queue",
-            current_department=REGISTER_QUEUE_DEPARTMENT_NAME,
+            current_department=assigned_department["label"],
             active_agent_type=None,
             data=visit_data,
         )
 
-        self.queue_repo.create_ticket(
+        ticket = self.queue_repo.create_ticket(
             patient_id=patient_row["id"],
-            department_id=REGISTER_QUEUE_DEPARTMENT_ID,
-            department_name=REGISTER_QUEUE_DEPARTMENT_NAME,
+            department_id=assigned_department["queue_department_id"],
+            department_name=assigned_department["label"],
             visit_id=visit_row["id"],
+            queue_kind=QueueTicketKind.INITIAL_CONSULTATION.value,
+        )
+        self.bus.publish(
+            QUEUE_TICKET_CREATED,
+            {"patient_id": patient_row["id"], "visit_id": visit_row["id"], "ticket": ticket},
         )
 
         next_state = self.patient_state_machine.transition(
@@ -300,7 +312,7 @@ class NpcPatientSimulator:
         self._update_patient_state(
             patient_row["id"],
             next_state,
-            location=REGISTER_QUEUE_DEPARTMENT_NAME,
+            location=assigned_department["label"],
             visit_id=visit_row["id"],
         )
 
@@ -314,6 +326,7 @@ class NpcPatientSimulator:
         if elapsed < self.queue_wait_seconds:
             return
 
+        assigned_department = self._assigned_department(visit_row, patient_row)
         ticket = self.queue_repo.get_active_ticket_for_patient(patient_row["id"], visit_id=visit_row["id"])
         if ticket and ticket.get("status") == QueueTicketStatus.WAITING.value:
             ticket = self.queue_repo.mark_called(ticket["id"]) or ticket
@@ -333,15 +346,15 @@ class NpcPatientSimulator:
         self._update_patient_state(
             patient_row["id"],
             next_state,
-            location=REGISTER_QUEUE_DEPARTMENT_NAME,
+            location=assigned_department["label"],
             visit_id=visit_row["id"],
         )
 
         self._transition_visit(
             visit_row,
             "queue_wait_elapsed",
-            current_node="doctor_entry_gate",
-            current_department=REGISTER_QUEUE_DEPARTMENT_NAME,
+            current_node=f"{assigned_department['id']}_queue_gate",
+            current_department=assigned_department["label"],
             active_agent_type=None,
             data=visit_data,
         )
@@ -351,7 +364,13 @@ class NpcPatientSimulator:
         if not ticket or ticket.get("status") != QueueTicketStatus.CALLED.value:
             return
 
-        self.queue_repo.mark_completed(ticket["id"])
+        assigned_department = self._assigned_department(visit_row, patient_row)
+        completed_ticket = self.queue_repo.mark_completed(ticket["id"])
+        if completed_ticket:
+            self.bus.publish(
+                QUEUE_TICKET_COMPLETED,
+                {"patient_id": patient_row["id"], "visit_id": visit_row["id"], "ticket": completed_ticket},
+            )
 
         next_state = self.patient_state_machine.transition(
             PatientLifecycleState(patient_row["lifecycle_state"]),
@@ -376,7 +395,7 @@ class NpcPatientSimulator:
         self._update_patient_state(
             patient_row["id"],
             next_state,
-            location="Consultation",
+            location=CONSULTATION_ROOM,
             visit_id=visit_row["id"],
             session_id=internal_session_id,
         )
@@ -384,8 +403,8 @@ class NpcPatientSimulator:
         self._transition_visit(
             visit_row,
             "start_consultation",
-            current_node="consultation_room",
-            current_department="Consultation",
+            current_node=f"{assigned_department['id']}_consultation_room",
+            current_department=CONSULTATION_ROOM,
             active_agent_type="internal_medicine",
             data=visit_data,
         )
@@ -488,3 +507,7 @@ class NpcPatientSimulator:
             return json.loads(payload)
         except Exception:
             return {}
+
+    @staticmethod
+    def _assigned_department(visit_row: dict, patient_row: dict) -> dict:
+        return resolve_assigned_department_for_visit(visit_row, patient_row)
