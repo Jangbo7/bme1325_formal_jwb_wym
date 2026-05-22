@@ -84,6 +84,7 @@ def test_npc_debug_step_reaches_waiting_payment_and_records_dialogue(tmp_path, m
     assert final_snapshot is not None
     assert final_snapshot["finished"] is True
     assert final_snapshot["visit_state"] == "waiting_payment"
+    assert final_snapshot["patient_lifecycle_state"] == "completed"
     assert "create_triage_session" in actions
     assert "reply_triage" in actions
     assert "register_visit" in actions

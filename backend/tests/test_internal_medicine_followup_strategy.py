@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from app.agents.internal_medicine.rules import prioritize_missing_fields
 from app.main import create_app
 
+PATIENT_ID = "P-11111111"
+
 
 def create_test_client(monkeypatch):
     db_dir = Path(__file__).resolve().parents[1] / "_tmp_test_dbs"
@@ -20,7 +22,16 @@ def create_test_client(monkeypatch):
 
 
 def headers():
-    return {"X-API-Key": "mock-key-001"}
+    return {
+        "X-API-Key": "mock-key-001",
+        "Idempotency-Key": f"idem-{uuid.uuid4().hex}",
+    }
+
+
+def get_data(response):
+    body = response.json()
+    assert body["ok"] is True
+    return body["data"]
 
 
 def registration_payload(name: str = "Player"):
@@ -38,17 +49,34 @@ def prepare_visit_in_consultation(client: TestClient) -> str:
         "/api/v1/triage-sessions",
         headers=headers(),
         json={
-            "patient_id": "P-self",
+            "patient_id": PATIENT_ID,
             "session_id": triage_session_id,
             "name": "Player",
-            "symptoms": "fever",
+            "symptoms": "mild cough",
             "onset_time": "1 day",
             "allergies": [],
-            "vitals": {"heart_rate": 92, "temp_c": 38.2, "pain_score": 2},
+            "vitals": {"heart_rate": 88, "temp_c": 37.2, "pain_score": 2},
         },
     )
     assert triage_resp.status_code == 200
-    visit_id = triage_resp.json()["visit_id"]
+    triage_data = get_data(triage_resp)
+    visit_id = triage_data["visit_id"]
+    for _ in range(3):
+        if triage_data["visit_state"] == "triaged":
+            break
+        followup_resp = client.post(
+            f"/api/v1/triage-sessions/{triage_data['session_id']}/messages",
+            headers=headers(),
+            json={
+                "patient_id": PATIENT_ID,
+                "visit_id": visit_id,
+                "name": "Player",
+                "message": "Symptoms started 1 day ago, I have no allergies, and the cough remains mild.",
+            },
+        )
+        assert followup_resp.status_code == 200
+        triage_data = get_data(followup_resp)
+    assert triage_data["visit_state"] == "triaged", triage_data
 
     register_resp = client.post(
         f"/api/v1/visits/{visit_id}/register",
@@ -66,11 +94,11 @@ def prepare_visit_in_consultation(client: TestClient) -> str:
 
     progress_resp = client.post(f"/api/v1/visits/{visit_id}/progress", headers=headers())
     assert progress_resp.status_code == 200
-    assert progress_resp.json()["visit"]["state"] == "waiting_consultation"
+    assert get_data(progress_resp)["visit"]["state"] == "waiting_consultation"
 
     enter_resp = client.post(f"/api/v1/visits/{visit_id}/enter-consultation", headers=headers())
     assert enter_resp.status_code == 200
-    assert enter_resp.json()["visit"]["state"] == "in_consultation"
+    assert get_data(enter_resp)["visit"]["state"] == "in_consultation"
     return visit_id
 
 
@@ -100,15 +128,15 @@ def test_internal_medicine_repeated_followup_rephrases_and_tracks_progress(monke
     client = create_test_client(monkeypatch)
     visit_id = prepare_visit_in_consultation(client)
     memory_repo = client.app.state.container["memory_repo"]
-    shared_memory = memory_repo.get_shared_memory("P-self", "Player")
+    shared_memory = memory_repo.get_shared_memory(PATIENT_ID, "Player")
     shared_memory["clinical_memory"]["onset_time"] = None
-    memory_repo.save_shared_memory("P-self", shared_memory)
+    memory_repo.save_shared_memory(PATIENT_ID, shared_memory)
 
     create_resp = client.post(
         "/api/v1/internal-medicine-sessions",
         headers=headers(),
         json={
-            "patient_id": "P-self",
+            "patient_id": PATIENT_ID,
             "name": "Player",
             "visit_id": visit_id,
             "chief_complaint": "胸闷",
@@ -116,21 +144,21 @@ def test_internal_medicine_repeated_followup_rephrases_and_tracks_progress(monke
         },
     )
     assert create_resp.status_code == 200
-    create_data = create_resp.json()
+    create_data = get_data(create_resp)
     session_id = create_data["session_id"]
 
     first_reply = client.post(
         f"/api/v1/internal-medicine-sessions/{session_id}/messages",
         headers=headers(),
         json={
-            "patient_id": "P-self",
+            "patient_id": PATIENT_ID,
             "visit_id": visit_id,
             "name": "Player",
             "message": "还是不太清楚。",
         },
     )
     assert first_reply.status_code == 200
-    first_data = first_reply.json()
+    first_data = get_data(first_reply)
     assert first_data["dialogue"]["status"] == "awaiting_patient_reply"
     assert first_data["dialogue"]["question_focus"] == "onset_time"
     assert first_data["dialogue"]["message_type"] == "followup"
@@ -140,14 +168,14 @@ def test_internal_medicine_repeated_followup_rephrases_and_tracks_progress(monke
         f"/api/v1/internal-medicine-sessions/{session_id}/messages",
         headers=headers(),
         json={
-            "patient_id": "P-self",
+            "patient_id": PATIENT_ID,
             "visit_id": visit_id,
             "name": "Player",
             "message": "我现在还是记不清开始时间。",
         },
     )
     assert second_reply.status_code == 200
-    second_data = second_reply.json()
+    second_data = get_data(second_reply)
     assert second_data["visit_state"] == "in_consultation"
     assert second_data["dialogue"]["status"] == "awaiting_patient_reply"
     assert second_data["dialogue"]["question_focus"] == "onset_time"
@@ -155,7 +183,7 @@ def test_internal_medicine_repeated_followup_rephrases_and_tracks_progress(monke
     second_question = second_data["dialogue"]["assistant_message"]
     assert second_question != first_question
 
-    session_memory = memory_repo.get_agent_session_memory(session_id, "P-self", agent_type="internal_medicine")
+    session_memory = memory_repo.get_agent_session_memory(session_id, PATIENT_ID, agent_type="internal_medicine")
     progress = session_memory["consultation_progress"]
     assert progress["last_question_focus"] == "onset_time"
     assert progress["last_question_text"] == second_question

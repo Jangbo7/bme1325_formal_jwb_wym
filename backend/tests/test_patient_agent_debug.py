@@ -126,6 +126,7 @@ def test_patient_agent_debug_step_reaches_waiting_payment(tmp_path, monkeypatch)
     assert final_snapshot is not None
     assert final_snapshot["finished"] is True
     assert final_snapshot["visit_state"] == "waiting_payment"
+    assert final_snapshot["patient_lifecycle_state"] == "completed"
     assert final_snapshot["medical_record_summary"] is not None
     assert any(
         "[History reviewed]" in entry["message"]

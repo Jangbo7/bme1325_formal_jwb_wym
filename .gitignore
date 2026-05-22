@@ -14,3 +14,11 @@ scene/api.private.js
 Thumbs.db
 .tmp_edge_profile/
 backend.txt
+
+# 数据库 / 日志 / 临时文件 全部忽略
+*.db
+*.log
+*.sqlite
+*.sqlite3
+backend/backend/data/
+backend/data/

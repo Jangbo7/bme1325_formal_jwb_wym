@@ -45,6 +45,7 @@ PATIENT_TRANSITIONS = {
     },
     PatientLifecycleState.IN_TEST: {
         "begin_triage": PatientLifecycleState.TRIAGING,
+        "start_second_consultation": PatientLifecycleState.IN_CONSULTATION,
         "finish": PatientLifecycleState.COMPLETED,
         "mark_error": PatientLifecycleState.ERROR,
     },

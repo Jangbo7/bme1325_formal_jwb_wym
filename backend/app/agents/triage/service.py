@@ -1,5 +1,4 @@
 import json
-import re
 from datetime import datetime, timezone
 from urllib import request as urlrequest
 
@@ -40,54 +39,6 @@ TRIAGE_REUSABLE_VISIT_STATES = {
     VisitLifecycleState.TRIAGED,
 }
 MAX_TRIAGE_FOLLOWUP_ROUNDS = 3
-
-
-def prefix_offline_message(message: str) -> str:
-    text = (message or "").strip()
-    if not text:
-        return "(离线模式)"
-    if text.startswith("(离线模式)"):
-        return text
-    return f"(离线模式) {text}"
-
-
-def looks_like_fallback_followup(message: str) -> bool:
-    text = (message or "").strip()
-    if not text:
-        return False
-    fallback_markers = (
-        "目前建议科室",
-        "先按现在的信息看",
-        "我先确认一个对分诊更关键的信息",
-        "想再确认一个关键时间点",
-        "还有一个常规问题",
-        "如果 0 分是不痛，10 分是最痛",
-    )
-    return any(marker in text for marker in fallback_markers)
-
-
-def detect_patient_response_tone(message: str) -> str | None:
-    text = (message or "").strip().lower()
-    if not text:
-        return None
-    medication_markers = ("开点药", "先开药", "给我开药", "止痛", "止疼", "painkiller", "medicine", "medication")
-    distress_markers = ("太疼", "好疼", "疼死", "很疼", "难受", "受不了", "痛死", "痛得厉害")
-    challenge_markers = ("怎么还", "为什么还", "你就不", "别老问", "一直问", "还要问", "还在问")
-    if any(marker in text for marker in medication_markers):
-        return "medication_request"
-    if any(marker in text for marker in distress_markers):
-        return "distress"
-    if any(marker in text for marker in challenge_markers):
-        return "challenge"
-    return None
-
-
-def strip_json_code_fence(text: str) -> str:
-    content = (text or "").strip()
-    fence_match = re.match(r"^```(?:json)?\s*(.*?)\s*```$", content, flags=re.DOTALL | re.IGNORECASE)
-    if fence_match:
-        return fence_match.group(1).strip()
-    return content
 
 
 class TriageService:
@@ -211,13 +162,26 @@ class TriageService:
 
     def _resolve_session_refs(self, patient: dict, visit_row: dict | None) -> dict:
         visit_data = self._decode_visit_data(visit_row)
+        visit_state = str(visit_row.get("state") or "") if visit_row else ""
+        is_second_consultation_flow = visit_state in {
+            VisitLifecycleState.IN_SECOND_CONSULTATION.value,
+            VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
+            VisitLifecycleState.WAITING_PAYMENT.value,
+            VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
+            VisitLifecycleState.DISPOSITION_PENDING.value,
+            VisitLifecycleState.WAITING_PHARMACY.value,
+            VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
+            VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
+            VisitLifecycleState.DISPOSITION_REFERRAL.value,
+        }
         refs = {
             "triage_session_id": visit_data.get("triage_session_id"),
             "internal_medicine_session_id": visit_data.get("internal_medicine_session_id"),
+            "internal_medicine_round2_session_id": visit_data.get("internal_medicine_round2_session_id"),
         }
 
         patient_session_id = patient.get("session_id")
-        if patient_session_id:
+        if patient_session_id and not is_second_consultation_flow:
             session_text = str(patient_session_id)
             if session_text.startswith("im-session-"):
                 refs["internal_medicine_session_id"] = refs["internal_medicine_session_id"] or session_text
@@ -229,7 +193,7 @@ class TriageService:
             triage_row = self.session_repo.get_latest_by_visit_and_agent(visit_id, "triage")
             if triage_row:
                 refs["triage_session_id"] = triage_row["id"]
-        if visit_id and not refs["internal_medicine_session_id"]:
+        if visit_id and not refs["internal_medicine_session_id"] and not is_second_consultation_flow:
             internal_row = self.session_repo.get_latest_by_visit_and_agent(visit_id, "internal_medicine")
             if internal_row:
                 refs["internal_medicine_session_id"] = internal_row["id"]
@@ -257,9 +221,29 @@ class TriageService:
             self.patient_repo.update_patient(patient_id, visit_id=visit_row["id"])
             patient = self.patient_repo.get(patient_id)
 
+        visit_state = str(visit_row.get("state") or "") if visit_row else ""
+        is_second_consultation_flow = visit_state in {
+            VisitLifecycleState.IN_SECOND_CONSULTATION.value,
+            VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
+            VisitLifecycleState.WAITING_PAYMENT.value,
+            VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
+            VisitLifecycleState.DISPOSITION_PENDING.value,
+            VisitLifecycleState.WAITING_PHARMACY.value,
+            VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
+            VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
+            VisitLifecycleState.DISPOSITION_REFERRAL.value,
+        }
+
         session_refs = self._resolve_session_refs(patient, visit_row)
         active_agent_type = self._resolve_active_agent_type(patient, visit_row, session_refs)
-        selected_session_id = session_refs.get("internal_medicine_session_id") if active_agent_type == "internal_medicine" else session_refs.get("triage_session_id")
+        if active_agent_type == "internal_medicine":
+            selected_session_id = (
+                session_refs.get("internal_medicine_round2_session_id")
+                if is_second_consultation_flow
+                else session_refs.get("internal_medicine_session_id")
+            )
+        else:
+            selected_session_id = session_refs.get("triage_session_id")
 
         private_memory = None
         dialogue = None
@@ -271,25 +255,15 @@ class TriageService:
                 private_memory = None
 
         if private_memory and selected_session_id:
-            assistant_message = private_memory.get("assistant_message", "")
-            response_origin = private_memory.get("response_origin", "fallback")
-            offline_mode = bool(private_memory.get("offline_mode", False) or response_origin == "fallback")
-            if not offline_mode and looks_like_fallback_followup(assistant_message):
-                offline_mode = True
-                response_origin = "fallback"
-            if offline_mode:
-                assistant_message = prefix_offline_message(assistant_message)
             dialogue = {
                 "status": private_memory.get("dialogue_state", TriageDialogueState.IDLE.value),
-                "assistant_message": assistant_message,
+                "assistant_message": private_memory.get("assistant_message", ""),
                 "missing_fields": private_memory.get("missing_fields", []),
                 "turns": self.session_repo.list_turns(selected_session_id),
                 "message_type": private_memory.get("message_type", "followup"),
                 "question_focus": private_memory.get("last_question_focus"),
                 "recommendation_changed": private_memory.get("recommendation_changed", False),
                 "asked_fields_history": private_memory.get("asked_fields_history", []),
-                "offline_mode": offline_mode,
-                "response_origin": response_origin,
             }
             evidence = private_memory.get("evidence", [])
 
@@ -381,7 +355,6 @@ class TriageService:
     def apply_chat_updates(self, payload: dict, memory: WorkingMemory) -> dict:
         message = (payload.get("message") or "").strip()
         expected_fields = memory.private_memory.get("missing_fields") or []
-        memory.private_memory["latest_patient_tone"] = detect_patient_response_tone(message)
         extracted = extract_structured_updates(message, target_fields=expected_fields)
         clinical = memory.shared_memory["clinical_memory"]
         profile = memory.shared_memory["profile"]
@@ -411,7 +384,7 @@ class TriageService:
 
     def build_merged_payload(self, payload: dict, shared_memory: dict) -> dict:
         clinical = shared_memory["clinical_memory"]
-        merged = dict(payload)
+        merged = {key: value for key, value in dict(payload).items() if not str(key).startswith("_")}
         merged["symptoms"] = payload.get("symptoms") or ", ".join(clinical.get("symptoms") or [])
         merged["vitals"] = merge_vitals(clinical.get("vitals") or {}, payload.get("vitals") or {})
         merged["onset_time"] = payload.get("onset_time") or clinical.get("onset_time")
@@ -419,6 +392,51 @@ class TriageService:
         merged["chronic_conditions"] = payload.get("chronic_conditions") or shared_memory["profile"].get("chronic_conditions") or []
         merged["chief_complaint"] = payload.get("chief_complaint") or clinical.get("chief_complaint")
         return merged
+
+    @staticmethod
+    def build_triage_llm_messages(payload: dict, evidence_rules: list[dict], memory_context: WorkingMemory) -> list[dict]:
+        prompt = (
+            "You are a hospital triage nurse assistant. "
+            "Use the retrieved triage knowledge as supporting evidence, and consider both short-term conversation memory and long-term patient memory. "
+            "Return strict JSON only with keys: triage_level (integer 1-5), priority (H/M/L), department (string), note (string). "
+            "Patient data: "
+            + json.dumps(payload, ensure_ascii=False)
+            + " Short-term memory: "
+            + json.dumps({"turns": memory_context.short_term_turns}, ensure_ascii=False)
+            + " Long-term memory: "
+            + json.dumps(memory_context.shared_memory, ensure_ascii=False)
+            + " Agent-private memory: "
+            + json.dumps(memory_context.private_memory, ensure_ascii=False)
+            + " Retrieved rules: "
+            + json.dumps(evidence_rules, ensure_ascii=False)
+        )
+        return [{"role": "user", "content": prompt}]
+
+    @staticmethod
+    def build_followup_llm_messages(
+        *,
+        triage_result: dict,
+        missing_fields: list[str],
+        memory: WorkingMemory,
+        recommendation_changed: bool,
+    ) -> list[dict]:
+        return [
+            {"role": "system", "content": build_follow_up_system_prompt()},
+            {
+                "role": "user",
+                "content": build_follow_up_user_prompt(
+                    triage_result=triage_result,
+                    missing_fields=missing_fields,
+                    patient_summary=memory.shared_memory,
+                    turns=memory.short_term_turns,
+                    risk_flags=memory.shared_memory["clinical_memory"].get("risk_flags") or [],
+                    last_question_focus=memory.private_memory.get("last_question_focus"),
+                    last_question_text=memory.private_memory.get("last_question_text"),
+                    asked_fields_history=memory.private_memory.get("asked_fields_history") or [],
+                    recommendation_changed=recommendation_changed,
+                ),
+            },
+        ]
 
     def request_llm_json(self, messages: list[dict]):
         if not self.llm_settings["api_key"]:
@@ -449,7 +467,6 @@ class TriageService:
             text = self.extract_text_from_response(data)
             if not text:
                 return None
-            text = strip_json_code_fence(text)
             try:
                 return json.loads(text)
             except json.JSONDecodeError:
@@ -464,22 +481,7 @@ class TriageService:
 
     def request_triage_from_llm(self, payload: dict, evidence_rules: list[dict], memory_context: WorkingMemory):
         try:
-            prompt = (
-                "You are a hospital triage nurse assistant. "
-                "Use the retrieved triage knowledge as supporting evidence, and consider both short-term conversation memory and long-term patient memory. "
-                "Return strict JSON only with keys: triage_level (integer 1-5), priority (H/M/L), department (string), note (string). "
-                "Patient data: "
-                + json.dumps(payload, ensure_ascii=False)
-                + " Short-term memory: "
-                + json.dumps({"turns": memory_context.short_term_turns}, ensure_ascii=False)
-                + " Long-term memory: "
-                + json.dumps(memory_context.shared_memory, ensure_ascii=False)
-                + " Agent-private memory: "
-                + json.dumps(memory_context.private_memory, ensure_ascii=False)
-                + " Retrieved rules: "
-                + json.dumps(evidence_rules, ensure_ascii=False)
-            )
-            return self.request_llm_json([{"role": "user", "content": prompt}])
+            return self.request_llm_json(self.build_triage_llm_messages(payload, evidence_rules, memory_context))
         except Exception as e:
             print(f"Error in request_triage_from_llm: {e}")
             return None
@@ -494,24 +496,12 @@ class TriageService:
     ) -> dict | None:
         if not missing_fields:
             return None
-        prompt_messages = [
-            {"role": "system", "content": build_follow_up_system_prompt()},
-            {
-                "role": "user",
-                "content": build_follow_up_user_prompt(
-                    triage_result=triage_result,
-                    missing_fields=missing_fields,
-                    patient_summary=memory.shared_memory,
-                    turns=memory.short_term_turns,
-                    risk_flags=memory.shared_memory["clinical_memory"].get("risk_flags") or [],
-                    last_question_focus=memory.private_memory.get("last_question_focus"),
-                    last_question_text=memory.private_memory.get("last_question_text"),
-                    asked_fields_history=memory.private_memory.get("asked_fields_history") or [],
-                    recommendation_changed=recommendation_changed,
-                    patient_tone=memory.private_memory.get("latest_patient_tone"),
-                ),
-            },
-        ]
+        prompt_messages = self.build_followup_llm_messages(
+            triage_result=triage_result,
+            missing_fields=missing_fields,
+            memory=memory,
+            recommendation_changed=recommendation_changed,
+        )
         result = self.request_llm_json(prompt_messages)
         if not isinstance(result, dict):
             return None
@@ -598,25 +588,16 @@ class TriageService:
         current_snapshot = self.recommendation_snapshot(triage_result)
         recommendation_changed = previous_snapshot != current_snapshot
         risk_flags = memory.shared_memory["clinical_memory"].get("risk_flags") or []
-        llm_available = bool(self.llm_settings.get("api_key"))
-        llm_triage_used = bool(memory.private_memory.get("last_llm_triage_used"))
-        llm_followup_used = bool(memory.private_memory.get("last_llm_followup_used"))
-        offline_mode = (not llm_available) or (missing_fields and not llm_followup_used) or (not missing_fields and not llm_triage_used)
 
         if not missing_fields:
-            payload = {
+            return {
                 "assistant_message": build_final_message(triage_result),
                 "question_focus": None,
                 "mention_recommendation": True,
                 "style_tag": "final_recommendation",
                 "message_type": "final",
                 "recommendation_changed": recommendation_changed,
-                "offline_mode": offline_mode,
-                "response_origin": "fallback" if offline_mode else "llm",
             }
-            if offline_mode:
-                payload["assistant_message"] = prefix_offline_message(payload["assistant_message"])
-            return payload
 
         llm_followup = None
         try:
@@ -628,7 +609,6 @@ class TriageService:
             )
         except Exception:
             llm_followup = None
-        memory.private_memory["last_llm_followup_used"] = bool(llm_followup)
 
         payload = llm_followup or build_fallback_follow_up_message(
             missing_fields=missing_fields,
@@ -637,13 +617,8 @@ class TriageService:
             last_question_focus=memory.private_memory.get("last_question_focus"),
             asked_fields_history=memory.private_memory.get("asked_fields_history") or [],
             recommendation_changed=recommendation_changed,
-            patient_tone=memory.private_memory.get("latest_patient_tone"),
         )
         payload["recommendation_changed"] = recommendation_changed
-        payload["offline_mode"] = offline_mode
-        payload["response_origin"] = "fallback" if offline_mode else "llm"
-        if offline_mode:
-            payload["assistant_message"] = prefix_offline_message(payload.get("assistant_message", ""))
         return payload
 
     def evaluate(self, merged_payload: dict, memory: WorkingMemory) -> tuple[dict, list[dict], list[str], dict]:
@@ -653,7 +628,6 @@ class TriageService:
             llm_result = self.request_triage_from_llm(merged_payload, retrieved_rules, memory)
         except Exception:
             llm_result = None
-        memory.private_memory["last_llm_triage_used"] = bool(llm_result)
         final_result = validate_triage_result(llm_result, fallback)
         evidence = [{"id": rule.get("id"), "title": rule.get("title"), "source": rule.get("source")} for rule in retrieved_rules]
         missing_fields = prioritize_missing_fields(memory.shared_memory, memory.private_memory)
@@ -688,8 +662,6 @@ class TriageService:
         private_memory["evidence"] = evidence
         private_memory["message_type"] = assistant_payload.get("message_type", "followup")
         private_memory["recommendation_changed"] = assistant_payload.get("recommendation_changed", False)
-        private_memory["offline_mode"] = assistant_payload.get("offline_mode", False)
-        private_memory["response_origin"] = assistant_payload.get("response_origin", "fallback")
         private_memory["last_question_focus"] = assistant_payload.get("question_focus")
         private_memory["last_question_text"] = assistant_payload.get("assistant_message", "")
         private_memory["last_question_style"] = assistant_payload.get("style_tag")
@@ -733,8 +705,6 @@ class TriageService:
                 "recommendation_changed": assistant_payload.get("recommendation_changed", False),
                 "mention_recommendation": assistant_payload.get("mention_recommendation", False),
                 "style_tag": assistant_payload.get("style_tag", "followup"),
-                "offline_mode": assistant_payload.get("offline_mode", False),
-                "response_origin": assistant_payload.get("response_origin", "fallback"),
             },
         )
         lifecycle_event = "followup_requested" if missing_fields else "triage_completed"
@@ -847,25 +817,15 @@ class TriageService:
     def build_response(self, patient_id: str, session_id: str):
         patient_view = self.get_patient_view(patient_id)
         private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="triage")
-        assistant_message = private_memory.get("assistant_message", "")
-        response_origin = private_memory.get("response_origin", "fallback")
-        offline_mode = bool(private_memory.get("offline_mode", False) or response_origin == "fallback")
-        if not offline_mode and looks_like_fallback_followup(assistant_message):
-            offline_mode = True
-            response_origin = "fallback"
-        if offline_mode:
-            assistant_message = prefix_offline_message(assistant_message)
         dialogue = {
             "status": private_memory.get("dialogue_state", TriageDialogueState.IDLE.value),
-            "assistant_message": assistant_message,
+            "assistant_message": private_memory.get("assistant_message", ""),
             "missing_fields": private_memory.get("missing_fields", []),
             "turns": self.session_repo.list_turns(session_id),
             "question_focus": private_memory.get("last_question_focus"),
             "message_type": private_memory.get("message_type", "followup"),
             "recommendation_changed": private_memory.get("recommendation_changed", False),
             "asked_fields_history": private_memory.get("asked_fields_history", []),
-            "offline_mode": offline_mode,
-            "response_origin": response_origin,
         }
         return {
             "ok": True,
@@ -875,4 +835,3 @@ class TriageService:
             "patient": patient_view.model_dump() if patient_view else None,
             "dialogue": dialogue,
         }
-

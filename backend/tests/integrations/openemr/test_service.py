@@ -67,6 +67,16 @@ class FailingOpenEMRClient(FakeOpenEMRClient):
         )
 
 
+class DisabledOpenEMRClient:
+    enabled = False
+
+    def create_or_update_patient(self, payload):
+        raise AssertionError("disabled client should not create patient")
+
+    def create_encounter(self, payload):
+        raise AssertionError("disabled client should not create encounter")
+
+
 def build_service():
     temp_root = Path(__file__).resolve().parents[2] / ".tmp_openemr_tests"
     temp_root.mkdir(parents=True, exist_ok=True)
@@ -186,3 +196,36 @@ def test_prepared_payload_archived_even_when_sync_fails():
     assert last_record["resource_type"] == "Patient"
     assert last_record["operation"] == "create_or_update"
     assert last_record["payload"]["local_patient_id"] == "P-self"
+
+
+def test_disabled_openemr_skips_encounter_sync_without_marking_failure():
+    temp_root = Path(__file__).resolve().parents[2] / ".tmp_openemr_tests"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    temp_dir = temp_root / f"openemr-disabled-{uuid.uuid4().hex[:8]}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    db = Database(f"sqlite:///{temp_dir / 'disabled_service.db'}")
+    db.init_schema()
+    patient_repo = PatientRepository(db)
+    visit_repo = VisitRepository(db)
+    session_repo = SessionRepository(db)
+    memory_repo = AgentMemoryRepository(db)
+    client = DisabledOpenEMRClient()
+    service = EMRService(
+        client=client,
+        patient_repo=patient_repo,
+        visit_repo=visit_repo,
+        session_repo=session_repo,
+        memory_repo=memory_repo,
+    )
+
+    visit = visit_repo.create(patient_id="P-self")
+    result = service.ensure_visit_encounter_synced(visit["id"])
+
+    assert result.ok is True
+    assert result.skipped is True
+    assert result.resource_type == "Encounter"
+    assert result.operation == "create"
+    visit_after = visit_repo.get(visit["id"])
+    assert visit_after.get("emr_sync_status") in {None, ""}
+    assert visit_after.get("emr_sync_error") in {None, ""}

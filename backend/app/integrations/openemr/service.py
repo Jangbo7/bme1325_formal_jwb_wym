@@ -106,6 +106,14 @@ class EMRService:
         visit = self.visit_repo.get(visit_id)
         if not visit:
             return self._error_result("Encounter", "create", f"visit not found: {visit_id}")
+        if not getattr(self.client, "enabled", True):
+            return OpenEMRSyncResult(
+                ok=True,
+                resource_type="Encounter",
+                operation="create",
+                raw_response={"mode": "disabled"},
+                skipped=True,
+            )
         if visit.get("openemr_encounter_id"):
             return OpenEMRSyncResult(
                 ok=True,

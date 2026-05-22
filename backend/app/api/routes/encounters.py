@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 
 from app.api.contract import require_encounter_id, require_patient_id
-from app.events.types import ENCOUNTER_OPENED, ENCOUNTER_TRANSFERRED
+from app.events.types import ENCOUNTER_OPENED, ENCOUNTER_TRANSFERRED, PATIENT_STATE_CHANGED
 from app.schemas.encounter import CreateEncounterRequest, EncounterView, TransferCommand
+from app.schemas.common import PatientLifecycleState
 from app.schemas.orchestration import EncounterEventRequest, TransitionDebugRequest
 
 
@@ -90,6 +91,9 @@ def trigger_encounter_event(encounter_id: str, body: EncounterEventRequest, requ
     container = request.app.state.container
     orchestration = container["encounter_orchestration_service"]
     visit_repo = container["visit_repo"]
+    patient_repo = container["patient_repo"]
+    patient_state_machine = container["triage_service"].patient_state_machine
+    bus = container["event_bus"]
     visit_row = visit_repo.get(encounter_id)
     if not visit_row:
         raise HTTPException(status_code=404, detail="ENCOUNTER_NOT_FOUND")
@@ -104,6 +108,31 @@ def trigger_encounter_event(encounter_id: str, body: EncounterEventRequest, requ
     updated = visit_repo.get(encounter_id)
     if not updated:
         raise HTTPException(status_code=404, detail="ENCOUNTER_NOT_FOUND")
+    if body.event == "start_second_consultation":
+        patient_row = patient_repo.get(updated["patient_id"])
+        if patient_row:
+            current_patient_state = patient_row.get("lifecycle_state")
+            try:
+                next_patient_state = patient_state_machine.transition(
+                    PatientLifecycleState(current_patient_state),
+                    "start_second_consultation",
+                )
+            except Exception:
+                next_patient_state = None
+            if next_patient_state is not None:
+                patient_repo.update_patient(
+                    updated["patient_id"],
+                    lifecycle_state=next_patient_state.value,
+                    location="Consultation",
+                    visit_id=updated["id"],
+                )
+                bus.publish(
+                    PATIENT_STATE_CHANGED,
+                    {
+                        "patient_id": updated["patient_id"],
+                        "lifecycle_state": next_patient_state.value,
+                    },
+                )
     return {
         "ok": True,
         "encounter": _to_encounter_view(visit_repo, updated).model_dump(),

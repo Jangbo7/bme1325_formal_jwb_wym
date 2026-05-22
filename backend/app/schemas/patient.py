@@ -17,8 +17,6 @@ class DialogueSummary(BaseModel):
     message_type: str = "followup"
     recommendation_changed: bool = False
     asked_fields_history: list[str] = Field(default_factory=list)
-    offline_mode: bool = False
-    response_origin: str = "fallback"
     final_result: dict = Field(default_factory=dict)
 
 

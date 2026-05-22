@@ -3,9 +3,20 @@ import uuid
 
 from app.agents.triage.service import TriageService
 
+PATIENT_ID = "P-11111111"
+
 
 def _headers():
-    return {"X-API-Key": "mock-key-001"}
+    return {
+        "X-API-Key": "mock-key-001",
+        "Idempotency-Key": f"idem-{uuid.uuid4().hex}",
+    }
+
+
+def _get_data(response):
+    body = response.json()
+    assert body["ok"] is True
+    return body["data"]
 
 
 def _drain_events(subscriber, limit=12):
@@ -37,7 +48,7 @@ def test_triage_level_1_routes_to_icu_placeholder(monkeypatch, api_client_factor
             "/api/v1/triage-sessions",
             headers=_headers(),
             json={
-                "patient_id": "P-self",
+                "patient_id": PATIENT_ID,
                 "session_id": session_id,
                 "name": "Player",
                 "symptoms": "mild cough",
@@ -47,12 +58,12 @@ def test_triage_level_1_routes_to_icu_placeholder(monkeypatch, api_client_factor
             },
         )
         assert resp.status_code == 200, resp.text
-        data = resp.json()
+        data = _get_data(resp)
         assert data["visit_state"] == "in_icu_rescue"
 
         visit_resp = client.get(f"/api/v1/visits/{data['visit_id']}", headers=_headers())
         assert visit_resp.status_code == 200
-        visit = visit_resp.json()["visit"]
+        visit = _get_data(visit_resp)["visit"]
         triage_route_hint = (visit.get("data") or {}).get("triage_route_hint") or {}
         assert triage_route_hint.get("target") == "ICU"
         assert triage_route_hint.get("source") == "triage_level"
@@ -76,7 +87,7 @@ def test_triage_level_2_routes_to_emergency_placeholder(api_client_factory):
         "/api/v1/triage-sessions",
         headers=_headers(),
         json={
-            "patient_id": "P-self",
+            "patient_id": PATIENT_ID,
             "session_id": session_id,
             "name": "Player",
             "symptoms": "chest pain",
@@ -86,12 +97,12 @@ def test_triage_level_2_routes_to_emergency_placeholder(api_client_factory):
         },
     )
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    data = _get_data(resp)
     assert data["visit_state"] == "in_emergency"
 
     visit_resp = client.get(f"/api/v1/visits/{data['visit_id']}", headers=_headers())
     assert visit_resp.status_code == 200
-    visit = visit_resp.json()["visit"]
+    visit = _get_data(visit_resp)["visit"]
     triage_route_hint = (visit.get("data") or {}).get("triage_route_hint") or {}
     assert triage_route_hint.get("target") == "ED"
     assert triage_route_hint.get("placeholder") is True
@@ -104,7 +115,7 @@ def test_triage_level_4_keeps_normal_outpatient_chain(api_client_factory):
         "/api/v1/triage-sessions",
         headers=_headers(),
         json={
-            "patient_id": "P-self",
+            "patient_id": PATIENT_ID,
             "session_id": session_id,
             "name": "Player",
             "symptoms": "mild cough",
@@ -114,10 +125,10 @@ def test_triage_level_4_keeps_normal_outpatient_chain(api_client_factory):
         },
     )
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    data = _get_data(resp)
     assert data["visit_state"] == "triaged"
 
     visit_resp = client.get(f"/api/v1/visits/{data['visit_id']}", headers=_headers())
     assert visit_resp.status_code == 200
-    visit = visit_resp.json()["visit"]
+    visit = _get_data(visit_resp)["visit"]
     assert "triage_route_hint" not in (visit.get("data") or {})

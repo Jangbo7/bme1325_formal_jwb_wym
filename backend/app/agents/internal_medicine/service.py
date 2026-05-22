@@ -119,12 +119,12 @@ class InternalMedicineService:
             VisitLifecycleState.DISPOSITION_REFERRAL.value,
         }
         session_id = visit_data.get("internal_medicine_round2_session_id") if is_second_consultation_flow else None
-        if not session_id:
+        if not session_id and not is_second_consultation_flow:
             session_id = visit_data.get("internal_medicine_session_id")
-        if not session_id:
+        if not session_id and not is_second_consultation_flow:
             latest_row = self.session_repo.get_latest_by_visit_and_agent(visit_row["id"], "internal_medicine") if visit_row else None
             session_id = latest_row["id"] if latest_row else None
-        if not session_id:
+        if not session_id and not is_second_consultation_flow:
             patient_session = str(patient.get("session_id") or "")
             session_id = patient_session if patient_session.startswith("im-session-") else None
 
@@ -304,7 +304,7 @@ class InternalMedicineService:
 
     def build_merged_payload(self, payload: dict, shared_memory: dict, private_memory: dict | None = None) -> dict:
         clinical = shared_memory["clinical_memory"]
-        merged = dict(payload)
+        merged = {key: value for key, value in dict(payload).items() if not str(key).startswith("_")}
         merged["symptoms"] = payload.get("symptoms") or ", ".join(clinical.get("symptoms") or [])
         merged["chief_complaint"] = payload.get("chief_complaint") or clinical.get("chief_complaint")
         merged["vitals"] = merge_vitals(clinical.get("vitals") or {}, payload.get("vitals") or {})
@@ -325,6 +325,31 @@ class InternalMedicineService:
             merged["historical_records_template"] = private_memory.get("historical_records_template")
         return merged
 
+    @staticmethod
+    def build_consultation_llm_messages(
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        historical_records_template: dict | None = None,
+        previous_final_result: dict | None = None,
+        post_final_reassessment: bool = False,
+    ) -> list[dict]:
+        return [
+            {"role": "system", "content": build_consultation_system_prompt()},
+            {
+                "role": "user",
+                "content": build_consultation_user_prompt(
+                    shared_memory,
+                    payload.get("message", ""),
+                    missing_fields,
+                    historical_records_template=historical_records_template,
+                    previous_final_result=previous_final_result,
+                    post_final_reassessment=post_final_reassessment,
+                ),
+            },
+        ]
+
     def request_consultation_from_llm(
         self,
         payload: dict,
@@ -342,20 +367,14 @@ class InternalMedicineService:
             data=json.dumps(
                 {
                     "model": self.llm_settings["model"],
-                    "messages": [
-                        {"role": "system", "content": build_consultation_system_prompt()},
-                        {
-                            "role": "user",
-                            "content": build_consultation_user_prompt(
-                                shared_memory,
-                                payload.get("message", ""),
-                                missing_fields,
-                                historical_records_template=historical_records_template,
-                                previous_final_result=previous_final_result,
-                                post_final_reassessment=post_final_reassessment,
-                            ),
-                        },
-                    ],
+                    "messages": self.build_consultation_llm_messages(
+                        payload,
+                        shared_memory,
+                        missing_fields,
+                        historical_records_template=historical_records_template,
+                        previous_final_result=previous_final_result,
+                        post_final_reassessment=post_final_reassessment,
+                    ),
                     "temperature": 0,
                     "n": 1,
                     "stream": False,
@@ -552,6 +571,9 @@ class InternalMedicineService:
         if consultation_round == 1 and complete and not was_completed and existing_patient:
             current_patient_state = PatientLifecycleState(existing_patient["lifecycle_state"])
             next_patient_state = self.patient_state_machine.transition(current_patient_state, "internal_medicine_completed")
+        elif consultation_round == 2 and complete and not was_completed and existing_patient:
+            current_patient_state = PatientLifecycleState(existing_patient["lifecycle_state"])
+            next_patient_state = self.patient_state_machine.transition(current_patient_state, "finish")
 
         patient_update_payload = {
             "session_id": session_id,
@@ -560,7 +582,11 @@ class InternalMedicineService:
         }
         if next_patient_state:
             patient_update_payload["lifecycle_state"] = next_patient_state.value
-            patient_update_payload["location"] = "Auxiliary Diagnostic Center"
+            patient_update_payload["location"] = (
+                "Payment"
+                if consultation_round == 2 and complete
+                else "Auxiliary Diagnostic Center"
+            )
 
         self.patient_repo.update_patient(
             patient_id,

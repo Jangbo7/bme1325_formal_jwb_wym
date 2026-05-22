@@ -126,6 +126,10 @@ export function createBackendClient({ baseUrl, apiKey }) {
     getVisit(visitId) {
       return request(`/api/v1/visits/${visitId}`, { method: "GET" });
     },
+    getSceneSnapshot(patientId) {
+      const query = patientId ? `?patient_id=${encodeURIComponent(patientId)}` : "";
+      return request(`/api/v1/scene-snapshot${query}`, { method: "GET" });
+    },
     registerVisit(visitId, payload) {
       return request(`/api/v1/visits/${visitId}/register`, {
         method: "POST",

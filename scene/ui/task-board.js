@@ -62,5 +62,20 @@ export function createTaskBoardPresenter(taskBoard) {
         { text: `Queue ${queueLabel}`, done: Boolean(queueTicket) },
       ];
     },
+    syncSceneSnapshot(snapshot) {
+      if (!snapshot?.self_patient) {
+        if (Array.isArray(snapshot?.other_patients) && snapshot.other_patients.length > 0) {
+          this.syncPatients(snapshot.other_patients);
+          return;
+        }
+        this.syncOffline("Waiting for player patient profile");
+        return;
+      }
+      this.syncVisitSession({
+        patient: snapshot.self_patient,
+        visit: snapshot.active_visit,
+        queueTicket: snapshot.active_queue_ticket,
+      });
+    },
   };
 }

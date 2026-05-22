@@ -358,6 +358,7 @@ const backendState = {
 };
 const backendClient = createBackendClient({ baseUrl: backendState.baseUrl, apiKey: backendState.apiKey });
 const agentStore = createAgentStore();
+let latestSceneSnapshot = null;
 const debugQueryParams = new URLSearchParams(window.location.search);
 const stateDebugEnabledByParam = debugQueryParams.get("stateDebug") === "1";
 const isLocalSceneHost = ["127.0.0.1", "localhost"].includes(window.location.hostname);
@@ -372,7 +373,6 @@ const eventSubscriber = createEventSubscriber({
   },
   onEvent: (envelope) => {
     const eventType = envelope?.event_type || "";
-    const patient = getCurrentSelfPatient();
     const matchesPatient = envelope?.patient_id && envelope.patient_id === triageConversationState.patientId;
     if (matchesPatient || eventType.startsWith("encounter.")) {
       if (eventType === "encounter.opened") {
@@ -391,9 +391,6 @@ const eventSubscriber = createEventSubscriber({
         console.info("[scene:event-placeholder]", eventType, envelope);
       }
       pollBackendStatuses(true);
-      if (patient && matchesPatient) {
-        agentStore.syncPatient(patient);
-      }
     }
   },
 });
@@ -2543,6 +2540,99 @@ function getCurrentVisit() {
   return visitSessionState.visit || null;
 }
 
+function getCurrentSceneSnapshot() {
+  return latestSceneSnapshot || agentStore.lastSceneSnapshot || null;
+}
+
+function buildDoctorDialoguePayloadFromSceneSnapshot(snapshot = getCurrentSceneSnapshot()) {
+  const activeDialogue = snapshot?.active_dialogue || null;
+  const selfPatient = snapshot?.self_patient || getCurrentSelfPatient();
+  const activeVisit = snapshot?.active_visit || getCurrentVisit();
+  const visitState = activeVisit?.state || selfPatient?.visit_state || null;
+  const isSecondRoundState = ["in_second_consultation", "diagnosis_finalized", "waiting_payment"].includes(visitState);
+  const round2SessionId = activeVisit?.data?.internal_medicine_round2_session_id || null;
+  if (!activeDialogue || activeDialogue.agent_type !== "internal_medicine") {
+    return {
+      patient: selfPatient,
+      dialogue: isSecondRoundState && !round2SessionId ? {} : (selfPatient?.dialogue || {}),
+      visit_id: activeVisit?.id || selfPatient?.visit_id || null,
+      visit_state: visitState,
+      session_id: isSecondRoundState ? round2SessionId : (doctorConversationState.sessionId || null),
+    };
+  }
+  return {
+    patient: selfPatient,
+    dialogue: {
+      status: activeDialogue.status,
+      assistant_message: activeDialogue.assistant_message,
+      missing_fields: activeDialogue.missing_fields || [],
+      turns: activeDialogue.turns || [],
+      question_focus: activeDialogue.question_focus || null,
+      message_type: activeDialogue.message_type || "followup",
+    },
+    visit_id: activeVisit?.id || selfPatient?.visit_id || null,
+    visit_state: activeVisit?.state || selfPatient?.visit_state || null,
+    session_id: activeDialogue.session_id || doctorConversationState.sessionId || null,
+  };
+}
+
+function applySceneSnapshot(snapshot) {
+  latestSceneSnapshot = snapshot || null;
+  agentStore.syncSceneSnapshot(snapshot);
+
+  const selfPatient = snapshot?.self_patient || null;
+  const visit = snapshot?.active_visit || null;
+
+  visitSessionState.visit = visit;
+  queueRuntime.syncFromApi(snapshot?.queues || [], triageConversationState.patientId);
+  taskBoardPresenter.syncSceneSnapshot(snapshot);
+
+  if (!selfPatient) {
+    return null;
+  }
+
+  const encounterId = selfPatient.encounter_id || selfPatient.visit_id || visit?.id || null;
+  if (encounterId) {
+    triageConversationState.visitId = encounterId;
+    doctorConversationState.visitId = encounterId;
+    stateDebugPanel.setEncounterId(encounterId);
+  }
+
+  if (snapshot?.active_dialogue?.agent_type === "triage" && snapshot.active_dialogue.session_id) {
+    triageConversationState.sessionId = snapshot.active_dialogue.session_id;
+  }
+
+  const visitStateForSession = visit?.state || selfPatient?.visit_state || "";
+  const isSecondRoundState = ["in_second_consultation", "diagnosis_finalized", "waiting_payment"].includes(visitStateForSession);
+  let restoredDoctorSessionId = null;
+  if (isSecondRoundState) {
+    restoredDoctorSessionId = visit?.data?.internal_medicine_round2_session_id || null;
+  } else {
+    restoredDoctorSessionId = visit?.data?.internal_medicine_session_id || null;
+  }
+  if (snapshot?.active_dialogue?.agent_type === "internal_medicine" && snapshot.active_dialogue.session_id) {
+    restoredDoctorSessionId = snapshot.active_dialogue.session_id;
+  }
+  if (!restoredDoctorSessionId && !isSecondRoundState) {
+    const patientSessionId = String(selfPatient.session_id || "");
+    restoredDoctorSessionId = patientSessionId.startsWith("im-session-") ? patientSessionId : null;
+  }
+  if (restoredDoctorSessionId) {
+    doctorConversationState.sessionId = restoredDoctorSessionId;
+  } else if (isSecondRoundState) {
+    doctorConversationState.sessionId = null;
+  }
+
+  if (triageDialogueUi.open) {
+    syncTriageDialogue(selfPatient);
+  }
+  if (doctorDialogueUi.open) {
+    syncDoctorDialogue(buildDoctorDialoguePayloadFromSceneSnapshot(snapshot));
+  }
+
+  return { selfPatient, visit, queueTicket: snapshot?.active_queue_ticket || null };
+}
+
 function isInitialConsultationState(visitState) {
   return visitState === "in_consultation";
 }
@@ -2826,6 +2916,11 @@ async function openExistingDoctorDialogue() {
     return;
   }
   doctorConversationState.sessionId = sessionId;
+  const scenePayload = buildDoctorDialoguePayloadFromSceneSnapshot();
+  if (scenePayload?.session_id === sessionId) {
+    openDoctorDialogue(scenePayload);
+    return;
+  }
   try {
     const data = await backendClient.getInternalMedicineSession(sessionId);
     if (data?.patient) {
@@ -3208,92 +3303,21 @@ async function pollBackendStatuses(force = false) {
   backendState.polling = true;
   backendState.lastPollAt = now;
   try {
-    const [patientData, queueData] = await Promise.all([
-      backendClient.listPatients(),
-      backendClient.listQueues(),
-    ]);
-    const patients = Array.isArray(patientData.patients) ? patientData.patients : [];
-    let selfPatient = patients.find((patient) => patient.id === triageConversationState.patientId) || null;
-    agentStore.syncQueues(queueData.queues || []);
+    let snapshot = await backendClient.getSceneSnapshot(triageConversationState.patientId);
+    const applied = applySceneSnapshot(snapshot);
+    const selfPatient = applied?.selfPatient || null;
+    const visit = applied?.visit || null;
+    const visitIdForProgress = visit?.id || selfPatient?.encounter_id || selfPatient?.visit_id || triageConversationState.visitId;
+    const canProgressVisit = Boolean(snapshot?.ui_flags?.can_progress_visit);
+    const queueWaitSecondsRemaining = Number(snapshot?.timers?.queue_wait_seconds_remaining ?? 0);
 
-    const visitIdForProgress = selfPatient?.encounter_id || selfPatient?.visit_id || triageConversationState.visitId;
-    if (visitIdForProgress) {
+    if (visitIdForProgress && canProgressVisit && queueWaitSecondsRemaining <= 0) {
       try {
-        const progressData = await backendClient.progressVisit(visitIdForProgress);
-        if (progressData?.patient) {
-          selfPatient = progressData.patient;
-        }
-        if (progressData?.visit?.id) {
-          triageConversationState.visitId = progressData.visit.id;
-          doctorConversationState.visitId = progressData.visit.id;
-          stateDebugPanel.setEncounterId(progressData.visit.id);
-        }
+        await backendClient.progressVisit(visitIdForProgress);
+        snapshot = await backendClient.getSceneSnapshot(triageConversationState.patientId);
+        applySceneSnapshot(snapshot);
       } catch (_progressError) {
         // keep polling resilient when progress endpoint is temporarily unavailable
-      }
-    }
-
-    queueRuntime.syncFromApi(queueData.queues || [], triageConversationState.patientId);
-
-    let visit = null;
-    const patientEncounterId = selfPatient?.encounter_id || selfPatient?.visit_id;
-    if (patientEncounterId) {
-      try {
-        const visitData = await backendClient.getVisit(patientEncounterId);
-        visit = visitData?.visit || null;
-      } catch (_visitError) {
-        visit = {
-          id: patientEncounterId,
-          state: selfPatient.visit_state || null,
-          current_node: null,
-          current_department: selfPatient.location || null,
-          active_agent_type: null,
-          data: {},
-        };
-      }
-    }
-
-    visitSessionState.visit = visit;
-    const queueTicket = selfPatient?.queue_ticket || queueRuntime.state.playerTicket || null;
-    taskBoardPresenter.syncVisitSession({
-      patient: selfPatient,
-      visit,
-      queueTicket,
-    });
-
-    if (selfPatient) {
-      agentStore.syncPatient(selfPatient);
-      if (patientEncounterId) {
-        triageConversationState.visitId = patientEncounterId;
-        doctorConversationState.visitId = patientEncounterId;
-        stateDebugPanel.setEncounterId(patientEncounterId);
-      }
-      const visitStateForSession = visit?.state || selfPatient?.visit_state || "";
-      let restoredDoctorSessionId = null;
-      if (["in_second_consultation", "diagnosis_finalized", "waiting_payment"].includes(visitStateForSession)) {
-        restoredDoctorSessionId = visit?.data?.internal_medicine_round2_session_id || visit?.data?.internal_medicine_session_id || null;
-      } else {
-        restoredDoctorSessionId = visit?.data?.internal_medicine_session_id || null;
-      }
-      if (!restoredDoctorSessionId && !visit) {
-        const patientSessionId = String(selfPatient.session_id || "");
-        restoredDoctorSessionId = patientSessionId.startsWith("im-session-") ? patientSessionId : null;
-      }
-      if (restoredDoctorSessionId) {
-        doctorConversationState.sessionId = restoredDoctorSessionId;
-      }
-      syncTriageDialogue(selfPatient);
-    }
-
-    if (doctorDialogueUi.open && doctorConversationState.sessionId) {
-      try {
-        const doctorData = await backendClient.getInternalMedicineSession(doctorConversationState.sessionId);
-        if (doctorData?.patient) {
-          agentStore.syncPatient(doctorData.patient);
-        }
-        syncDoctorDialogue(doctorData);
-      } catch (_doctorError) {
-        // keep doctor modal state stable during transient fetch errors
       }
     }
 
