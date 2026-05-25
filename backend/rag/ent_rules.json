@@ -1,0 +1,57 @@
+[
+  {
+    "id": "ent-rule-sore-throat",
+    "title": "Sore Throat And Upper Airway Symptoms",
+    "keywords": ["sore throat", "throat", "tonsil", "咽痛", "嗓子痛", "扁桃体"],
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "ENT",
+      "note": "Throat-dominant symptoms fit ENT review, with attention to swallowing pain, fever, and airway warning signs.",
+      "tests_required": false,
+      "tests_suggested": [],
+      "action_plan": [
+        "Review swallowing, fever, and voice change",
+        "Inspect throat and tonsil findings",
+        "Escalate if airway symptoms appear"
+      ],
+      "red_flags": ["difficulty breathing", "drooling", "unable to swallow"]
+    },
+    "source": "ENT outpatient prototype rules"
+  },
+  {
+    "id": "ent-rule-ear-pain",
+    "title": "Ear Pain Or Blockage",
+    "keywords": ["ear pain", "ear", "hearing", "耳痛", "耳闷", "听力"],
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "ENT",
+      "note": "Ear complaints should assess hearing change, discharge, fever, and recent upper respiratory infection context.",
+      "tests_required": false,
+      "tests_suggested": [],
+      "action_plan": [
+        "Review discharge, hearing change, and fever",
+        "Inspect ear canal and tympanic membrane if available"
+      ],
+      "red_flags": ["mastoid pain", "facial weakness", "sudden hearing loss"]
+    },
+    "source": "ENT outpatient prototype rules"
+  },
+  {
+    "id": "ent-rule-default",
+    "title": "General ENT Fallback",
+    "keywords": [],
+    "result": {
+      "diagnosis_level": 1,
+      "priority": "L",
+      "department": "ENT",
+      "note": "ENT is a reasonable fit for nose, throat, or ear-focused symptoms without emergency features.",
+      "tests_required": false,
+      "tests_suggested": [],
+      "action_plan": ["Perform focused ENT symptom review"],
+      "red_flags": []
+    },
+    "source": "ENT outpatient prototype rules"
+  }
+]

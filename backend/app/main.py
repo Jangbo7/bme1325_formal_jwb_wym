@@ -7,25 +7,38 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.internal_medicine import create_internal_medicine_service
+from app.agents.interactive_debug import (
+    InternalMedicineAgentDebugController,
+    PatientAgentChatDebugController,
+    SpecialtyAgentDebugController,
+    TriageAgentDebugController,
+)
 from app.agents.multi_patient_debug import MultiPatientDebugController
 from app.agents.patient_agent import PatientAgentDebugController
 from app.agents.npc_patient import NpcPatientDebugController
+from app.agents.specialty_agents import SpecialtyAgentService
 from app.agents.icu_doctor import create_icub_doctor_service
 from app.agents.triage.graph import LANGGRAPH_AVAILABLE, TriageGraph
 from app.agents.triage.service import TriageService
 from app.agents.triage.state_machine import TriageDialogueStateMachine
 from app.api.routes.health import router as health_router
 from app.api.routes.encounters import router as encounters_router
+from app.api.routes.ent_agent_debug import router as ent_agent_debug_router
 from app.api.routes.events import router as events_router
 from app.api.routes.icu import router as icu_router
+from app.api.routes.internal_medicine_agent_debug import router as internal_medicine_agent_debug_router
 from app.api.routes.internal_medicine import router as internal_medicine_router
 from app.api.routes.medical_records import router as medical_records_router
 from app.api.routes.multi_patient_debug import router as multi_patient_debug_router
 from app.api.routes.npc_debug import router as npc_debug_router
+from app.api.routes.patient_agent_chat_debug import router as patient_agent_chat_debug_router
 from app.api.routes.patient_agent_debug import router as patient_agent_debug_router
+from app.api.routes.pediatrics_agent_debug import router as pediatrics_agent_debug_router
 from app.api.routes.openemr import router as openemr_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.queues import router as queues_router
+from app.api.routes.surgery_agent_debug import router as surgery_agent_debug_router
+from app.api.routes.triage_agent_debug import router as triage_agent_debug_router
 from app.api.routes.triage import router as triage_router
 from app.api.routes.visits import router as visits_router
 from app.api.contract import (
@@ -200,10 +213,14 @@ def create_container():
         session_repo=session_repo,
         medical_record_repo=medical_record_repo,
     )
+    surgery_agent_service = SpecialtyAgentService("surgery")
+    pediatrics_agent_service = SpecialtyAgentService("pediatrics")
+    ent_agent_service = SpecialtyAgentService("ent")
     patient_agent_debug_controller = PatientAgentDebugController(
         {
             "patient_repo": patient_repo,
             "session_repo": session_repo,
+            "memory_repo": memory_repo,
             "queue_repo": queue_repo,
             "visit_repo": visit_repo,
             "triage_service": triage_service,
@@ -212,12 +229,78 @@ def create_container():
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
             "patient_agent_service": patient_agent_service,
+            "patient_agent_case_repo": patient_agent_case_repo,
         }
+    )
+    triage_agent_debug_controller = TriageAgentDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "memory_repo": memory_repo,
+            "visit_repo": visit_repo,
+            "medical_record_repo": medical_record_repo,
+            "triage_service": triage_service,
+        }
+    )
+    internal_medicine_agent_debug_controller = InternalMedicineAgentDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "memory_repo": memory_repo,
+            "visit_repo": visit_repo,
+            "medical_record_repo": medical_record_repo,
+            "internal_medicine_service": internal_medicine_service,
+        }
+    )
+    patient_agent_chat_debug_controller = PatientAgentChatDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "memory_repo": memory_repo,
+            "visit_repo": visit_repo,
+            "medical_record_repo": medical_record_repo,
+            "patient_agent_service": patient_agent_service,
+            "patient_agent_case_repo": patient_agent_case_repo,
+        }
+    )
+    surgery_agent_debug_controller = SpecialtyAgentDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "memory_repo": memory_repo,
+            "visit_repo": visit_repo,
+            "medical_record_repo": medical_record_repo,
+            "specialty_agent_service": surgery_agent_service,
+        },
+        specialty_type="surgery",
+    )
+    pediatrics_agent_debug_controller = SpecialtyAgentDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "memory_repo": memory_repo,
+            "visit_repo": visit_repo,
+            "medical_record_repo": medical_record_repo,
+            "specialty_agent_service": pediatrics_agent_service,
+        },
+        specialty_type="pediatrics",
+    )
+    ent_agent_debug_controller = SpecialtyAgentDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "memory_repo": memory_repo,
+            "visit_repo": visit_repo,
+            "medical_record_repo": medical_record_repo,
+            "specialty_agent_service": ent_agent_service,
+        },
+        specialty_type="ent",
     )
     multi_patient_debug_controller = MultiPatientDebugController(
         {
             "patient_repo": patient_repo,
             "session_repo": session_repo,
+            "memory_repo": memory_repo,
             "queue_repo": queue_repo,
             "visit_repo": visit_repo,
             "triage_service": triage_service,
@@ -226,6 +309,7 @@ def create_container():
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
             "patient_agent_service": patient_agent_service,
+            "patient_agent_case_repo": patient_agent_case_repo,
         }
     )
 
@@ -301,6 +385,15 @@ def create_container():
         "npc_patient_debug_controller": npc_patient_debug_controller,
         "patient_agent_service": patient_agent_service,
         "patient_agent_debug_controller": patient_agent_debug_controller,
+        "triage_agent_debug_controller": triage_agent_debug_controller,
+        "internal_medicine_agent_debug_controller": internal_medicine_agent_debug_controller,
+        "patient_agent_chat_debug_controller": patient_agent_chat_debug_controller,
+        "surgery_agent_service": surgery_agent_service,
+        "pediatrics_agent_service": pediatrics_agent_service,
+        "ent_agent_service": ent_agent_service,
+        "surgery_agent_debug_controller": surgery_agent_debug_controller,
+        "pediatrics_agent_debug_controller": pediatrics_agent_debug_controller,
+        "ent_agent_debug_controller": ent_agent_debug_controller,
         "multi_patient_debug_controller": multi_patient_debug_controller,
         "visit_state_machine": visit_state_machine,
         "langgraph_available": LANGGRAPH_AVAILABLE,
@@ -511,6 +604,12 @@ def create_app() -> FastAPI:
     app.include_router(medical_records_router)
     app.include_router(npc_debug_router)
     app.include_router(patient_agent_debug_router)
+    app.include_router(triage_agent_debug_router)
+    app.include_router(internal_medicine_agent_debug_router)
+    app.include_router(patient_agent_chat_debug_router)
+    app.include_router(surgery_agent_debug_router)
+    app.include_router(pediatrics_agent_debug_router)
+    app.include_router(ent_agent_debug_router)
     app.include_router(multi_patient_debug_router)
     app.include_router(icu_router)
     app.include_router(patients_router)

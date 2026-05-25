@@ -8,6 +8,7 @@ from typing import Any
 
 from app.agents.internal_medicine.prompts import build_consultation_system_prompt, build_consultation_user_prompt
 from app.agents.internal_medicine.rules import retrieve_relevant_internal_medicine_rules, rule_based_internal_medicine
+from app.agents.specialty_agents.service import SpecialtyAgentService
 from app.agents.patient_agent.prompt_builder import build_reply_messages
 from app.agents.patient_agent.schemas import PatientCaseCard, PatientReplyContext
 from app.agents.triage.prompts import build_follow_up_system_prompt, build_follow_up_user_prompt
@@ -17,6 +18,7 @@ from app.agents.interactive_debug.presets import (
     get_patient_agent_presets,
     get_triage_presets,
 )
+from app.agents.interactive_debug.specialty_presets import get_specialty_presets
 from app.schemas.agent_debug import AgentDebugReply, AgentDebugSnapshot, AgentDebugTrace, AgentDebugTranscriptEntry
 from app.schemas.common import PatientLifecycleState, TriageDialogueState, VisitLifecycleState
 from app.database import Database
@@ -76,6 +78,7 @@ class _BaseAgentDebugController:
         self.triage_service = deps.get("triage_service")
         self.internal_medicine_service = deps.get("internal_medicine_service")
         self.patient_agent_service = deps.get("patient_agent_service")
+        self.specialty_agent_service = deps.get("specialty_agent_service")
         self._current: dict[str, Any] | None = None
 
     def reset(self) -> None:
@@ -733,5 +736,101 @@ class PatientAgentChatDebugController(_BaseAgentDebugController):
             "extra": {
                 "used_facts_hint": list(decision.allowed_fact_keys),
                 "rag_context_shell": self.patient_agent_service.agent.rag_context.build_reply_constraints(),
+            },
+        }
+
+
+class SpecialtyAgentDebugController(_BaseAgentDebugController):
+    def __init__(self, deps: dict, *, specialty_type: str):
+        super().__init__(deps)
+        self.specialty_type = specialty_type
+        self.agent_type = specialty_type
+
+    def get_presets(self) -> list[dict]:
+        return get_specialty_presets(self.specialty_type)
+
+    def _apply_preload(self, payload: dict) -> dict:
+        debug_session_id, patient_id, session_id = self._seed_patient_visit(
+            payload,
+            visit_state=VisitLifecycleState.IN_CONSULTATION.value,
+            patient_state=PatientLifecycleState.IN_CONSULTATION.value,
+            active_agent_type=self.specialty_type,
+        )
+        visit = self.visit_repo.get_active_by_patient(patient_id)
+        assert visit is not None
+        profile = payload.get("patient_profile") or {}
+        self.patient_repo.update_patient(
+            patient_id,
+            name=profile.get("name") or patient_id,
+            visit_id=visit["id"],
+            session_id=session_id,
+            location=(self.specialty_type or "").upper(),
+        )
+        self.session_repo.create_or_update(
+            session_id,
+            patient_id,
+            "active",
+            agent_type=self.specialty_type,
+            visit_id=visit["id"],
+        )
+        initial = self.specialty_agent_service.evaluate(payload)
+        self.session_repo.append_turn(session_id, patient_id, "assistant", initial["assistant_message"], now_iso(), metadata={"speaker": self.specialty_type})
+        return {
+            "debug_session_id": debug_session_id,
+            "patient_id": patient_id,
+            "visit_id": visit["id"],
+            "session_id": session_id,
+            "preload_summary": {
+                "agent_type": self.specialty_type,
+                "chief_complaint": payload.get("chief_complaint"),
+                "symptoms": payload.get("symptoms"),
+            },
+            "trace": self._build_trace(payload=payload, session_id=session_id),
+            "last_error": None,
+        }
+
+    def _handle_message(self, message: str) -> None:
+        assert self._current is not None
+        patient_id = self._current["patient_id"]
+        session_id = self._current["session_id"]
+        self.session_repo.append_turn(session_id, patient_id, "user", message, now_iso(), metadata={"speaker": "clinician"})
+        payload = {
+            "patient_profile": {"name": self.patient_repo.get(patient_id)["name"]},
+            "chief_complaint": self._current.get("preload_summary", {}).get("chief_complaint") or "",
+            "symptoms": self._current.get("preload_summary", {}).get("symptoms") or "",
+            "message": message,
+        }
+        result = self.specialty_agent_service.evaluate(payload)
+        self.session_repo.append_turn(session_id, patient_id, "assistant", result["assistant_message"], now_iso(), metadata={"speaker": self.specialty_type})
+        self._current["trace"] = self._build_trace(payload=payload, session_id=session_id)
+        self._current["last_error"] = None
+
+    def _build_trace(self, *, payload: dict, session_id: str) -> dict:
+        result = self.specialty_agent_service.evaluate(payload)
+        turns = self.session_repo.list_turns(session_id, limit=200)
+        latest = _latest_reply(turns)
+        return {
+            "merged_payload": payload,
+            "system_prompt": result["system_prompt"],
+            "user_prompt": result["user_prompt"],
+            "rag_query": {
+                "agent_type": self.specialty_type,
+                "chief_complaint": payload.get("chief_complaint"),
+                "symptoms": payload.get("symptoms"),
+                "message": payload.get("message"),
+            },
+            "rag_hits": [
+                {"source": "specialty_rules", "items": result["rag_hits"]},
+                {"source": "official_guidance", "items": result["official_guidance_hits"]},
+            ],
+            "parsed_result": {
+                "specialty_result": result["result"],
+                "doctor_decision": result["decision"],
+            },
+            "fallback_reason": None,
+            "memory_delta": {"transcript_turns": len(turns)},
+            "extra": {
+                "latest_message": latest.content if latest else "",
+                "assistant_message": result["assistant_message"],
             },
         }

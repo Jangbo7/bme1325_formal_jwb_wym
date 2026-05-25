@@ -1,0 +1,58 @@
+[
+  {
+    "id": "ped-rule-fever-cough",
+    "title": "Child Fever And Cough",
+    "keywords": ["child", "kid", "fever", "cough", "儿童", "小孩", "发热", "咳嗽"],
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Pediatrics",
+      "note": "Child respiratory complaints need pediatric-focused severity review, hydration assessment, and breathing observation.",
+      "tests_required": true,
+      "tests_suggested": ["CBC", "CRP"],
+      "action_plan": [
+        "Check fever duration and breathing effort",
+        "Assess hydration and feeding",
+        "Review exposure and vaccination context"
+      ],
+      "red_flags": ["labored breathing", "poor feeding", "persistent high fever"]
+    },
+    "source": "Pediatrics outpatient prototype rules"
+  },
+  {
+    "id": "ped-rule-diarrhea",
+    "title": "Child Diarrhea Or Vomiting",
+    "keywords": ["diarrhea", "vomit", "腹泻", "呕吐", "脱水"],
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Pediatrics",
+      "note": "Gastrointestinal symptoms in children should focus on dehydration risk and oral intake tolerance.",
+      "tests_required": false,
+      "tests_suggested": [],
+      "action_plan": [
+        "Assess number of stools or vomiting episodes",
+        "Review urine output and fluid intake",
+        "Escalate if lethargic or unable to hydrate"
+      ],
+      "red_flags": ["reduced urine output", "lethargy", "blood in stool"]
+    },
+    "source": "Pediatrics outpatient prototype rules"
+  },
+  {
+    "id": "ped-rule-default",
+    "title": "General Pediatrics Fallback",
+    "keywords": [],
+    "result": {
+      "diagnosis_level": 1,
+      "priority": "L",
+      "department": "Pediatrics",
+      "note": "Children should be routed to pediatrics when symptoms are common but age-specific handling matters.",
+      "tests_required": false,
+      "tests_suggested": [],
+      "action_plan": ["Perform pediatric symptom review and caregiver guidance"],
+      "red_flags": []
+    },
+    "source": "Pediatrics outpatient prototype rules"
+  }
+]

@@ -384,6 +384,31 @@ class InternalMedicineService:
                 return json.loads(text[start : end + 1])
             return None
 
+    def build_consultation_llm_messages(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        historical_records_template: dict | None = None,
+        previous_final_result: dict | None = None,
+        post_final_reassessment: bool = False,
+    ) -> list[dict]:
+        return [
+            {"role": "system", "content": build_consultation_system_prompt()},
+            {
+                "role": "user",
+                "content": build_consultation_user_prompt(
+                    shared_memory,
+                    payload.get("message", ""),
+                    missing_fields,
+                    historical_records_template=historical_records_template,
+                    previous_final_result=previous_final_result,
+                    post_final_reassessment=post_final_reassessment,
+                ),
+            },
+        ]
+
     def extract_text_from_response(self, data):
         if isinstance(data, str):
             return data.strip()

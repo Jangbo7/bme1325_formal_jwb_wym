@@ -335,6 +335,7 @@ export function createFixedNpcRuntime({ rooms, roomBounds, canMoveTo, extraDefin
   return {
     getNpcs: () => npcs,
     getNpcById,
+    openDialogueById: (npcId) => openDialogue(npcId),
     getNearestNpc,
     getNearestInteractableNpc,
     tryInteract,

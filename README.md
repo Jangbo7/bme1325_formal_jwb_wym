@@ -165,6 +165,18 @@ one agent debug:
 muti agent debug:
 - http://127.0.0.1:8787/multi-patient-debug
 
+core agents debug:
+
+- http://127.0.0.1:8787/triage-agent-debug
+- http://127.0.0.1:8787/internal-medicine-agent-debug
+- http://127.0.0.1:8787/patient-agent-chat-debug
+
+specialty outpatient agents debug:
+
+- http://127.0.0.1:8787/surgery-agent-debug
+- http://127.0.0.1:8787/pediatrics-agent-debug
+- http://127.0.0.1:8787/ent-agent-debug
+
 ## Frontend Startup
 ```powershell
 cd scene

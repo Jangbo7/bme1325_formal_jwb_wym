@@ -1,0 +1,136 @@
+[
+  {
+    "id": "policy-department-taxonomy",
+    "source_type": "national_policy",
+    "title": "医疗机构诊疗科目名录",
+    "source_url": "https://www.nhc.gov.cn/fzs/c100048/201808/afa9a6d10b9c4ed3ac36358fc20243ff.shtml",
+    "applicable_departments": ["all"],
+    "tags": ["department_taxonomy", "routing", "pain_medicine"],
+    "summary": [
+      "国家诊疗科目名录可作为门诊科室 taxonomy 的正式来源。",
+      "疼痛科已被纳入一级诊疗科目，主要业务范围是慢性疼痛的诊断治疗。",
+      "疼痛科仅限二级及以上医院开展，适合作为三甲医院门诊 agent 的合法科室选项。"
+    ]
+  },
+  {
+    "id": "policy-outpatient-quality",
+    "source_type": "national_policy",
+    "title": "医疗机构门诊质量管理暂行规定",
+    "source_url": "https://www.nhc.gov.cn/yzygj/c100068/202206/778aca5d2be74894a5626202154359b4.shtml",
+    "applicable_departments": ["all"],
+    "tags": ["outpatient_quality", "safety", "process"],
+    "summary": [
+      "国家层面要求加强门诊质量管理、提升门诊服务质量并保障医疗安全。",
+      "这类门诊 doctor agent 更适合输出流程化问诊和分流建议，而不是超出门诊边界的最终诊断或处方。",
+      "问诊输出应优先服务门诊安全、分诊清晰和后续衔接。"
+    ]
+  },
+  {
+    "id": "policy-appointment-smart-hospital",
+    "source_type": "national_policy",
+    "title": "关于进一步完善预约诊疗制度加强智慧医院建设的通知",
+    "source_url": "https://www.nhc.gov.cn/yzygj/c100068/202005/43b2d23ff48448ffae96700bc6eaccd7.shtml",
+    "applicable_departments": ["all"],
+    "tags": ["appointment", "smart_hospital", "navigation", "results", "one_stop_service"],
+    "summary": [
+      "二级以上医院应普遍建立预约诊疗制度，提供分时段预约服务。",
+      "智慧服务应覆盖智能导医分诊、候诊提醒、诊间结算、移动支付、院内导航、检查检验结果推送与查询等环节。",
+      "agent 的 patient-facing 回复可以更强调预约、候诊、检查预约、结果查询和导航这类流程信息。"
+    ]
+  },
+  {
+    "id": "policy-patient-experience-2023-2025",
+    "source_type": "national_policy",
+    "title": "关于开展改善就医感受提升患者体验主题活动的通知",
+    "source_url": "https://www.nhc.gov.cn/wjw/c100375/202305/bfa59db84f1041c4b50bb859a3b76f39.shtml",
+    "applicable_departments": ["all"],
+    "tags": ["patient_experience", "workflow", "service_design"],
+    "summary": [
+      "2023-2025 年国家持续推动改善就医感受、提升患者体验。",
+      "这意味着 agent 的回复不仅要做科室判断，也要帮助患者理解下一步流程、减少重复排队和信息不对称。",
+      "对外回复风格应偏简洁、自然、可执行。"
+    ]
+  },
+  {
+    "id": "policy-evaluation-manual",
+    "source_type": "national_policy",
+    "title": "改善就医感受提升患者体验评估操作手册（2023版）",
+    "source_url": "https://www.nhc.gov.cn/cms-search/downFiles/5c5fbe740e474efeb0cb11f159d3494a.pdf",
+    "applicable_departments": ["all"],
+    "tags": ["evaluation", "pre_visit", "wait_time", "mdt", "new_clinic", "pay_after_service"],
+    "summary": [
+      "三级医院被持续要求推进分时段预约、预就诊、缩短到院后等待时间。",
+      "操作手册明确提到 MDT 门诊、新型门诊（如疼痛门诊、药学门诊、健康管理门诊）和先诊疗后付费等服务方向。",
+      "RAG 可以把这些要求转化成流程化输出槽位，例如 next_node、wait guidance、new clinic routing。"
+    ]
+  },
+  {
+    "id": "pumch-smart-guide-and-registration",
+    "source_type": "tertiary_hospital_guide",
+    "hospital": "Peking Union Medical College Hospital",
+    "title": "北京协和医院患者问答 / 就医须知",
+    "source_url": "https://www.pumch.cn/patientQA.html",
+    "applicable_departments": ["all"],
+    "tags": ["smart_guide", "registration", "pediatrics", "followup", "per_visit_registration"],
+    "summary": [
+      "患者不清楚挂哪个科时，协和明确提供“智能导诊”来推荐就诊科室。",
+      "儿童无身份证时，可持户口本或出生证明办理就医凭证后挂号，这对 pediatrics agent 很有价值。",
+      "协和问答中强调每一次就诊都需要挂号，复诊开药也受既往院内记录和专科限制。"
+    ]
+  },
+  {
+    "id": "pumch-outpatient-notice",
+    "source_type": "tertiary_hospital_guide",
+    "hospital": "Peking Union Medical College Hospital",
+    "title": "北京协和医院门诊患者就诊须知",
+    "source_url": "https://www.pumch.cn/detail/12954.html",
+    "applicable_departments": ["all"],
+    "tags": ["outpatient_notice", "specimen", "accompaniment", "convenience_services"],
+    "summary": [
+      "门诊检验、病理会诊和外院送检均有明确预约和材料准备要求。",
+      "增强 CT/MR、全麻胃肠镜等检查需要家属签字陪同，这提示 agent 回复中可加入“需要陪同”的流程提醒。",
+      "医院提供轮椅、充电、便民服务等支持，可作为 patient-facing 流程说明素材。"
+    ]
+  },
+  {
+    "id": "ruijin-outpatient-guide",
+    "source_type": "tertiary_hospital_guide",
+    "hospital": "Ruijin Hospital",
+    "title": "瑞金医院门诊就诊须知",
+    "source_url": "https://rjtcoa.rjh.com.cn/2018RJPortal/doc/2021/08/06/57739.shtml",
+    "applicable_departments": ["all"],
+    "tags": ["appointment", "fever_clinic", "community_referral", "followup"],
+    "summary": [
+      "体温异常或呼吸道症状人员被要求直接去发热门诊，这对 emergency or fever-node routing 很重要。",
+      "瑞金提供现场、自助、电话、APP、微信公众号、诊间预约和社区转诊等多种预约方式。",
+      "诊间预约下次复诊时间这一做法很适合写入复诊类 agent 的 patient guidance。"
+    ]
+  },
+  {
+    "id": "huashan-appointment-rules",
+    "source_type": "tertiary_hospital_guide",
+    "hospital": "Huashan Hospital",
+    "title": "华山医院门诊预约规则",
+    "source_url": "https://www.huashan.org.cn/phone/cms/1187.html",
+    "applicable_departments": ["all"],
+    "tags": ["appointment", "cancellation", "no_show", "fairness"],
+    "summary": [
+      "华山门诊专家号实行全预约管理，并有明确取消、爽约和黑名单规则。",
+      "同一患者同一专科未完成就诊前不能再次预约，同次最多预约两个不同科室。",
+      "这类规则很适合转化为 agent 的预约提醒和“避免重复占号”的提示。"
+    ]
+  },
+  {
+    "id": "huashan-smart-services",
+    "source_type": "tertiary_hospital_guide",
+    "hospital": "Huashan Hospital",
+    "title": "华山医院门诊服务能力",
+    "source_url": "https://www.huashan.org.cn/menzhen/1223/index.html",
+    "applicable_departments": ["all"],
+    "tags": ["smart_services", "payment", "report_query", "navigation", "queue"],
+    "summary": [
+      "华山门诊服务号覆盖预约挂号、线上支付、检查预约、报告查询、就医咨询、门诊导航、候诊查询和排班查询。",
+      "这些功能非常适合作为门诊 agent 的后续节点说明，而不只是给一个科室名字后结束。"
+    ]
+  }
+]

@@ -16,7 +16,7 @@ const WORKFLOW_PATTERNS = [
   ["hall", "triage", "hall", "lab", "hall", "consultation"],
   ["hall", "registration", "hall", "office", "hall", "ward"],
   ["hall", "lab", "hall", "icu", "hall", "office"],
-  ["hall", "consultation", "hall", "ward", "hall", "empty_room"],
+  ["hall", "consultation", "hall", "ward", "hall", "specialty_cluster_a"],
   ["hall", "registration", "hall", "triage", "hall", "lab"],
 ];
 

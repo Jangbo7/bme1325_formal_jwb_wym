@@ -5,7 +5,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-AgentDebugType = Literal["triage", "internal_medicine", "patient_agent"]
+AgentDebugType = Literal[
+    "triage",
+    "internal_medicine",
+    "patient_agent",
+    "surgery",
+    "pediatrics",
+    "ent",
+]
 
 
 class AgentDebugPresetSummary(BaseModel):

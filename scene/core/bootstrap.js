@@ -19,7 +19,9 @@ const hudHelpToggle = document.getElementById("hudHelpToggle");
 const hudHelpPanel = document.getElementById("hudHelpPanel");
 const hudTasksToggle = document.getElementById("hudTasksToggle");
 const hudLabelsToggle = document.getElementById("hudLabelsToggle");
+const hudQueueToggle = document.getElementById("hudQueueToggle");
 const hudDebugToggle = document.getElementById("hudDebugToggle");
+const hudStateDebugToggle = document.getElementById("hudStateDebugToggle");
 const hudNpcRouteButtons = Array.from(document.querySelectorAll("[data-route-target]"));
 
 const TILE = 32;
@@ -42,6 +44,8 @@ const overlayState = {
   tasksOpen: false,
   labelsOpen: false,
   debugOpen: false,
+  queueOpen: true,
+  stateDebugVisible: true,
 };
 
 const palette = {
@@ -116,9 +120,9 @@ const rooms = [
   { floor: 1, x: 43, y: 17, w: 15, h: 11, kind: "icu" },
   { floor: 1, x: 59, y: 17, w: 14, h: 11, kind: "ward" },
   { floor: 1, x: 10, y: 32, w: 16, h: 11, kind: "office" },
-  { floor: 1, x: 27, y: 32, w: 16, h: 11, kind: "empty_room" },
-  { floor: 1, x: 44, y: 32, w: 15, h: 11, kind: "empty_room" },
-  { floor: 1, x: 60, y: 32, w: 14, h: 11, kind: "empty_room" },
+  { floor: 1, x: 27, y: 32, w: 16, h: 11, kind: "specialty_cluster_a" },
+  { floor: 1, x: 44, y: 32, w: 15, h: 11, kind: "specialty_cluster_b" },
+  { floor: 1, x: 60, y: 32, w: 14, h: 11, kind: "specialty_cluster_c" },
   { floor: 1, x: 31, y: 45, w: 22, h: 7, kind: "hall" },
 ];
 
@@ -134,9 +138,9 @@ const doorSpecs = [
   { roomIndex: 7, side: "top", offset: 5.8, length: 2.2, label: "ICU-A" },
   { roomIndex: 8, side: "top", offset: 5.2, length: 2.2, label: "WARD-A" },
   { roomIndex: 9, side: "top", offset: 5.8, length: 2.2, label: "OFFICE-A" },
-  { roomIndex: 10, side: "top", offset: 5.8, length: 2.2, label: "RESERVE-A" },
-  { roomIndex: 11, side: "top", offset: 5.4, length: 2.2, label: "RESERVE-B" },
-  { roomIndex: 12, side: "top", offset: 5.2, length: 2.2, label: "RESERVE-C" },
+  { roomIndex: 10, side: "top", offset: 5.8, length: 2.2, label: "SPEC-A" },
+  { roomIndex: 11, side: "top", offset: 5.4, length: 2.2, label: "SPEC-B" },
+  { roomIndex: 12, side: "top", offset: 5.2, length: 2.2, label: "SPEC-C" },
   { roomIndex: 13, side: "top", offset: 9.4, length: 2.4, label: "SOUTH-HALL" },
 ];
 
@@ -179,7 +183,64 @@ const ROOM_KIND_LABELS = {
   icu: "ICU",
   office: "Office",
   hall: "Hall",
-  empty_room: "Reserved",
+  specialty_cluster_a: "Clinic A",
+  specialty_cluster_b: "Clinic B",
+  specialty_cluster_c: "Clinic C",
+};
+
+const specialtyClusters = {
+  specialty_cluster_a: {
+    title: "General Intake & Core Specialties",
+    subtitle: "Family Medicine, Surgery, OB-GYN, Pediatrics, Ophthalmology",
+    accent: "#89bff5",
+    border: "#4f7fb2",
+    text: "#2f4c6b",
+    roomColorA: "#e8dcc6",
+    roomColorB: "#dccfb8",
+    campusPrompt: "Walk into Specialty Hall A",
+    room: { x: 10 * TILE, y: 7 * TILE, w: 40 * TILE, h: 19 * TILE, floor: 1 },
+    departments: [
+      { label: "Family Medicine", coverage: "Unclear symptoms, mild illness, first visit fallback", x: 0.18, y: 0.24, color: "#d7ebff", npcId: "family-medicine-guide" },
+      { label: "Surgery", coverage: "Trauma, wounds, lumps, acute focal pain", x: 0.5, y: 0.24, color: "#ffe0d4", npcId: "surgery-guide" },
+      { label: "OB-GYN", coverage: "Gynecologic symptoms, pregnancy concerns", x: 0.82, y: 0.24, color: "#ffd8e3", npcId: "obgyn-guide" },
+      { label: "Pediatrics", coverage: "Child fever, cough, diarrhea", x: 0.28, y: 0.67, color: "#dff8e8", npcId: "pediatrics-guide" },
+      { label: "Ophthalmology", coverage: "Red eye, eye pain, vision problems", x: 0.72, y: 0.67, color: "#e8e3ff", npcId: "ophthalmology-guide" },
+    ],
+  },
+  specialty_cluster_b: {
+    title: "Focused Symptom Clinics",
+    subtitle: "ENT, Dentistry, Dermatology, Psychiatry, Rehabilitation",
+    accent: "#8ed8c6",
+    border: "#4f8a79",
+    text: "#2e594e",
+    roomColorA: "#dfe2ce",
+    roomColorB: "#d1d7c1",
+    campusPrompt: "Walk into Specialty Hall B",
+    room: { x: 12 * TILE, y: 7 * TILE, w: 40 * TILE, h: 19 * TILE, floor: 1 },
+    departments: [
+      { label: "ENT", coverage: "Sore throat, nasal blockage, ear pain", x: 0.2, y: 0.24, color: "#d9f4f6", npcId: "ent-guide" },
+      { label: "Dentistry", coverage: "Tooth pain, gum bleeding, ulcers", x: 0.5, y: 0.24, color: "#fff0d2", npcId: "dentistry-guide" },
+      { label: "Dermatology", coverage: "Rash, itching, allergy, skin changes", x: 0.82, y: 0.24, color: "#e5f4da", npcId: "dermatology-guide" },
+      { label: "Psychiatry", coverage: "Anxiety, insomnia, depression", x: 0.28, y: 0.67, color: "#ece2ff", npcId: "psychiatry-guide" },
+      { label: "Rehabilitation", coverage: "Post-op recovery, movement restoration", x: 0.72, y: 0.67, color: "#def7ef", npcId: "rehab-guide" },
+    ],
+  },
+  specialty_cluster_c: {
+    title: "Pain & Follow-up Navigation",
+    subtitle: "Pain Clinic, Specialty Triage, Follow-up Desk",
+    accent: "#d9b46e",
+    border: "#8d6b35",
+    text: "#5f4621",
+    roomColorA: "#e6d7bb",
+    roomColorB: "#d8c6a7",
+    campusPrompt: "Walk into Specialty Hall C",
+    room: { x: 14 * TILE, y: 8 * TILE, w: 36 * TILE, h: 17 * TILE, floor: 1 },
+    departments: [
+      { label: "Pain Clinic", coverage: "Chronic pain, neuralgia, neck-back-leg pain", x: 0.22, y: 0.34, color: "#ffe2d8", npcId: "pain-guide" },
+      { label: "Specialty Navigation", coverage: "Not sure which clinic fits the symptom story", x: 0.5, y: 0.5, color: "#ddecff", npcId: "specialty-triage-guide" },
+      { label: "Follow-up Desk", coverage: "Aftercare, referral, rehabilitation next steps", x: 0.8, y: 0.34, color: "#eef7d1", npcId: "wellness-desk-guide" },
+    ],
+  },
 };
 
 function roomBounds(room) {
@@ -261,6 +322,10 @@ const microScene = {
       { x: 38 * TILE + 12 * TILE, y: 8 * TILE + 12 * TILE, name: "Mina", role: "Guest", color: "#8eb4f2" },
     ],
   },
+  specialty: {
+    activeKey: null,
+    exitPoint: { x: 0, y: 0, floor: 1, radius: 84 },
+  },
 };
 
 const SESSION_STORAGE_KEYS = {
@@ -288,6 +353,19 @@ const runtimeDebug = {
   lastPollResult: "pending",
   lastError: "",
 };
+
+const sceneTransitionState = {
+  cooldownMs: 1000,
+  availableAtMs: 0,
+};
+
+function sceneTransitionReady(nowMs) {
+  return nowMs >= sceneTransitionState.availableAtMs;
+}
+
+function triggerSceneTransitionCooldown(nowMs = performance.now()) {
+  sceneTransitionState.availableAtMs = nowMs + sceneTransitionState.cooldownMs;
+}
 
 function deriveRoomInteractPoint(roomKind, fallback, options = {}) {
   const targetRoom = rooms.find((room) => room.floor === fallback.floor && room.kind === roomKind)
@@ -490,8 +568,65 @@ function canInteractWithAnnexExit() {
   return Math.hypot(player.x - microScene.annex.exitPoint.x, player.y - microScene.annex.exitPoint.y) <= microScene.annex.exitPoint.radius;
 }
 
+function getCampusSpecialtyInteractPoint(clusterKey) {
+  const room = rooms.find((item) => item.kind === clusterKey) || null;
+  if (!room) return null;
+  const rect = roomBounds(room);
+  return {
+    x: rect.x + rect.w * 0.5,
+    y: rect.y + rect.h * 0.42,
+    floor: room.floor,
+    radius: 84,
+  };
+}
+
+function getActiveSpecialtyCluster() {
+  const key = microScene.specialty.activeKey;
+  if (!key) return null;
+  return specialtyClusters[key] || null;
+}
+
+function findSpecialtyClusterAtPlayer() {
+  for (const clusterKey of Object.keys(specialtyClusters)) {
+    const point = getCampusSpecialtyInteractPoint(clusterKey);
+    if (!point || player.floor !== point.floor) continue;
+    if (Math.hypot(player.x - point.x, player.y - point.y) <= point.radius) {
+      return clusterKey;
+    }
+  }
+  return null;
+}
+
+function canInteractWithSpecialtyExit() {
+  if (microScene.mode !== "specialty_room") return false;
+  const exitPoint = microScene.specialty.exitPoint;
+  if (player.floor !== exitPoint.floor) return false;
+  return Math.hypot(player.x - exitPoint.x, player.y - exitPoint.y) <= exitPoint.radius;
+}
+
+function getNearbySpecialtyStation(cluster) {
+  if (!cluster || !cluster.room || !Array.isArray(cluster.departments)) return null;
+  let best = null;
+  let bestDistance = Infinity;
+  for (const department of cluster.departments) {
+    const point = {
+      x: cluster.room.x + cluster.room.w * department.x,
+      y: cluster.room.y + cluster.room.h * department.y,
+      floor: cluster.room.floor,
+    };
+    if (player.floor !== point.floor) continue;
+    const distance = Math.hypot(player.x - point.x, player.y - point.y);
+    if (distance <= 78 && distance < bestDistance) {
+      bestDistance = distance;
+      best = { ...department, point, distance };
+    }
+  }
+  return best;
+}
+
 function enterRegistrationRoom() {
   if (microScene.mode === "registration_room") return;
+  triggerSceneTransitionCooldown();
   microScene.returnPoint = { x: player.x, y: player.y, floor: player.floor };
   microScene.mode = "registration_room";
   const spawn = {
@@ -511,6 +646,7 @@ function enterRegistrationRoom() {
 
 function enterAnnexRoom() {
   if (microScene.mode === "annex_room") return;
+  triggerSceneTransitionCooldown();
   microScene.returnPoint = { x: player.x, y: player.y, floor: player.floor };
   microScene.mode = "annex_room";
   const spawn = {
@@ -528,8 +664,38 @@ function enterAnnexRoom() {
   pushStatusHint("Entered Annex Yard. Press E at EXIT to return.");
 }
 
+function enterSpecialtyRoom(clusterKey) {
+  const cluster = specialtyClusters[clusterKey];
+  if (!cluster || !cluster.room) return;
+  if (microScene.mode === "specialty_room" && microScene.specialty.activeKey === clusterKey) return;
+  triggerSceneTransitionCooldown();
+  microScene.returnPoint = { x: player.x, y: player.y, floor: player.floor };
+  microScene.mode = "specialty_room";
+  microScene.specialty.activeKey = clusterKey;
+  microScene.specialty.exitPoint = {
+    x: cluster.room.x + TILE * 3.5,
+    y: cluster.room.y + cluster.room.h - TILE * 2.4,
+    floor: cluster.room.floor,
+    radius: 84,
+  };
+  const spawn = {
+    x: cluster.room.x + TILE * 5,
+    y: cluster.room.y + cluster.room.h - TILE * 3,
+    floor: cluster.room.floor,
+  };
+  const safe = findNearestWalkable(spawn.x, spawn.y, spawn.floor);
+  player.x = safe.x;
+  player.y = safe.y;
+  player.floor = spawn.floor;
+  camera.x = player.x;
+  camera.y = player.y;
+  updateFloorHud();
+  pushStatusHint(`${cluster.title} opened. Press E on a station to talk, or E/Q at EXIT to return.`);
+}
+
 function leaveRegistrationRoom() {
   if (microScene.mode !== "registration_room") return;
+  triggerSceneTransitionCooldown();
   const fallback = floorSpawns[1];
   const target = microScene.returnPoint || { x: fallback.x, y: fallback.y, floor: 1 };
   const safe = findNearestWalkable(target.x, target.y, target.floor || 1);
@@ -545,6 +711,7 @@ function leaveRegistrationRoom() {
 
 function leaveAnnexRoom() {
   if (microScene.mode !== "annex_room") return;
+  triggerSceneTransitionCooldown();
   const fallback = floorSpawns[1];
   const target = microScene.returnPoint || { x: fallback.x, y: fallback.y, floor: 1 };
   const safe = findNearestWalkable(target.x, target.y, target.floor || 1);
@@ -552,6 +719,23 @@ function leaveAnnexRoom() {
   player.y = safe.y;
   player.floor = target.floor || 1;
   microScene.mode = "campus";
+  camera.x = player.x;
+  camera.y = player.y;
+  updateFloorHud();
+  pushStatusHint("Returned to Main Campus.");
+}
+
+function leaveSpecialtyRoom() {
+  if (microScene.mode !== "specialty_room") return;
+  triggerSceneTransitionCooldown();
+  const fallback = floorSpawns[1];
+  const target = microScene.returnPoint || { x: fallback.x, y: fallback.y, floor: 1 };
+  const safe = findNearestWalkable(target.x, target.y, target.floor || 1);
+  player.x = safe.x;
+  player.y = safe.y;
+  player.floor = target.floor || 1;
+  microScene.mode = "campus";
+  microScene.specialty.activeKey = null;
   camera.x = player.x;
   camera.y = player.y;
   updateFloorHud();
@@ -1127,6 +1311,32 @@ function canMoveTo(nextX, nextY, floor = activeFloor) {
       { floor, x: room.x + TILE * 16, y: room.y + TILE * 10, w: TILE * 8, h: TILE * 4 },
     ];
     collisions = blockers;
+  } else if (microScene.mode === "specialty_room") {
+    const cluster = getActiveSpecialtyCluster();
+    const room = cluster?.room;
+    if (room) {
+      const wall = 10;
+      const blockers = [
+        { floor, x: room.x - wall, y: room.y - wall, w: room.w + wall * 2, h: wall },
+        { floor, x: room.x - wall, y: room.y + room.h, w: room.w + wall * 2, h: wall },
+        { floor, x: room.x - wall, y: room.y, w: wall, h: room.h },
+        { floor, x: room.x + room.w, y: room.y, w: wall, h: room.h },
+      ];
+      for (const department of cluster.departments || []) {
+        const deskWidth = 86;
+        const deskHeight = 26;
+        const deskX = room.x + room.w * department.x - deskWidth * 0.5;
+        const deskY = room.y + room.h * department.y + 10;
+        blockers.push({
+          floor,
+          x: deskX,
+          y: deskY,
+          w: deskWidth,
+          h: deskHeight,
+        });
+      }
+      collisions = blockers;
+    }
   }
   return !collisions.some((wall) => {
     const closestX = Math.max(wall.x, Math.min(foot.x, wall.x + wall.w));
@@ -1192,21 +1402,153 @@ function findNearestWalkable(x, y, floor) {
 function drawRoomFloor(room, dimmed) {
   const rect = roomBounds(room);
   const roomRect = worldRectToScreenRect(rect.x, rect.y, rect.w, rect.h, room.floor);
-  const fillA = room.kind === "hall" ? palette.hallFloor : palette.roomFloor;
-  const fillB = room.kind === "hall" ? "#ead6b0" : palette.roomFloorAccent;
+  const clusterTheme = specialtyClusters[room.kind] || null;
+  const fillA = room.kind === "hall"
+    ? palette.hallFloor
+    : clusterTheme
+      ? clusterTheme.colorA || "#e8dcc6"
+      : palette.roomFloor;
+  const fillB = room.kind === "hall"
+    ? "#ead6b0"
+    : clusterTheme
+      ? clusterTheme.colorB || "#dccfb8"
+      : palette.roomFloorAccent;
   drawRoomBorder(roomRect, fillA);
   drawRoomTiles(roomRect, fillA, fillB, rect.x, rect.y);
 
   ctx.save();
-  ctx.strokeStyle = "rgba(255,255,255,0.12)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = clusterTheme ? clusterTheme.border : "rgba(255,255,255,0.12)";
+  ctx.lineWidth = clusterTheme ? 3 : 2;
   ctx.strokeRect(roomRect.x + 6, roomRect.y + 6, roomRect.w - 12, roomRect.h - 12);
   ctx.restore();
+
+  if (clusterTheme) {
+    drawSpecialtyClusterRoom(room, clusterTheme);
+  }
 
   if (dimmed) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
     ctx.fillRect(roomRect.x, roomRect.y, roomRect.w, roomRect.h);
   }
+}
+
+function drawSpecialtyClusterRoom(room, clusterTheme) {
+  const rect = roomBounds(room);
+  const roomRect = worldRectToScreenRect(rect.x, rect.y, rect.w, rect.h, room.floor);
+
+  ctx.save();
+  ctx.fillStyle = "rgba(255, 252, 246, 0.92)";
+  ctx.fillRect(roomRect.x + 12, roomRect.y + 10, roomRect.w - 24, 34);
+  ctx.strokeStyle = clusterTheme.border;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(roomRect.x + 12, roomRect.y + 10, roomRect.w - 24, 34);
+  ctx.fillStyle = clusterTheme.text;
+  ctx.textAlign = "left";
+  ctx.font = "700 13px 'Trebuchet MS'";
+  ctx.fillText(clusterTheme.title, roomRect.x + 22, roomRect.y + 24);
+  ctx.font = "11px 'Trebuchet MS'";
+  ctx.fillText(clusterTheme.subtitle, roomRect.x + 22, roomRect.y + 39);
+
+  for (const department of clusterTheme.departments) {
+    const centerX = rect.x + rect.w * department.x;
+    const centerY = rect.y + rect.h * department.y;
+    const cardW = Math.min(132, rect.w * 0.24);
+    const cardH = 54;
+    const card = worldRectToScreenRect(centerX - cardW * 0.5, centerY - cardH * 0.5, cardW, cardH, room.floor);
+    ctx.fillStyle = department.color;
+    ctx.fillRect(card.x, card.y, card.w, card.h);
+    ctx.strokeStyle = clusterTheme.border;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(card.x, card.y, card.w, card.h);
+    ctx.fillStyle = clusterTheme.text;
+    ctx.textAlign = "center";
+    ctx.font = "700 11px 'Trebuchet MS'";
+    ctx.fillText(department.label, card.x + card.w * 0.5, card.y + 16);
+    ctx.font = "10px 'Trebuchet MS'";
+    const shortCoverage = department.coverage.length > 28
+      ? `${department.coverage.slice(0, 28)}...`
+      : department.coverage;
+    ctx.fillText(shortCoverage, card.x + card.w * 0.5, card.y + 34);
+    ctx.fillStyle = clusterTheme.accent;
+    ctx.fillRect(card.x + 8, card.y + card.h - 10, card.w - 16, 4);
+  }
+  ctx.restore();
+}
+
+function drawSpecialtyRoomScene() {
+  const cluster = getActiveSpecialtyCluster();
+  if (!cluster?.room) return;
+
+  ctx.fillStyle = cluster.roomColorB || "#cdb994";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const room = cluster.room;
+  const roomScreen = worldRectToScreenRect(room.x, room.y, room.w, room.h, room.floor);
+  drawRoomBorder(roomScreen, cluster.roomColorA || "#eadcc5");
+  drawRoomTiles(roomScreen, cluster.roomColorA || "#eadcc5", cluster.roomColorB || "#d8cab0", room.x, room.y);
+
+  const wallTop = 8;
+  ctx.fillStyle = palette.wallTop;
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y - wallTop, roomScreen.w + wallTop * 2, wallTop);
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y + roomScreen.h, roomScreen.w + wallTop * 2, wallTop);
+  ctx.fillRect(roomScreen.x - wallTop, roomScreen.y, wallTop, roomScreen.h);
+  ctx.fillRect(roomScreen.x + roomScreen.w, roomScreen.y, wallTop, roomScreen.h);
+
+  ctx.save();
+  ctx.fillStyle = "rgba(255, 250, 242, 0.94)";
+  ctx.fillRect(roomScreen.x + 16, roomScreen.y + 12, roomScreen.w - 32, 42);
+  ctx.strokeStyle = cluster.border;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(roomScreen.x + 16, roomScreen.y + 12, roomScreen.w - 32, 42);
+  ctx.fillStyle = cluster.text;
+  ctx.textAlign = "left";
+  ctx.font = "700 16px 'Trebuchet MS'";
+  ctx.fillText(cluster.title, roomScreen.x + 28, roomScreen.y + 30);
+  ctx.font = "12px 'Trebuchet MS'";
+  ctx.fillText(cluster.subtitle, roomScreen.x + 28, roomScreen.y + 48);
+
+  for (const department of cluster.departments) {
+    const centerX = room.x + room.w * department.x;
+    const centerY = room.y + room.h * department.y;
+    const cardW = Math.min(208, room.w * 0.24);
+    const cardH = 82;
+    const deskW = 86;
+    const deskH = 26;
+    const card = worldRectToScreenRect(centerX - cardW * 0.5, centerY - cardH * 0.5, cardW, cardH, room.floor);
+    const desk = worldRectToScreenRect(centerX - deskW * 0.5, centerY + 10, deskW, deskH, room.floor);
+
+    ctx.fillStyle = department.color;
+    ctx.fillRect(card.x, card.y, card.w, card.h);
+    ctx.strokeStyle = cluster.border;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(card.x, card.y, card.w, card.h);
+    ctx.fillStyle = cluster.text;
+    ctx.textAlign = "center";
+    ctx.font = "700 13px 'Trebuchet MS'";
+    ctx.fillText(department.label, card.x + card.w * 0.5, card.y + 20);
+    ctx.font = "11px 'Trebuchet MS'";
+    const coverage = department.coverage.length > 34 ? `${department.coverage.slice(0, 34)}...` : department.coverage;
+    ctx.fillText(coverage, card.x + card.w * 0.5, card.y + 42);
+    ctx.fillStyle = cluster.accent;
+    ctx.fillRect(card.x + 12, card.y + card.h - 14, card.w - 24, 5);
+
+    drawRect(desk, "#c79a63", "#7b532d", 2);
+    ctx.fillStyle = "#efd4a8";
+    ctx.fillRect(desk.x + 6, desk.y + 5, desk.w - 12, desk.h - 10);
+  }
+
+  const exitPoint = project(microScene.specialty.exitPoint.x, microScene.specialty.exitPoint.y, 0, room.floor);
+  ctx.strokeStyle = "rgba(155, 237, 199, 0.92)";
+  ctx.fillStyle = "rgba(91, 187, 136, 0.22)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.roundRect(exitPoint.x - 36, exitPoint.y - 22, 72, 44, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#eafff2";
+  ctx.font = "700 12px 'Trebuchet MS'";
+  ctx.fillText("EXIT", exitPoint.x, exitPoint.y + 4);
+  ctx.restore();
 }
 
 function drawWall(segment) {
@@ -1560,6 +1902,9 @@ function drawLabels() {
     icu: "ICU",
     office: "Office",
     hall: "Hall",
+    specialty_cluster_a: "Clinic A",
+    specialty_cluster_b: "Clinic B",
+    specialty_cluster_c: "Clinic C",
   };
 
   ctx.fillStyle = palette.label;
@@ -1663,7 +2008,7 @@ function drawRegistrationHint() {
   const selfPatient = getCurrentSelfPatient();
   const visitState = selfPatient?.visit_state || "";
 
-  let label = "Press E to fill registration profile";
+  let label = "Walk in to open registration";
   if (backendState.submitting) {
     label = "Submitting registration...";
   } else if (visitState === "registered" || visitState === "waiting_consultation" || visitState === "in_consultation") {
@@ -1804,6 +2149,31 @@ function drawLabHint() {
   ctx.fillText(label, point.x, point.y + 5);
 }
 
+function drawSpecialtyGateHint() {
+  if (microScene.mode !== "campus") return;
+  const clusterKey = findSpecialtyClusterAtPlayer();
+  if (!clusterKey) return;
+  const cluster = specialtyClusters[clusterKey];
+  const pointRef = getCampusSpecialtyInteractPoint(clusterKey);
+  if (!cluster || !pointRef) return;
+  const point = project(pointRef.x, pointRef.y, 0, pointRef.floor);
+  const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
+  const boxWidth = 250;
+  const boxHeight = 28;
+  const boxLeft = point.x - boxWidth / 2;
+  const boxTop = point.y - boxHeight / 2;
+
+  ctx.fillStyle = "rgba(67, 45, 28, 0.94)";
+  ctx.fillRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.strokeStyle = `rgba(112, 234, 255, ${Math.min(0.95, pulse + 0.22)})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.fillStyle = "#fff5dd";
+  ctx.font = "600 13px 'Trebuchet MS'";
+  ctx.textAlign = "center";
+  ctx.fillText(cluster.campusPrompt || "Press E to enter specialty hall", point.x, point.y + 5);
+}
+
 function drawFixedNpcHint() {
   if (!fixedNpcRuntime || npcDialogueUi.open || fixedNpcRuntime?.isDialogueOpen?.()) return;
   const nearest = fixedNpcRuntime.getNearestInteractableNpc(player);
@@ -1862,7 +2232,7 @@ function drawAnnexGateHint() {
   ctx.fillStyle = "#effff5";
   ctx.font = "600 13px 'Trebuchet MS'";
   ctx.textAlign = "center";
-  ctx.fillText("Press E to enter Annex Yard", point.x, point.y + 5);
+  ctx.fillText("Walk in to enter Annex Yard", point.x, point.y + 5);
 }
 
 function getRegistrationRoomCenterPoint() {
@@ -1909,6 +2279,37 @@ function getObjectiveTarget() {
 
   if (microScene.mode === "annex_room") {
     return { label: "Press E at EXIT to Return", point: microScene.annex.exitPoint, room: getAnnexRoomCenterPoint() };
+  }
+
+  if (microScene.mode === "specialty_room") {
+    const cluster = getActiveSpecialtyCluster();
+    const station = getNearbySpecialtyStation(cluster);
+    if (station?.point && cluster?.room) {
+      return {
+        label: `Talk to ${station.label}`,
+        point: station.point,
+        room: {
+          floor: cluster.room.floor,
+          roomKind: microScene.specialty.activeKey,
+          x: cluster.room.x + cluster.room.w * 0.5,
+          y: cluster.room.y + cluster.room.h * 0.5,
+          w: cluster.room.w,
+          h: cluster.room.h,
+        },
+      };
+    }
+    return {
+      label: "Press E at EXIT to Return",
+      point: microScene.specialty.exitPoint,
+      room: {
+        floor: cluster?.room?.floor || 1,
+        roomKind: microScene.specialty.activeKey || "specialty_room",
+        x: (cluster?.room?.x || 0) + (cluster?.room?.w || 0) * 0.5,
+        y: (cluster?.room?.y || 0) + (cluster?.room?.h || 0) * 0.5,
+        w: cluster?.room?.w || 0,
+        h: cluster?.room?.h || 0,
+      },
+    };
   }
 
   if (!hasTriageRecord && !triageConversationState.sessionId) {
@@ -2201,10 +2602,13 @@ function drawFloorLayer(floor, activeDoor, dimmed) {
 
 function updateFloorHud() {
   if (!floorStateLabel) return;
+  const specialtyCluster = getActiveSpecialtyCluster();
   floorStateLabel.textContent = microScene.mode === "registration_room"
     ? "Current Zone: Registration Room"
     : microScene.mode === "annex_room"
       ? "Current Zone: Annex Yard"
+      : microScene.mode === "specialty_room" && specialtyCluster
+        ? `Current Zone: ${specialtyCluster.title}`
       : "Current Zone: Main Campus";
 }
 
@@ -2235,7 +2639,10 @@ function syncOverlayUi() {
   syncHudToggleButton(hudHelpToggle, overlayState.helpOpen, "expanded");
   syncHudToggleButton(hudTasksToggle, overlayState.tasksOpen);
   syncHudToggleButton(hudLabelsToggle, overlayState.labelsOpen);
+  syncHudToggleButton(hudQueueToggle, overlayState.queueOpen);
   syncHudToggleButton(hudDebugToggle, overlayState.debugOpen);
+  syncHudToggleButton(hudStateDebugToggle, overlayState.stateDebugVisible);
+  stateDebugPanel.setVisible?.(overlayState.stateDebugVisible);
   if (hudResumeBtn) {
     const hasLastSession = Boolean(localStorage.getItem(SESSION_STORAGE_KEYS.lastClientId));
     hudResumeBtn.disabled = !hasLastSession;
@@ -2269,8 +2676,18 @@ function bindHudControls() {
     syncOverlayUi();
   });
 
+  hudQueueToggle?.addEventListener("click", () => {
+    overlayState.queueOpen = !overlayState.queueOpen;
+    syncOverlayUi();
+  });
+
   hudDebugToggle?.addEventListener("click", () => {
     overlayState.debugOpen = !overlayState.debugOpen;
+    syncOverlayUi();
+  });
+
+  hudStateDebugToggle?.addEventListener("click", () => {
+    overlayState.stateDebugVisible = !overlayState.stateDebugVisible;
     syncOverlayUi();
   });
 
@@ -2337,6 +2754,25 @@ function update(delta, nowMs) {
 
   camera.x += (player.x - camera.x) * 0.12;
   camera.y += (player.y - camera.y) * 0.12;
+
+  if (microScene.mode === "campus" && sceneTransitionReady(nowMs)) {
+    const specialtyClusterKey = findSpecialtyClusterAtPlayer();
+    if (specialtyClusterKey) {
+      enterSpecialtyRoom(specialtyClusterKey);
+      return;
+    }
+    if (canInteractWithAnnexGate()) {
+      enterAnnexRoom();
+      return;
+    }
+    const selfPatient = getCurrentSelfPatient();
+    const visitState = getCurrentVisit()?.state || selfPatient?.visit_state || "";
+    if (canInteractWithRegistrationDesk() && visitState === "triaged") {
+      enterRegistrationRoom();
+      return;
+    }
+  }
+
   if (microScene.mode === "campus") {
     updateZoneTriggers(nowMs);
   }
@@ -2346,6 +2782,18 @@ function render() {
   if (microScene.mode === "annex_room") {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawAnnexRoomScene();
+    drawPlayer();
+    drawObjectiveHighlight();
+    drawTaskBoard();
+    drawRuntimeDebugPanel();
+    drawZoneStatusPanel();
+    runtimeDebug.lastRenderAt = performance.now();
+    return;
+  }
+
+  if (microScene.mode === "specialty_room") {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawSpecialtyRoomScene();
     drawPlayer();
     drawObjectiveHighlight();
     drawTaskBoard();
@@ -2377,6 +2825,7 @@ function render() {
   drawHudHint(activeDoor);
   drawRegistrationHint();
   drawAnnexGateHint();
+  drawSpecialtyGateHint();
   drawTriageHint();
   drawLabHint();
   drawDoctorEntryHint();
@@ -2419,9 +2868,9 @@ const testReportUi = {
 };
 
 const passiveNpcDefinitions = [
-  { id: "guest-a", name: "Ari", roleLabel: "Visitor", roomKind: "empty_room", roomIndex: 0, placement: { x: 0.32, y: 0.42 }, bodyColor: "#b889f0", accentColor: "#d9c2ff", headColor: "#f4d8ca" },
-  { id: "guest-b", name: "Milo", roleLabel: "Patient", roomKind: "empty_room", roomIndex: 1, placement: { x: 0.64, y: 0.48 }, bodyColor: "#76c59d", accentColor: "#bdeccf", headColor: "#f2cfbb" },
-  { id: "guest-c", name: "Tess", roleLabel: "Waiting", roomKind: "empty_room", roomIndex: 2, placement: { x: 0.42, y: 0.62 }, bodyColor: "#d7aa60", accentColor: "#f4d28d", headColor: "#f4d5bf" },
+  { id: "guest-a", name: "Ari", roleLabel: "Visitor", roomKind: "specialty_cluster_a", roomIndex: 0, placement: { x: 0.12, y: 0.78 }, bodyColor: "#b889f0", accentColor: "#d9c2ff", headColor: "#f4d8ca" },
+  { id: "guest-b", name: "Milo", roleLabel: "Patient", roomKind: "specialty_cluster_b", roomIndex: 0, placement: { x: 0.86, y: 0.78 }, bodyColor: "#76c59d", accentColor: "#bdeccf", headColor: "#f2cfbb" },
+  { id: "guest-c", name: "Tess", roleLabel: "Waiting", roomKind: "specialty_cluster_c", roomIndex: 0, placement: { x: 0.54, y: 0.82 }, bodyColor: "#d7aa60", accentColor: "#f4d28d", headColor: "#f4d5bf" },
 ];
 
 const npcDialogueUi = {
@@ -3081,6 +3530,21 @@ function submitEActionRequest() {
     return;
   }
 
+  if (microScene.mode === "specialty_room") {
+    if (canInteractWithSpecialtyExit()) {
+      leaveSpecialtyRoom();
+      return;
+    }
+    const cluster = getActiveSpecialtyCluster();
+    const station = getNearbySpecialtyStation(cluster);
+    if (station?.npcId && fixedNpcRuntime?.openDialogueById?.(station.npcId)) {
+      openNpcDialogueModal();
+    } else {
+      pushStatusHint("Move closer to a specialty desk or the EXIT door.");
+    }
+    return;
+  }
+
   if (fixedNpcRuntime?.tryInteract?.(player)) {
     openNpcDialogueModal();
     return;
@@ -3088,6 +3552,12 @@ function submitEActionRequest() {
 
   if (canInteractWithAnnexGate()) {
     enterAnnexRoom();
+    return;
+  }
+
+  const specialtyClusterKey = findSpecialtyClusterAtPlayer();
+  if (specialtyClusterKey) {
+    enterSpecialtyRoom(specialtyClusterKey);
     return;
   }
 
@@ -3489,7 +3959,9 @@ update = function modulePatchedUpdate(delta, nowMs) {
 const __moduleRender = render;
 render = function modulePatchedRender() {
   __moduleRender();
-  queueRuntime.draw(ctx, canvas);
+  if (overlayState.queueOpen) {
+    queueRuntime.draw(ctx, canvas);
+  }
 };
 
 let lastTime = performance.now();
@@ -3613,6 +4085,11 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.code === "KeyQ" && !event.repeat && microScene.mode === "registration_room") {
     leaveRegistrationRoom();
+    event.preventDefault();
+    return;
+  }
+  if (event.code === "KeyQ" && !event.repeat && microScene.mode === "specialty_room") {
+    leaveSpecialtyRoom();
     event.preventDefault();
   }
 });

@@ -263,10 +263,15 @@ export function createStateDebugPanel({ enabled, backendClient, onHint, ensureEn
     refresh();
   }
 
+  function setVisible(visible) {
+    container.style.display = visible ? "block" : "none";
+  }
+
   loadGraph();
 
   return {
     setEncounterId,
+    setVisible,
     refresh,
     dispose() {
       container.remove();

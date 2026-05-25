@@ -1,0 +1,77 @@
+[
+  {
+    "id": "surg-rule-laceration",
+    "title": "Laceration Or Wound Care",
+    "keywords": ["wound", "cut", "bleeding", "laceration", "伤口", "割伤", "出血"],
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Surgery",
+      "note": "Likely superficial wound or soft-tissue injury. Assess bleeding control, contamination, and need for closure or tetanus update.",
+      "tests_required": false,
+      "tests_suggested": [],
+      "action_plan": [
+        "Inspect wound depth and contamination",
+        "Control bleeding and clean the area",
+        "Consider dressing, closure, and tetanus review"
+      ],
+      "red_flags": ["uncontrolled bleeding", "deep wound", "loss of sensation or movement"]
+    },
+    "source": "Surgery outpatient prototype rules"
+  },
+  {
+    "id": "surg-rule-lump",
+    "title": "Mass Or Lump Evaluation",
+    "keywords": ["lump", "mass", "swelling", "肿块", "包块", "肿胀"],
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Surgery",
+      "note": "A focal lump or swelling should be characterized by growth rate, tenderness, skin change, and mobility.",
+      "tests_required": true,
+      "tests_suggested": ["Soft tissue ultrasound"],
+      "action_plan": [
+        "Check tenderness, mobility, and overlying skin change",
+        "Arrange imaging if lesion is persistent or enlarging"
+      ],
+      "red_flags": ["rapid enlargement", "fever with swelling", "fixed hard mass"]
+    },
+    "source": "Surgery outpatient prototype rules"
+  },
+  {
+    "id": "surg-rule-acute-focal-pain",
+    "title": "Acute Focal Pain After Injury",
+    "keywords": ["injury", "sprain", "fracture", "twist", "外伤", "扭伤", "骨折", "急性疼痛"],
+    "result": {
+      "diagnosis_level": 3,
+      "priority": "H",
+      "department": "Surgery",
+      "note": "Acute focal pain after trauma may need urgent surgical or orthopedic assessment.",
+      "tests_required": true,
+      "tests_suggested": ["X-ray imaging"],
+      "action_plan": [
+        "Restrict load-bearing or movement",
+        "Perform focused trauma exam",
+        "Escalate for urgent imaging"
+      ],
+      "red_flags": ["deformity", "inability to bear weight", "neurovascular compromise"]
+    },
+    "source": "Surgery outpatient prototype rules"
+  },
+  {
+    "id": "surg-rule-default",
+    "title": "General Surgery Fallback",
+    "keywords": [],
+    "result": {
+      "diagnosis_level": 1,
+      "priority": "L",
+      "department": "Surgery",
+      "note": "General surgery review is appropriate for localized structural complaints when emergency features are absent.",
+      "tests_required": false,
+      "tests_suggested": [],
+      "action_plan": ["Perform focused surgical history and exam"],
+      "red_flags": []
+    },
+    "source": "Surgery outpatient prototype rules"
+  }
+]
