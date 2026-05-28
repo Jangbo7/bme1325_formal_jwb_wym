@@ -731,10 +731,19 @@ class TriageService:
         )
         self.session_repo.update_state(session_id, dialogue_state.value)
 
-        assigned_department = resolve_department(
-            triage_result.get("department"),
-            triage_result.get("priority", "M"),
-        )
+        visit_for_assignment = self.visit_repo.get(visit_id) if visit_id else None
+        preassigned_id = (visit_for_assignment or {}).get("assigned_department_id")
+        preassigned_name = (visit_for_assignment or {}).get("assigned_department_name")
+        if preassigned_id and preassigned_name:
+            assigned_department = {
+                "id": preassigned_id,
+                "label": preassigned_name,
+            }
+        else:
+            assigned_department = resolve_department(
+                triage_result.get("department"),
+                triage_result.get("priority", "M"),
+            )
         visit_event = "followup_requested" if missing_fields else "triage_completed"
         visit_state_row = self.transition_visit_state(
             visit_id,

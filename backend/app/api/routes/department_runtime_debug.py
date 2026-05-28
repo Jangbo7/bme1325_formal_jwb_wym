@@ -83,6 +83,7 @@ def department_runtime_debug_page():
     .row { margin-top: 4px; font-size: 13px; }
     .dialogue { margin-top: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 10px; background: #f8fbf6; }
     .badge { display: inline-block; border: 1px solid #9db39e; border-radius: 999px; padding: 2px 8px; font-size: 12px; margin-left: 8px; }
+    details summary { cursor: pointer; color: #2f6d44; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -94,6 +95,7 @@ def department_runtime_debug_page():
         <label>Mode</label><br />
         <select id="mode">
           <option value="intelligent_agent">intelligent_agent</option>
+          <option value="department_mixed">department_mixed</option>
           <option value="legacy_template">legacy_template</option>
         </select>
       </div>
@@ -106,8 +108,8 @@ def department_runtime_debug_page():
         <input id="stepInterval" type="number" min="0.1" step="0.5" value="2" />
       </div>
       <div>
-        <label>Max Patients (<=3)</label><br />
-        <input id="maxPatients" type="number" min="1" max="3" step="1" value="3" />
+        <label>Max Active Patients</label><br />
+        <input id="maxPatients" type="number" min="1" step="1" value="20" />
       </div>
       <button id="startBtn">Start</button>
       <button id="stopBtn" class="secondary">Stop</button>
@@ -169,36 +171,48 @@ def department_runtime_debug_page():
         <article class="patient">
           <div><strong>${patient.npc_id || patient.patient_id}</strong><span class="badge">${patient.department_status || patient.department_flow_status}</span></div>
           <div class="row">patient: ${patient.patient_id}</div>
-          <div class="row">visit: ${patient.visit_id}</div>
           <div class="row">visit_state: ${patient.visit_state || "-"}</div>
-          <div class="row">patient_state: ${patient.patient_lifecycle_state || "-"}</div>
+          <div class="row">lifecycle: ${patient.patient_lifecycle_state || "-"}</div>
           <div class="row">queue_kind: ${patient.queue_kind || "-"}</div>
-          <div class="row">last_action: ${patient.last_action || "-"}</div>
-          <div class="row">finished: ${patient.finished}</div>
-          ${dialogue}
+          <div class="row">node: ${patient.current_node_id || "-"}</div>
+          <div class="row">last_action: ${patient.last_action || "-"} | finished: ${patient.finished}</div>
+          <details>
+            <summary>Details</summary>
+            <div class="row">visit: ${patient.visit_id}</div>
+            <div class="row">target_node: ${patient.target_node_id || "-"}</div>
+            <div class="row">counterparty: ${patient.current_counterparty || "-"}</div>
+            ${dialogue}
+          </details>
         </article>
       `;
     }
 
     function render(snapshot) {
+      const departmentsWithPatients = (snapshot.departments || []).filter((item) => (item.patients || []).length > 0).length;
+      const finishedPatients = (snapshot.departments || []).flatMap((item) => item.patients || []).filter((item) => item.finished).length;
       statsEl.innerHTML = `
         <div class="stat"><strong>running</strong><div>${snapshot.running}</div></div>
         <div class="stat"><strong>mode</strong><div>${snapshot.mode}</div></div>
         <div class="stat"><strong>active_count</strong><div>${snapshot.active_count}</div></div>
         <div class="stat"><strong>spawned</strong><div>${snapshot.total_spawned}</div></div>
+        <div class="stat"><strong>dept with patients</strong><div>${departmentsWithPatients}</div></div>
+        <div class="stat"><strong>finished patients</strong><div>${finishedPatients}</div></div>
+        <div class="stat"><strong>dispatch</strong><div>${snapshot.dispatch_count}</div></div>
+        <div class="stat"><strong>blocked</strong><div>${snapshot.blocked_count}</div></div>
         <div class="stat"><strong>last_spawn</strong><div>${snapshot.last_spawn_at || "-"}</div></div>
         <div class="stat"><strong>last_tick</strong><div>${snapshot.last_tick_at || "-"}</div></div>
       `;
 
       departmentsEl.innerHTML = snapshot.departments.map((department) => `
         <section class="department">
-          <div><strong>${department.department_name}</strong></div>
+          <details>
+          <summary><strong>${department.department_name}</strong> (${department.patients.length})</summary>
           <div class="summary">
             <div>active: ${department.summary.active_count}</div>
             <div>pending reg: ${department.summary.pending_registration_count}</div>
-            <div>waiting: ${department.summary.waiting_count}</div>
-            <div>called: ${department.summary.called_count}</div>
-            <div>in consult: ${department.summary.in_consultation_count}</div>
+            <div>waiting r1/r2: ${department.summary.waiting_round1_count}/${department.summary.waiting_round2_count}</div>
+            <div>called r1/r2: ${department.summary.called_round1_count}/${department.summary.called_round2_count}</div>
+            <div>consult r1/r2: ${department.summary.in_consultation_round1_count}/${department.summary.in_consultation_round2_count}</div>
             <div>in test: ${department.summary.in_test_count}</div>
             <div>finished: ${department.summary.finished_count}</div>
             <div>updated: ${department.summary.updated_at}</div>
@@ -207,6 +221,7 @@ def department_runtime_debug_page():
           <div class="patients">
             ${department.patients.length ? department.patients.map(renderPatient).join("") : "<div class='muted'>No patients.</div>"}
           </div>
+          </details>
         </section>
       `).join("");
 
@@ -231,11 +246,12 @@ def department_runtime_debug_page():
 
     document.getElementById("startBtn").addEventListener("click", async () => {
       try {
+        const maxRaw = document.getElementById("maxPatients").value.trim();
         const snapshot = await api("/api/v1/department-runtime-debug/start", "POST", {
           mode: document.getElementById("mode").value,
           spawn_interval_seconds: Number(document.getElementById("spawnInterval").value),
           step_interval_seconds: Number(document.getElementById("stepInterval").value),
-          max_active_patients: Number(document.getElementById("maxPatients").value),
+          max_active_patients: maxRaw ? Number(maxRaw) : null,
         });
         statusEl.textContent = "Started.";
         render(snapshot);
@@ -276,8 +292,8 @@ def department_runtime_debug_page():
 
 @router.post("/api/v1/department-runtime-debug/start")
 def start_department_runtime_debug(body: MultiPatientDebugStartRequest, request: Request):
-    if body.max_active_patients > 3:
-        raise HTTPException(status_code=422, detail="max_active_patients must be <= 3")
+    if body.max_active_patients is not None and body.max_active_patients < 1:
+        raise HTTPException(status_code=422, detail="max_active_patients must be >= 1")
     try:
         _multi_controller(request).start(
             mode=body.mode,

@@ -7,14 +7,14 @@ from pydantic import BaseModel, Field
 from app.schemas.npc_debug import CounterpartyType, NpcDebugCurrentDialogue
 
 
-MultiPatientMode = Literal["legacy_template", "intelligent_agent"]
+MultiPatientMode = Literal["legacy_template", "intelligent_agent", "department_mixed"]
 
 
 class MultiPatientDebugStartRequest(BaseModel):
     mode: MultiPatientMode = "intelligent_agent"
     spawn_interval_seconds: float = 5.0
     step_interval_seconds: float = 2.0
-    max_active_patients: int = 10
+    max_active_patients: int | None = 20
 
 
 class MultiPatientDebugPatientSnapshot(BaseModel):
@@ -25,6 +25,8 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     encounter_id: str | None = None
     visit_state: str | None = None
     patient_lifecycle_state: str | None = None
+    assigned_department_id: str | None = None
+    assigned_department_name: str | None = None
     phase: str
     status: str
     current_counterparty: CounterpartyType
@@ -34,6 +36,9 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     step_count: int = 0
     finished: bool = False
     case_summary: dict | None = None
+    current_node_id: str | None = None
+    target_node_id: str | None = None
+    next_step_at: str | None = None
 
 
 class MultiPatientDebugSnapshot(BaseModel):
@@ -47,4 +52,12 @@ class MultiPatientDebugSnapshot(BaseModel):
     last_spawn_at: str | None = None
     last_tick_at: str | None = None
     last_error: str | None = None
+    supervisor_mode: str = "engine_driven"
+    fairness_policy: str = "oldest_due_first"
+    node_capacities: dict[str, int] = Field(default_factory=dict)
+    node_step_delays: dict[str, float] = Field(default_factory=dict)
+    dispatch_count: int = 0
+    blocked_count: int = 0
+    department_coverage: dict[str, int] = Field(default_factory=dict)
+    active_by_department: dict[str, int] = Field(default_factory=dict)
     patients: list[MultiPatientDebugPatientSnapshot] = Field(default_factory=list)

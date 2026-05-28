@@ -91,6 +91,7 @@ from app.services import (
     PatientAgentService,
     SceneSnapshotService,
 )
+from app.services.hospital_supervisor import HospitalSupervisor
 from app.services.patient_flow_engine import FlowDecisionEngine, FlowExecutor
 
 
@@ -287,7 +288,7 @@ def create_container():
     )
     flow_decision_engine = FlowDecisionEngine()
     flow_executor = FlowExecutor()
-    multi_patient_debug_controller = MultiPatientDebugController(
+    hospital_supervisor = HospitalSupervisor(
         {
             "patient_repo": patient_repo,
             "session_repo": session_repo,
@@ -306,6 +307,7 @@ def create_container():
             "flow_executor": flow_executor,
         }
     )
+    multi_patient_debug_controller = hospital_supervisor
 
     patient_projection = PatientProjectionSubscriber(patient_repo, patient_state_machine)
     department_runtime_projector = DepartmentRuntimeProjector(department_runtime_service)
@@ -393,6 +395,7 @@ def create_container():
         "triage_agent_debug_controller": triage_agent_debug_controller,
         "internal_medicine_agent_debug_controller": internal_medicine_agent_debug_controller,
         "patient_agent_chat_debug_controller": patient_agent_chat_debug_controller,
+        "hospital_supervisor": hospital_supervisor,
         "multi_patient_debug_controller": multi_patient_debug_controller,
         "flow_decision_engine": flow_decision_engine,
         "flow_executor": flow_executor,

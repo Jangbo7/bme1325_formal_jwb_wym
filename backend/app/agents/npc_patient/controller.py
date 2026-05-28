@@ -16,6 +16,7 @@ class NpcPatientDebugController:
             raise RuntimeError("npc debug session already active")
         profile = get_profile(profile_id)
         self._active_state = self.runner.spawn(profile)
+        self._active_state.profile_id = profile_id
         return self._active_state.to_snapshot()
 
     def step(self) -> NpcDebugSnapshot:

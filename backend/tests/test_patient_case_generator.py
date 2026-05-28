@@ -1,3 +1,4 @@
+from app.api.contract import ContractError
 from app.agents.patient_agent.case_generator import PatientCaseGenerator
 from app.agents.patient_agent.rag_context import PatientAgentRagContext
 
@@ -54,7 +55,8 @@ def test_patient_case_generator_retries_and_fails_on_invalid_payload():
 
     try:
         generator.generate()
-        assert False, "expected RuntimeError"
-    except RuntimeError as exc:
-        assert "patient case generation failed" in str(exc)
+        assert False, "expected ContractError"
+    except ContractError as exc:
+        assert exc.code == "LLM_RESPONSE_INVALID"
+        assert exc.details["stage"] == "generate_case"
     assert attempts["count"] == 3

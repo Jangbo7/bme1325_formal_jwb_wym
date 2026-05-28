@@ -3,6 +3,7 @@ import uuid
 
 from fastapi.testclient import TestClient
 
+from app.departments.registry import list_departments
 from app.agents.patient_agent.schemas import (
     PatientAgentTurnResult,
     PatientCaseCard,
@@ -18,6 +19,22 @@ def create_test_client(tmp_path, monkeypatch):
     monkeypatch.setenv("SIMULATOR_ENABLED", "false")
     monkeypatch.setenv("REDIS_MIRROR_ENABLED", "false")
     monkeypatch.setenv("LLM_API_KEY", "test-key")
+    app = create_app()
+    return TestClient(app)
+
+
+def create_test_client_without_llm(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'multi_patient_debug_no_llm.db'}")
+    monkeypatch.setenv("MOCK_API_KEY", "mock-key-001")
+    monkeypatch.setenv("SIMULATOR_ENABLED", "false")
+    monkeypatch.setenv("REDIS_MIRROR_ENABLED", "false")
+    monkeypatch.setenv("LLM_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("DEEPSEEK_V3_API_KEY", "")
+    monkeypatch.setenv("DEEPSEEK_R1_API_KEY", "")
+    monkeypatch.setenv("GPT52_API_KEY", "")
+    monkeypatch.setenv("QWEN_API_KEY", "")
+    monkeypatch.setenv("QWEN_VL_API_KEY", "")
     app = create_app()
     return TestClient(app)
 
@@ -94,9 +111,10 @@ def install_fake_patient_agent(client: TestClient):
     service.agent.reply = fake_reply
 
 
-def test_multi_patient_debug_legacy_mode_caps_at_ten(tmp_path, monkeypatch):
+def test_multi_patient_debug_legacy_mode_supports_configured_limit_and_department_coverage(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     controller = client.app.state.container["multi_patient_debug_controller"]
+    department_ids = [item["id"] for item in list_departments(include_legacy=False)]
 
     start_resp = post_json(
         client,
@@ -105,22 +123,28 @@ def test_multi_patient_debug_legacy_mode_caps_at_ten(tmp_path, monkeypatch):
             "mode": "legacy_template",
             "spawn_interval_seconds": 0.0,
             "step_interval_seconds": 0.1,
-            "max_active_patients": 10,
+            "max_active_patients": 12,
         },
     )
     assert start_resp.status_code == 200
 
-    for _ in range(30):
+    for _ in range(60):
         controller.tick_once()
         time.sleep(0.01)
 
     snapshot_resp = client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers())
     assert snapshot_resp.status_code == 200
     snapshot = get_data(snapshot_resp)
-    assert snapshot["total_spawned"] == 10
-    assert len(snapshot["patients"]) == 10
+    assert snapshot["total_spawned"] == 12
+    assert len(snapshot["patients"]) == 12
     assert all(item["mode"] == "legacy_template" for item in snapshot["patients"])
+    assert all(item["assigned_department_id"] for item in snapshot["patients"])
+    assert all(item["assigned_department_name"] for item in snapshot["patients"])
     assert any((item["step_count"] or 0) > 0 for item in snapshot["patients"])
+    assert snapshot["supervisor_mode"] == "engine_driven"
+    assert snapshot["fairness_policy"] == "oldest_due_first"
+    for department_id in department_ids:
+        assert snapshot["department_coverage"].get(department_id, 0) >= 1
 
     stop_resp = post_json(client, "/api/v1/multi-patient-debug/stop")
     assert stop_resp.status_code == 200
@@ -152,6 +176,8 @@ def test_multi_patient_debug_intelligent_mode_works_with_fake_agent(tmp_path, mo
     assert len(snapshot["patients"]) == 2
     assert all(item["mode"] == "intelligent_agent" for item in snapshot["patients"])
     assert all(item["case_summary"] is not None for item in snapshot["patients"])
+    assert all(item["assigned_department_id"] is not None for item in snapshot["patients"])
+    assert all("next_step_at" in item for item in snapshot["patients"])
 
     stop_resp = post_json(client, "/api/v1/multi-patient-debug/stop")
     assert stop_resp.status_code == 200
@@ -170,3 +196,54 @@ def test_multi_patient_debug_page_is_available(tmp_path, monkeypatch):
     response = client.get("/multi-patient-debug")
     assert response.status_code == 200
     assert "Multi Patient Debug" in response.text
+
+
+def test_multi_patient_debug_department_mixed_mode_uses_multiple_agent_types(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    install_fake_patient_agent(client)
+    controller = client.app.state.container["multi_patient_debug_controller"]
+
+    start_resp = post_json(
+        client,
+        "/api/v1/multi-patient-debug/start",
+        {
+            "mode": "department_mixed",
+            "spawn_interval_seconds": 0.0,
+            "step_interval_seconds": 0.1,
+            "max_active_patients": 5,
+        },
+    )
+    assert start_resp.status_code == 200
+
+    for _ in range(30):
+        controller.tick_once()
+        time.sleep(0.01)
+
+    snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
+    modes = {item["mode"] for item in snapshot["patients"]}
+    assert "legacy_template" in modes
+    assert "intelligent_agent" in modes
+
+
+def test_multi_patient_debug_intelligent_mode_exposes_structured_llm_error_in_snapshot(tmp_path, monkeypatch):
+    client = create_test_client_without_llm(tmp_path, monkeypatch)
+    controller = client.app.state.container["multi_patient_debug_controller"]
+
+    start_resp = post_json(
+        client,
+        "/api/v1/multi-patient-debug/start",
+        {
+            "mode": "intelligent_agent",
+            "spawn_interval_seconds": 0.0,
+            "step_interval_seconds": 0.1,
+            "max_active_patients": 1,
+        },
+    )
+    assert start_resp.status_code == 200
+
+    controller.tick_once()
+
+    snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
+    assert snapshot["total_spawned"] == 0
+    assert "LLM_UNAVAILABLE" in (snapshot["last_error"] or "")
+    assert "\"stage\": \"generate_case\"" in (snapshot["last_error"] or "")

@@ -2,6 +2,8 @@ import json
 import re
 from pathlib import Path
 
+from app.agents.clinical_policy import ClinicalPolicyRuntimeContext
+
 
 INTERNAL_MEDICINE_RULE_STORE_PATH = Path(__file__).resolve().parent.parent.parent.parent / "rag" / "internal_medicine_rules.json"
 
@@ -110,16 +112,33 @@ def derive_risk_flags(symptoms: list[str], vitals: dict) -> list[str]:
     return sorted(set(flags))
 
 
-def build_missing_fields(shared_memory: dict) -> list[str]:
+def _policy_required_fields(policy_runtime_context: ClinicalPolicyRuntimeContext | None) -> list[str]:
+    if policy_runtime_context is None or policy_runtime_context.primary_card is None:
+        return []
+    required_fields = []
+    for target in policy_runtime_context.primary_card.collection_targets:
+        if not bool(target.get("required", False)):
+            continue
+        if target.get("runtime_supported", True) is False:
+            continue
+        field_name = str(target.get("field") or "").strip()
+        if field_name:
+            required_fields.append(field_name)
+    return required_fields
+
+
+def build_missing_fields(shared_memory: dict, *, policy_runtime_context: ClinicalPolicyRuntimeContext | None = None) -> list[str]:
     clinical = shared_memory.get("clinical_memory", {})
     profile = shared_memory.get("profile", {})
     missing = []
-    if not clinical.get("chief_complaint"):
-        missing.append("chief_complaint")
-    if not clinical.get("onset_time"):
-        missing.append("onset_time")
-    if profile.get("allergy_status") != "known":
-        missing.append("allergies")
+    required_fields = _policy_required_fields(policy_runtime_context) or ["chief_complaint", "onset_time", "allergies"]
+    for field_name in required_fields:
+        if field_name == "chief_complaint" and not clinical.get("chief_complaint"):
+            missing.append(field_name)
+        elif field_name == "onset_time" and not clinical.get("onset_time"):
+            missing.append(field_name)
+        elif field_name == "allergies" and profile.get("allergy_status") != "known":
+            missing.append(field_name)
     return missing
 
 
@@ -128,8 +147,9 @@ def prioritize_missing_fields(
     *,
     asked_fields_history: list[str] | None = None,
     last_question_focus: str | None = None,
+    policy_runtime_context: ClinicalPolicyRuntimeContext | None = None,
 ) -> list[str]:
-    missing = build_missing_fields(shared_memory)
+    missing = build_missing_fields(shared_memory, policy_runtime_context=policy_runtime_context)
     if not missing:
         return []
 
@@ -148,7 +168,7 @@ def prioritize_missing_fields(
     elif profile.get("allergy_status") == "uncertain":
         preferred = ["allergies", "onset_time", "chief_complaint"]
     else:
-        preferred = ["chief_complaint", "onset_time", "allergies"]
+        preferred = _policy_required_fields(policy_runtime_context) or ["chief_complaint", "onset_time", "allergies"]
 
     preferred_order = {field: idx for idx, field in enumerate(preferred)}
 

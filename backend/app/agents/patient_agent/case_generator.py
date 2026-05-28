@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.api.contract import ContractError
 from app.agents.patient_agent.prompt_builder import build_generate_case_messages
 from app.agents.patient_agent.rag_context import PatientAgentRagContext
 from app.agents.patient_agent.schemas import PatientCaseCard
@@ -17,7 +18,10 @@ class PatientCaseGenerator:
         )
         last_error = "unknown"
         for _ in range(retries + 1):
-            data = self.request_json(messages)
+            try:
+                data = self.request_json(messages)
+            except ContractError:
+                raise
             if not isinstance(data, dict):
                 last_error = "case generator returned non-object payload"
                 continue
@@ -25,4 +29,14 @@ class PatientCaseGenerator:
                 return PatientCaseCard.model_validate(data)
             except Exception as exc:
                 last_error = str(exc)
-        raise RuntimeError(f"patient case generation failed: {last_error}")
+        raise ContractError(
+            code="LLM_RESPONSE_INVALID",
+            message="patient case generation returned invalid structured JSON",
+            details={
+                "agent": "patient_agent",
+                "stage": "generate_case",
+                "last_error": last_error,
+                "retries": retries,
+            },
+            status_code=502,
+        )

@@ -101,8 +101,16 @@ class VisitRepository:
             "id": existing["id"],
             "patient_id": kwargs.get("patient_id", existing["patient_id"]),
             "state": kwargs.get("state", existing["state"]),
-            "assigned_department_id": kwargs.get("assigned_department_id", existing.get("assigned_department_id")),
-            "assigned_department_name": kwargs.get("assigned_department_name", existing.get("assigned_department_name")),
+            "assigned_department_id": (
+                kwargs.get("assigned_department_id")
+                if kwargs.get("assigned_department_id") is not None
+                else existing.get("assigned_department_id")
+            ),
+            "assigned_department_name": (
+                kwargs.get("assigned_department_name")
+                if kwargs.get("assigned_department_name") is not None
+                else existing.get("assigned_department_name")
+            ),
             "current_node": kwargs.get("current_node", existing["current_node"]),
             "current_department": kwargs.get("current_department", existing["current_department"]),
             "active_agent_type": kwargs.get("active_agent_type", existing["active_agent_type"]),

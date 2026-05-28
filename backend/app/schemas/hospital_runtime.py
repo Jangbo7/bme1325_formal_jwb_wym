@@ -49,6 +49,12 @@ class HospitalRuntimeSnapshot(BaseModel):
     last_spawn_at: str | None = None
     last_tick_at: str | None = None
     last_error: str | None = None
+    supervisor_mode: str = "engine_driven"
+    fairness_policy: str = "oldest_due_first"
+    node_capacities: dict[str, int] = Field(default_factory=dict)
+    node_step_delays: dict[str, float] = Field(default_factory=dict)
+    dispatch_count: int = 0
+    blocked_count: int = 0
     nodes: list[HospitalNodeRuntimeView] = Field(default_factory=list)
     departments: list[DepartmentRuntimeDepartmentView] = Field(default_factory=list)
     unassigned_patients: list[DepartmentRuntimePatientView] = Field(default_factory=list)

@@ -48,10 +48,10 @@ def hospital_runtime_debug_page():
     <h1>Hospital Runtime Debug</h1>
     <div class="muted">Engine-driven multi patient simulation with node + department runtime projection.</div>
     <div class="panel toolbar">
-      <div><div class="small">Mode</div><select id="mode"><option value="intelligent_agent">intelligent_agent</option><option value="legacy_template">legacy_template</option></select></div>
+      <div><div class="small">Mode</div><select id="mode"><option value="intelligent_agent">intelligent_agent</option><option value="department_mixed">department_mixed</option><option value="legacy_template">legacy_template</option></select></div>
       <div><div class="small">Spawn(s)</div><input id="spawn" type="number" min="0" step="0.5" value="4"></div>
       <div><div class="small">Step(s)</div><input id="step" type="number" min="0.1" step="0.5" value="2"></div>
-      <div><div class="small">Max</div><input id="max" type="number" min="1" max="3" step="1" value="3"></div>
+      <div><div class="small">Max</div><input id="max" type="number" min="1" step="1" value="20"></div>
       <button id="start">Start</button><button id="stop">Stop</button><button id="reset">Reset</button><button id="refresh">Refresh</button>
     </div>
     <div class="panel"><div id="stats"></div></div>
@@ -67,7 +67,7 @@ def hospital_runtime_debug_page():
       const p=await r.json(); if(!r.ok||p.ok===false){throw new Error(p.error?.message||p.error?.details||r.statusText);} return p.data;
     }
     function render(s){
-      document.getElementById("stats").textContent = `running=${s.running} mode=${s.mode} active=${s.active_count} spawned=${s.total_spawned} last_tick=${s.last_tick_at||"-"}`;
+      document.getElementById("stats").textContent = `running=${s.running} mode=${s.mode} active=${s.active_count} spawned=${s.total_spawned} dispatch=${s.dispatch_count} blocked=${s.blocked_count} fairness=${s.fairness_policy} last_tick=${s.last_tick_at||"-"}`;
       document.getElementById("nodes").innerHTML = (s.nodes||[]).map(n=>`
         <div class="card">
           <div><strong>${n.node.name}</strong> <span class="small">(${n.node.node_id})</span></div>
@@ -96,12 +96,14 @@ def hospital_runtime_debug_page():
 
 @router.post("/api/v1/hospital-runtime-debug/start")
 def start_hospital_runtime_debug(body: MultiPatientDebugStartRequest, request: Request):
+    if body.max_active_patients is not None and body.max_active_patients < 1:
+        raise HTTPException(status_code=422, detail="max_active_patients must be >= 1")
     try:
         snapshot = _controller(request).start(
             mode=body.mode,
             spawn_interval_seconds=body.spawn_interval_seconds,
             step_interval_seconds=body.step_interval_seconds,
-            max_active_patients=min(3, body.max_active_patients),
+            max_active_patients=body.max_active_patients,
         )
     except RuntimeError as exc:
         detail = str(exc)

@@ -1,6 +1,7 @@
 """Internal Medicine Doctor Agent package."""
 
 from app.agents.internal_medicine.graph import InternalMedicineGraph
+from app.agents.internal_medicine.config import build_internal_medicine_runtime_config
 from app.agents.internal_medicine.service import InternalMedicineService
 from app.agents.internal_medicine.state_machine import InternalMedicineDialogueStateMachine
 
@@ -18,9 +19,11 @@ def create_internal_medicine_service(
     encounter_orchestration_service=None,
     medical_record_repo=None,
 ):
+    config = build_internal_medicine_runtime_config()
     dialogue_state_machine = InternalMedicineDialogueStateMachine()
-    graph = InternalMedicineGraph(service=None, dialogue_state_machine=dialogue_state_machine)
+    graph = InternalMedicineGraph(service=None, dialogue_state_machine=dialogue_state_machine, config=config)
     service = InternalMedicineService(
+        config=config,
         llm_settings=llm_settings,
         patient_repo=patient_repo,
         session_repo=session_repo,

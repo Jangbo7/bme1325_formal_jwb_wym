@@ -76,14 +76,14 @@ def test_department_runtime_debug_start_stop_reset_routes(tmp_path, monkeypatch)
             "mode": "legacy_template",
             "spawn_interval_seconds": 0.0,
             "step_interval_seconds": 0.1,
-            "max_active_patients": 2,
+            "max_active_patients": 6,
         },
     )
     assert start_resp.status_code == 200
     start_data = get_data(start_resp)
     assert start_data["running"] is True
 
-    for _ in range(12):
+    for _ in range(40):
         controller.tick_once()
         time.sleep(0.01)
 
@@ -91,8 +91,8 @@ def test_department_runtime_debug_start_stop_reset_routes(tmp_path, monkeypatch)
     assert snapshot_resp.status_code == 200
     snapshot = get_data(snapshot_resp)
     assert snapshot["running"] is True
-    assert snapshot["total_spawned"] == 2
-    assert snapshot["active_count"] <= 2
+    assert snapshot["total_spawned"] == 6
+    assert snapshot["active_count"] <= 6
 
     stop_resp = post_json(client, "/api/v1/department-runtime-debug/stop")
     assert stop_resp.status_code == 200

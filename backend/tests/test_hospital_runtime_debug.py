@@ -42,6 +42,7 @@ def test_hospital_runtime_debug_page_is_available(tmp_path, monkeypatch):
     response = client.get("/hospital-runtime-debug")
     assert response.status_code == 200
     assert "Hospital Runtime Debug" in response.text
+    assert client.app.state.container["hospital_supervisor"] is client.app.state.container["multi_patient_debug_controller"]
 
 
 def test_hospital_runtime_snapshot_has_nodes(tmp_path, monkeypatch):
@@ -55,14 +56,18 @@ def test_hospital_runtime_snapshot_has_nodes(tmp_path, monkeypatch):
             "mode": "legacy_template",
             "spawn_interval_seconds": 0.0,
             "step_interval_seconds": 0.1,
-            "max_active_patients": 3,
+            "max_active_patients": 8,
         },
     )
     assert start_resp.status_code == 200
-    for _ in range(16):
+    for _ in range(40):
         controller.tick_once()
         time.sleep(0.01)
     snapshot = get_data(client.get("/api/v1/hospital-runtime-debug/snapshot", headers=api_headers()))
     node_ids = {item["node"]["node_id"] for item in snapshot["nodes"]}
     assert {"testing", "payment", "pharmacy"}.issubset(node_ids)
     assert snapshot["departments"]
+    assert snapshot["total_spawned"] == 8
+    assert snapshot["supervisor_mode"] == "engine_driven"
+    assert snapshot["fairness_policy"] == "oldest_due_first"
+    assert snapshot["node_capacities"]["testing"] == 2

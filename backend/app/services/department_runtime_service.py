@@ -225,6 +225,8 @@ class DepartmentRuntimeService:
                 merged["npc_id"] = overlay.get("npc_id")
                 merged["last_action"] = overlay.get("last_action")
                 merged["finished"] = overlay.get("finished", False)
+                merged["current_node_id"] = overlay.get("current_node_id") or merged.get("current_node_id")
+                merged["target_node_id"] = overlay.get("target_node_id") or merged.get("target_node_id")
                 merged["current_counterparty"] = overlay.get("current_counterparty") or merged.get("current_counterparty")
                 merged["current_dialogue"] = overlay.get("current_dialogue")
                 if overlay.get("current_dialogue"):
@@ -293,6 +295,10 @@ class DepartmentRuntimeService:
                     patient_lifecycle_state=overlay.get("patient_lifecycle_state"),
                     active_agent_type=None,
                     current_node=None,
+                    current_node_id=overlay.get("current_node_id"),
+                    target_node_id=overlay.get("target_node_id"),
+                    last_transition_action=overlay.get("last_action"),
+                    transition_version=now_iso(),
                     current_counterparty=overlay.get("current_counterparty"),
                     current_dialogue=overlay.get("current_dialogue"),
                     current_dialogue_preview=(overlay.get("current_dialogue") or {}).get("message"),
@@ -317,6 +323,12 @@ class DepartmentRuntimeService:
             last_spawn_at=multi_snapshot.last_spawn_at,
             last_tick_at=multi_snapshot.last_tick_at,
             last_error=multi_snapshot.last_error,
+            supervisor_mode=multi_snapshot.supervisor_mode,
+            fairness_policy=multi_snapshot.fairness_policy,
+            node_capacities=multi_snapshot.node_capacities,
+            node_step_delays=multi_snapshot.node_step_delays,
+            dispatch_count=multi_snapshot.dispatch_count,
+            blocked_count=multi_snapshot.blocked_count,
             formal_departments=formal_departments,
             departments=departments,
             unassigned_patients=sorted(unassigned, key=lambda item: item.updated_at, reverse=True),
@@ -401,6 +413,12 @@ class DepartmentRuntimeService:
             last_spawn_at=multi_snapshot.last_spawn_at,
             last_tick_at=multi_snapshot.last_tick_at,
             last_error=multi_snapshot.last_error,
+            supervisor_mode=multi_snapshot.supervisor_mode,
+            fairness_policy=multi_snapshot.fairness_policy,
+            node_capacities=multi_snapshot.node_capacities,
+            node_step_delays=multi_snapshot.node_step_delays,
+            dispatch_count=multi_snapshot.dispatch_count,
+            blocked_count=multi_snapshot.blocked_count,
             nodes=node_views,
             departments=department_snapshot.departments,
             unassigned_patients=department_snapshot.unassigned_patients,

@@ -21,9 +21,13 @@ def create_test_client_without_llm(tmp_path, monkeypatch):
     monkeypatch.setenv("MOCK_API_KEY", "mock-key-001")
     monkeypatch.setenv("SIMULATOR_ENABLED", "false")
     monkeypatch.setenv("REDIS_MIRROR_ENABLED", "false")
-    monkeypatch.delenv("LLM_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("DEEPSEEK_V3_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("DEEPSEEK_V3_API_KEY", "")
+    monkeypatch.setenv("DEEPSEEK_R1_API_KEY", "")
+    monkeypatch.setenv("GPT52_API_KEY", "")
+    monkeypatch.setenv("QWEN_API_KEY", "")
+    monkeypatch.setenv("QWEN_VL_API_KEY", "")
     app = create_app()
     return TestClient(app)
 
@@ -145,6 +149,12 @@ def test_patient_agent_debug_spawn_fails_without_llm(tmp_path, monkeypatch):
 
     response = post_json(client, "/api/v1/patient-agent-debug/spawn", {})
     assert response.status_code == 503
+    body = response.json()
+    assert body["ok"] is False
+    assert body["error"]["code"] == "LLM_UNAVAILABLE"
+    assert body["error"]["details"]["agent"] == "patient_agent"
+    assert body["error"]["details"]["stage"] == "generate_case"
+    assert "api_key" in body["error"]["details"]["missing"]
 
 
 def test_patient_agent_debug_page_is_available(tmp_path, monkeypatch):

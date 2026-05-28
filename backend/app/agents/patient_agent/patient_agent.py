@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+from socket import timeout as socket_timeout
 from urllib import request as urlrequest
+from urllib.error import HTTPError, URLError
 
+from app.api.contract import ContractError
 from app.agents.patient_agent.case_generator import PatientCaseGenerator
 from app.agents.patient_agent.patient_policy import PatientPolicy
 from app.agents.patient_agent.prompt_builder import build_reply_messages
@@ -22,14 +25,12 @@ class ControlledPatientAgent:
         )
 
     def generate_case(self, *, seed: str | None = None) -> PatientCaseCard:
-        if not self.llm_settings.get("api_key"):
-            raise RuntimeError("patient agent llm unavailable")
+        self._require_llm_config(stage="generate_case")
         return self.case_generator.generate(seed=seed)
 
     def reply(self, *, case_card: PatientCaseCard, context: PatientReplyContext) -> PatientAgentTurnResult:
         decision = self.policy.decide(case_card, context)
-        if not self.llm_settings.get("api_key"):
-            raise RuntimeError("patient agent llm unavailable")
+        self._require_llm_config(stage=context.phase or "reply")
         payload = self.request_json(
             build_reply_messages(
                 case_card=case_card,
@@ -75,7 +76,7 @@ class ControlledPatientAgent:
         endpoint = self.llm_settings.get("endpoint")
         api_key = self.llm_settings.get("api_key")
         if not endpoint or not api_key:
-            raise RuntimeError("patient agent llm unavailable")
+            self._require_llm_config(stage="request_json")
         req = urlrequest.Request(
             endpoint,
             data=json.dumps(
@@ -96,8 +97,58 @@ class ControlledPatientAgent:
             },
             method="POST",
         )
-        with urlrequest.urlopen(req, timeout=18) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        try:
+            with urlrequest.urlopen(req, timeout=18) as response:
+                raw_body = response.read().decode("utf-8")
+                data = json.loads(raw_body)
+        except HTTPError as exc:
+            response_excerpt = ""
+            try:
+                response_excerpt = exc.read().decode("utf-8")[:400]
+            except Exception:
+                response_excerpt = ""
+            raise ContractError(
+                code="LLM_REQUEST_FAILED",
+                message=f"patient agent LLM request failed with upstream HTTP {exc.code}",
+                details={
+                    **self._llm_context(stage="request_json"),
+                    "http_status": exc.code,
+                    "reason": str(exc.reason),
+                    "response_excerpt": response_excerpt or None,
+                },
+                status_code=502,
+            ) from exc
+        except (TimeoutError, socket_timeout) as exc:
+            raise ContractError(
+                code="LLM_REQUEST_FAILED",
+                message="patient agent LLM request timed out",
+                details={
+                    **self._llm_context(stage="request_json"),
+                    "reason": str(exc) or "timeout",
+                    "timeout_seconds": 18,
+                },
+                status_code=504,
+            ) from exc
+        except URLError as exc:
+            raise ContractError(
+                code="LLM_REQUEST_FAILED",
+                message="patient agent LLM request failed to connect",
+                details={
+                    **self._llm_context(stage="request_json"),
+                    "reason": str(getattr(exc, "reason", exc)),
+                },
+                status_code=502,
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise ContractError(
+                code="LLM_RESPONSE_INVALID",
+                message="patient agent LLM returned non-JSON HTTP payload",
+                details={
+                    **self._llm_context(stage="request_json"),
+                    "reason": str(exc),
+                },
+                status_code=502,
+            ) from exc
         text = self.extract_text_from_response(data)
         if not text:
             return None
@@ -165,3 +216,30 @@ class ControlledPatientAgent:
             cleaned = cleaned.replace(term.upper(), "[redacted]")
         cleaned = " ".join(cleaned.split())
         return cleaned
+
+    def _require_llm_config(self, *, stage: str) -> None:
+        missing: list[str] = []
+        if not self.llm_settings.get("api_key"):
+            missing.append("api_key")
+        if not self.llm_settings.get("endpoint"):
+            missing.append("endpoint")
+        if not self.llm_settings.get("model"):
+            missing.append("model")
+        if missing:
+            raise ContractError(
+                code="LLM_UNAVAILABLE",
+                message="patient agent LLM configuration is unavailable",
+                details={
+                    **self._llm_context(stage=stage),
+                    "missing": missing,
+                },
+                status_code=503,
+            )
+
+    def _llm_context(self, *, stage: str) -> dict:
+        return {
+            "agent": "patient_agent",
+            "stage": stage,
+            "endpoint": self.llm_settings.get("endpoint"),
+            "model": self.llm_settings.get("model"),
+        }
