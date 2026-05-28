@@ -99,6 +99,87 @@ behavior_policy:
   escalation_policy:
     default_urgency: routine
     red_flag_urgency: urgent
+  outcome_policy:
+    allowed_decisions:
+      - urgent_escalation
+      - test_first
+      - treat_and_discharge
+      - recommend_other_clinic
+    default_decision: test_first
+    direct_treat_whitelist:
+      required_keywords_any:
+        - mild cough
+        - runny nose
+        - sneezing
+        - common cold
+      forbidden_keywords_any:
+        - chest pain
+        - shortness of breath
+        - severe
+        - worsening
+        - black stool
+        - bloody stool
+        - vomiting
+      max_temp_c: 37.8
+      max_heart_rate: 100
+    referral_targets:
+      - department: Dermatology
+        department_id: dermatology
+        reason: Skin-focused symptoms are better evaluated in dermatology.
+        keywords:
+          - rash
+          - itching
+          - eczema
+          - urticaria
+          - acne
+          - skin lesion
+      - department: Dentistry
+        department_id: dentistry
+        reason: Tooth and gum complaints are better evaluated in dentistry.
+        keywords:
+          - tooth pain
+          - gum pain
+          - gum swelling
+          - dental
+      - department: Ophthalmology
+        department_id: ophthalmology
+        reason: Eye-focused symptoms are better evaluated in ophthalmology.
+        keywords:
+          - eye pain
+          - red eye
+          - blurred vision
+          - vision loss
+      - department: Otolaryngology
+        department_id: ent
+        reason: Ear or nose symptoms are better evaluated in otolaryngology.
+        keywords:
+          - ear pain
+          - tinnitus
+          - nosebleed
+          - nasal obstruction
+      - department: Obstetrics and Gynecology
+        department_id: obgyn
+        reason: Pregnancy or gynecologic symptoms should be evaluated in obstetrics and gynecology.
+        keywords:
+          - vaginal bleeding
+          - pelvic bleeding
+          - pregnant
+          - pregnancy
+          - menstrual
+      - department: Pediatrics
+        department_id: pediatrics
+        reason: Pediatric patients are better evaluated in pediatrics.
+        keywords:
+          - child
+          - pediatric
+      - department: Psychiatry
+        department_id: psychiatry
+        reason: Anxiety, mood, or psychiatric symptoms are better evaluated in psychiatry.
+        keywords:
+          - anxiety
+          - panic
+          - depression
+          - insomnia
 output_contract:
   output_mode: round1_policy_snapshot
   output_schema_name: internal_medicine_round1_policy

@@ -31,11 +31,13 @@ class ClinicalPolicyRuntime:
                 "forbidden_actions": list(primary_card.forbidden_actions),
                 "max_questions_per_turn": int(primary_card.question_policy.get("max_questions_per_turn") or 3),
                 "red_flags": list(primary_card.red_flags),
+                "outcome_policy": dict(primary_card.outcome_policy),
             },
             fallback_contract={
                 "allowed_outputs": list(primary_card.allowed_outputs),
                 "default_urgency": primary_card.escalation_policy.get("default_urgency", "routine"),
                 "red_flag_urgency": primary_card.escalation_policy.get("red_flag_urgency", "urgent"),
+                "default_decision": primary_card.outcome_policy.get("default_decision", "test_first"),
             },
         )
 
@@ -51,6 +53,8 @@ class ClinicalPolicyRuntime:
             sections.append(f"Collection targets: {', '.join(target_names)}")
         if card.question_policy:
             sections.append(f"Question policy: {json.dumps(card.question_policy, ensure_ascii=False, sort_keys=True)}")
+        if card.outcome_policy:
+            sections.append(f"Outcome policy: {json.dumps(card.outcome_policy, ensure_ascii=False, sort_keys=True)}")
         if card.forbidden_actions:
             sections.append(f"Forbidden actions: {', '.join(card.forbidden_actions)}")
         if card.allowed_next_actions:

@@ -404,6 +404,67 @@ class DepartmentAgentRuntime:
                 ).strip()
         return ""
 
+    def request_follow_up_message_from_llm(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        question_focus: str | None = None,
+        policy_runtime_context=None,
+    ) -> str | None:
+        if not self.llm_settings.get("api_key"):
+            return None
+        if not self.config.build_follow_up_llm_messages:
+            return None
+        messages = self._call_with_supported_kwargs(
+            self.config.build_follow_up_llm_messages,
+            shared_memory,
+            payload.get("message", ""),
+            missing_fields,
+            question_focus=question_focus,
+            payload=payload,
+            policy_runtime_context=policy_runtime_context,
+        )
+        if not messages:
+            return None
+        req = urlrequest.Request(
+            self.llm_settings["endpoint"],
+            data=json.dumps(
+                {
+                    "model": self.llm_settings["model"],
+                    "messages": messages,
+                    "temperature": 0,
+                    "n": 1,
+                    "stream": False,
+                    "presence_penalty": 0,
+                    "frequency_penalty": 0,
+                }
+            ).encode("utf-8"),
+            headers={
+                "accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.llm_settings['api_key']}",
+            },
+            method="POST",
+        )
+        with urlrequest.urlopen(req, timeout=18) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        text = self.extract_text_from_response(data)
+        if not text:
+            return None
+        parsed_text = text.strip()
+        try:
+            payload_json = json.loads(parsed_text)
+            if isinstance(payload_json, dict):
+                for key in ("assistant_message", "follow_up_question", "question", "message", "reply"):
+                    value = payload_json.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+        except Exception:
+            pass
+        return parsed_text or None
+
     def evaluate(self, merged_payload: dict, memory, mode: str) -> tuple[dict, list[dict], list[str], dict, bool]:
         progress = memory.consultation_progress
         previous_final_result = memory.private_memory.get("final_result") if isinstance(memory.private_memory.get("final_result"), dict) else {}
@@ -470,7 +531,16 @@ class DepartmentAgentRuntime:
                 )
             except Exception:
                 llm_result = None
-            final_result = self.config.validate_result(llm_result, fallback, merged_payload)
+            final_result = self._call_with_supported_kwargs(
+                self.config.validate_result,
+                llm_result,
+                fallback,
+                merged_payload,
+                policy_runtime_context=policy_runtime_context,
+                memory=memory,
+                mode=mode,
+                complete=True,
+            )
             changed = self.config.final_result_changed(previous_final_result, final_result) if self.config.final_result_changed else final_result != previous_final_result
             message_type = "final_update" if changed else "final_no_change"
             assistant_message = self.config.build_final_message(final_result, message_type=message_type)
@@ -490,25 +560,41 @@ class DepartmentAgentRuntime:
         if missing_fields or progress.patient_reply_count < self.config.min_patient_reply_count_before_complete:
             progress.followup_count += 1
             question_focus = missing_fields[0] if missing_fields else None
+            llm_followup_message = None
+            if mode == "continue_session" and progress.patient_reply_count >= 1:
+                try:
+                    llm_followup_message = self.request_follow_up_message_from_llm(
+                        merged_payload,
+                        memory.shared_memory,
+                        missing_fields,
+                        question_focus=question_focus,
+                        policy_runtime_context=policy_runtime_context,
+                    )
+                except Exception:
+                    llm_followup_message = None
             if question_focus:
                 asked_count = sum(1 for item in progress.asked_fields_history if item == question_focus)
-                assistant_message = self._call_with_supported_kwargs(
-                    self.config.build_follow_up_question,
-                    question_focus,
-                    memory.shared_memory,
-                    asked_count=asked_count,
-                    is_repeated=question_focus == progress.last_question_focus and asked_count > 0,
-                    last_question_text=progress.last_question_text,
-                    policy_runtime_context=policy_runtime_context,
-                )
+                assistant_message = llm_followup_message
+                if not assistant_message:
+                    assistant_message = self._call_with_supported_kwargs(
+                        self.config.build_follow_up_question,
+                        question_focus,
+                        memory.shared_memory,
+                        asked_count=asked_count,
+                        is_repeated=question_focus == progress.last_question_focus and asked_count > 0,
+                        last_question_text=progress.last_question_text,
+                        policy_runtime_context=policy_runtime_context,
+                    )
                 progress.asked_fields_history.append(question_focus)
                 progress.last_question_focus = question_focus
             else:
-                assistant_message = self._call_with_supported_kwargs(
-                    self.config.build_transition_follow_up_question,
-                    memory.shared_memory,
-                    policy_runtime_context=policy_runtime_context,
-                )
+                assistant_message = llm_followup_message
+                if not assistant_message:
+                    assistant_message = self._call_with_supported_kwargs(
+                        self.config.build_transition_follow_up_question,
+                        memory.shared_memory,
+                        policy_runtime_context=policy_runtime_context,
+                    )
                 progress.last_question_focus = None
             progress.last_question_text = assistant_message
             consultation_result, validated_missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
@@ -532,7 +618,16 @@ class DepartmentAgentRuntime:
             )
         except Exception:
             llm_result = None
-        final_result = self.config.validate_result(llm_result, fallback, merged_payload)
+        final_result = self._call_with_supported_kwargs(
+            self.config.validate_result,
+            llm_result,
+            fallback,
+            merged_payload,
+            policy_runtime_context=policy_runtime_context,
+            memory=memory,
+            mode=mode,
+            complete=True,
+        )
         assistant_message = self.config.build_final_message(final_result, message_type="final")
         progress.last_question_focus = None
         progress.last_question_text = assistant_message

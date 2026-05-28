@@ -142,7 +142,7 @@ Current Phase 1 baseline:
 - `backend/app/agents/patient_agent/`: controlled simulated patient agent
 - `backend/app/agents/npc_patient/`: legacy NPC patient profile, planner, and runner
 - `backend/app/agents/test_simulator/`: auxiliary test simulation service
-- `backend/app/agents/interactive_debug/`: shared debug controllers and presets
+- `backend/app/agents/interactive_debug/`: shared debug controllers, doctor debug registry, and presets
 - `backend/app/agents/multi_patient_debug/`: multi-patient debug compatibility wrapper
 - `backend/app/agents/department_runtime/`: department runtime compatibility package
 - `backend/app/agents/clinical_policy/`: specialty policy/routing cards and loader
@@ -182,11 +182,17 @@ multi agent debug:
 agent dialogue debug:
 
 - http://127.0.0.1:8787/triage-agent-debug
+- http://127.0.0.1:8787/doctor-agent-debug
 - http://127.0.0.1:8787/internal-medicine-agent-debug
 - http://127.0.0.1:8787/patient-agent-debug
 - http://127.0.0.1:8787/patient-agent-chat-debug
 - http://127.0.0.1:8787/hospital-runtime-debug
 - http://127.0.0.1:8787/department-runtime-debug
+
+Notes:
+- `doctor-agent-debug` is the unified doctor-facing debug entrypoint.
+- `internal-medicine-agent-debug` is kept as a compatibility alias backed by the unified doctor debug controller.
+- The doctor debug registry already includes `surgery` config, but surgery is not yet exposed as an active runtime choice in the app container.
 
 
 

@@ -201,6 +201,64 @@ INTERNAL_MEDICINE_PRESETS = [
 ]
 
 
+SURGERY_PRESETS = [
+    {
+        "preset_id": "surgery_minor_wound",
+        "label": "Minor Surface Wound",
+        "payload": {
+            "patient_profile": {"name": "Chen Yu", "age": 29, "sex": "male", "allergies": [], "chronic_conditions": []},
+            "visit_state": VisitLifecycleState.IN_CONSULTATION.value,
+            "patient_lifecycle_state": PatientLifecycleState.IN_CONSULTATION.value,
+            "consultation_round": 1,
+            "chief_complaint": "Small superficial cut on the forearm after kitchen work",
+            "symptoms": "small cut, mild pain, bleeding stopped, no numbness, no movement problem",
+            "onset_time": "2 hours ago",
+            "vitals": {"pain_score": 2, "heart_rate": 82},
+            "shared_memory": _base_shared_memory(
+                "Chen Yu", 29, "male",
+                chief_complaint="Small superficial cut on the forearm after kitchen work",
+                symptoms=["small cut", "mild pain", "bleeding stopped", "no numbness", "no movement problem"],
+                onset_time="2 hours ago",
+                vitals={"pain_score": 2, "heart_rate": 82},
+            ),
+            "medical_record_entries": [
+                {
+                    "phase": "triage",
+                    "entry_type": "triage_note",
+                    "actor": "triage_agent",
+                    "title": "Triage Summary",
+                    "content_text": "minor wound, stable condition",
+                    "content": {"priority": "L", "department": "Surgery"},
+                }
+            ],
+        },
+    },
+    {
+        "preset_id": "surgery_postop_wound_check",
+        "label": "Stable Post-op Wound Check",
+        "payload": {
+            "patient_profile": {"name": "Wang Li", "age": 47, "sex": "female", "allergies": ["penicillin"], "chronic_conditions": ["type 2 diabetes"]},
+            "visit_state": VisitLifecycleState.IN_CONSULTATION.value,
+            "patient_lifecycle_state": PatientLifecycleState.IN_CONSULTATION.value,
+            "consultation_round": 1,
+            "chief_complaint": "Routine dressing change after surgery",
+            "symptoms": "postoperative dressing change, mild soreness, no fever, no pus, no drainage",
+            "onset_time": "3 days after surgery",
+            "vitals": {"temp_c": 36.9, "heart_rate": 86, "pain_score": 3},
+            "shared_memory": _base_shared_memory(
+                "Wang Li", 47, "female",
+                chief_complaint="Routine dressing change after surgery",
+                symptoms=["postoperative dressing change", "mild soreness", "no fever", "no pus", "no drainage"],
+                onset_time="3 days after surgery",
+                vitals={"temp_c": 36.9, "heart_rate": 86, "pain_score": 3},
+                allergies=["penicillin"],
+                chronic_conditions=["type 2 diabetes"],
+            ),
+        },
+    },
+]
+
+
 PATIENT_AGENT_PRESETS = [
     {
         "preset_id": "patient_respiratory_case",
@@ -308,6 +366,10 @@ def get_triage_presets() -> list[dict]:
 
 def get_internal_medicine_presets() -> list[dict]:
     return deepcopy(INTERNAL_MEDICINE_PRESETS)
+
+
+def get_surgery_presets() -> list[dict]:
+    return deepcopy(SURGERY_PRESETS)
 
 
 def get_patient_agent_presets() -> list[dict]:

@@ -14,6 +14,7 @@ def test_clinical_policy_registry_loads_internal_medicine_card():
     assert card.id == "internal_medicine_initial_consultation"
     assert "round1_initial_consultation" in card.applicable_phase
     assert "ask_follow_up" in card.allowed_next_actions
+    assert "treat_and_discharge" in card.outcome_policy["allowed_decisions"]
 
 
 def test_clinical_policy_registry_matches_by_scope_and_phase():

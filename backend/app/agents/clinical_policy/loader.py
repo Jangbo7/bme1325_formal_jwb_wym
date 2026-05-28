@@ -84,6 +84,7 @@ def build_card_from_payload(payload: dict[str, Any], *, source_path: Path | None
         forbidden_actions=_as_string_tuple(behavior_policy.get("forbidden_actions"), field_name="behavior_policy.forbidden_actions"),
         allowed_outputs=_as_string_tuple(behavior_policy.get("allowed_outputs"), field_name="behavior_policy.allowed_outputs"),
         escalation_policy=_as_dict(behavior_policy.get("escalation_policy"), field_name="behavior_policy.escalation_policy"),
+        outcome_policy=_as_dict(behavior_policy.get("outcome_policy"), field_name="behavior_policy.outcome_policy"),
         output_mode=_as_string(output_contract.get("output_mode", "policy_snapshot"), field_name="output_contract.output_mode"),
         output_schema_name=_as_string(output_contract.get("output_schema_name", "policy_snapshot"), field_name="output_contract.output_schema_name"),
         required_fields=_as_string_tuple(output_contract.get("required_fields"), field_name="output_contract.required_fields"),

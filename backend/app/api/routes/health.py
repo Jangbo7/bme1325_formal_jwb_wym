@@ -11,6 +11,8 @@ def health(request: Request):
         "ok": True,
         "mode": "rag+llm" if settings["llm_api_key"] else "rag+rules",
         "key_source": settings["mock_key_source"],
+        "active_llm_provider": settings["active_llm_provider"],
+        "llm_endpoint": settings["llm_endpoint"],
         "llm_model": settings["llm_model"],
         "llm_enabled": bool(settings["llm_api_key"]),
         "graph_runtime": "langgraph" if request.app.state.container["langgraph_available"] else "graph-fallback",

@@ -9,9 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.internal_medicine import create_internal_medicine_service
 from app.agents.interactive_debug import (
-    InternalMedicineAgentDebugController,
+    DoctorAgentDebugController,
+    FixedDoctorDebugController,
     PatientAgentChatDebugController,
     TriageAgentDebugController,
+    build_default_doctor_debug_registry,
 )
 from app.agents.multi_patient_debug import MultiPatientDebugController
 from app.agents.patient_agent import PatientAgentDebugController
@@ -20,6 +22,7 @@ from app.agents.icu_doctor import create_icub_doctor_service
 from app.agents.triage.graph import LANGGRAPH_AVAILABLE, TriageGraph
 from app.agents.triage.service import TriageService
 from app.agents.triage.state_machine import TriageDialogueStateMachine
+from app.api.routes.doctor_agent_debug import router as doctor_agent_debug_router
 from app.api.routes.health import router as health_router
 from app.api.routes.hospital_runtime_debug import router as hospital_runtime_debug_router
 from app.api.routes.department_runtime_debug import router as department_runtime_debug_router
@@ -255,6 +258,18 @@ def create_container():
             "department_runtime_service": department_runtime_service,
         }
     )
+    doctor_debug_registry = build_default_doctor_debug_registry()
+    doctor_agent_debug_controller = DoctorAgentDebugController(
+        {
+            "patient_repo": patient_repo,
+            "session_repo": session_repo,
+            "memory_repo": memory_repo,
+            "visit_repo": visit_repo,
+            "medical_record_repo": medical_record_repo,
+            "internal_medicine_service": internal_medicine_service,
+        },
+        registry=doctor_debug_registry,
+    )
     triage_agent_debug_controller = TriageAgentDebugController(
         {
             "patient_repo": patient_repo,
@@ -265,15 +280,9 @@ def create_container():
             "triage_service": triage_service,
         }
     )
-    internal_medicine_agent_debug_controller = InternalMedicineAgentDebugController(
-        {
-            "patient_repo": patient_repo,
-            "session_repo": session_repo,
-            "memory_repo": memory_repo,
-            "visit_repo": visit_repo,
-            "medical_record_repo": medical_record_repo,
-            "internal_medicine_service": internal_medicine_service,
-        }
+    internal_medicine_agent_debug_controller = FixedDoctorDebugController(
+        doctor_agent_debug_controller,
+        "internal_medicine",
     )
     patient_agent_chat_debug_controller = PatientAgentChatDebugController(
         {
@@ -392,6 +401,8 @@ def create_container():
         "department_runtime_service": department_runtime_service,
         "scene_snapshot_service": scene_snapshot_service,
         "patient_agent_debug_controller": patient_agent_debug_controller,
+        "doctor_debug_registry": doctor_debug_registry,
+        "doctor_agent_debug_controller": doctor_agent_debug_controller,
         "triage_agent_debug_controller": triage_agent_debug_controller,
         "internal_medicine_agent_debug_controller": internal_medicine_agent_debug_controller,
         "patient_agent_chat_debug_controller": patient_agent_chat_debug_controller,
@@ -611,6 +622,7 @@ def create_app() -> FastAPI:
     app.include_router(visits_router)
     app.include_router(triage_router)
     app.include_router(internal_medicine_router)
+    app.include_router(doctor_agent_debug_router)
     app.include_router(medical_records_router)
     app.include_router(npc_debug_router)
     app.include_router(patient_agent_debug_router)

@@ -106,10 +106,10 @@ def build_internal_medicine_policy_fallback(
     )
     next_action = str(fallback_snapshot.get("next_action") or "").strip()
     if next_action == "escalate_urgency":
-        assistant_message = "Current symptoms may require urgent assessment. Please seek higher-priority evaluation immediately."
+        assistant_message = "目前症状提示可能需要尽快处理，请及时前往更高优先级区域或急诊进一步评估。"
     else:
         questions = fallback_snapshot.get("follow_up_questions") or []
-        assistant_message = str(questions[0] if questions else "Please continue describing the main symptom, onset time, and allergy history.").strip()
+        assistant_message = str(questions[0] if questions else "请继续补充主要症状、开始时间，以及是否有过敏史。").strip()
     updated_result = dict(consultation_result or {})
     if fallback_snapshot.get("red_flags"):
         updated_result["red_flags"] = list(fallback_snapshot.get("red_flags") or [])

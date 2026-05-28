@@ -165,12 +165,23 @@ def test_internal_medicine_final_response_has_structured_schema(monkeypatch):
         "tests_suggested",
         "medication_or_action",
         "red_flags",
+        "next_step_decision",
+        "needs_second_internal_medicine_consultation",
+        "next_step_reason",
+        "clinical_impression",
+        "needs_tests",
+        "needs_medication",
+        "recommended_department",
+        "recommended_department_reason",
+        "disposition_advice",
     }
     assert expected_keys.issubset(final_result.keys())
     assert final_result["complete"] is True
     assert isinstance(final_result["tests_suggested"], list)
     assert isinstance(final_result["medication_or_action"], list)
     assert isinstance(final_result["red_flags"], list)
+    assert final_result["next_step_decision"] == "test_first"
+    assert final_result["needs_second_internal_medicine_consultation"] is True
 
 
 def test_internal_medicine_completed_session_reassesses_without_followup(monkeypatch):
@@ -210,3 +221,5 @@ def test_internal_medicine_red_flags_force_emergency_priority(monkeypatch):
     assert final_result["department"] == "Emergency"
     assert final_result["icu_escalation"] is True
     assert final_result["red_flags"]
+    assert final_result["next_step_decision"] == "urgent_escalation"
+    assert final_result["needs_second_internal_medicine_consultation"] is False

@@ -277,7 +277,7 @@ backend/app/
 - 核心业务路由：`visits`、`triage`、`internal_medicine`、`icu`、`patients`、`queues`
 - 运行时与投影路由：`scene_snapshot`、`department_runtime`、`hospital_runtime`、`medical_records`
 - 事件与科室路由：`events`、`departments`、`encounters`
-- 调试入口：`npc-debug`、`multi-patient-debug`、`triage-agent-debug`、`internal-medicine-agent-debug`、`patient-agent-debug`、`patient-agent-chat-debug`、`hospital-runtime-debug`、`department-runtime-debug`
+- 调试入口：`npc-debug`、`multi-patient-debug`、`triage-agent-debug`、`doctor-agent-debug`、`internal-medicine-agent-debug`、`patient-agent-debug`、`patient-agent-chat-debug`、`hospital-runtime-debug`、`department-runtime-debug`
 - 集成入口：`openemr`
 - 健康检查：`health`
 
@@ -340,7 +340,9 @@ backend/app/
 - 这个模块是无状态辅助服务，不承担完整对话流程
 
 ### `backend/app/agents/interactive_debug/`
-- 负责共享的调试控制器和预设数据
+- 负责共享的调试控制器、医生类 debug registry 和预设数据
+- 当前医生类问诊调试已收口到统一 `doctor-agent-debug`
+- `internal-medicine-agent-debug` 仍保留兼容入口，但内部委托到统一 doctor debug controller
 
 ### `backend/app/agents/multi_patient_debug/`
 - 负责多患者调试页的兼容控制层

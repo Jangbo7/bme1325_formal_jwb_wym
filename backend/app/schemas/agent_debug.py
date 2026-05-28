@@ -1,26 +1,31 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-AgentDebugType = Literal["triage", "internal_medicine", "patient_agent"]
-
-
 class AgentDebugPresetSummary(BaseModel):
     preset_id: str
+    agent_type: str | None = None
+    department_id: str | None = None
     label: str
     payload: dict[str, Any]
 
 
 class AgentDebugPreloadRequest(BaseModel):
+    agent_type: str | None = None
     preset_id: str | None = None
     payload: dict[str, Any] | None = None
 
 
 class AgentDebugMessageRequest(BaseModel):
+    agent_type: str | None = None
     message: str
+
+
+class AgentDebugResetRequest(BaseModel):
+    agent_type: str | None = None
 
 
 class AgentDebugTranscriptEntry(BaseModel):
@@ -50,7 +55,9 @@ class AgentDebugTrace(BaseModel):
 
 class AgentDebugSnapshot(BaseModel):
     debug_session_id: str
-    agent_type: AgentDebugType
+    agent_type: str
+    department_id: str | None = None
+    agent_label: str | None = None
     patient_id: str
     visit_id: str
     session_id: str

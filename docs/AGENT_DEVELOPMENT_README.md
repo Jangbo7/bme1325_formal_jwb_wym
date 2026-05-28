@@ -42,9 +42,11 @@ This guide describes how a collaborator should add a new independent agent featu
    - Working graph state stays runtime-only.
 
 5. Register API entrypoints.
-   - Add a route file under `backend/app/api/routes/`.
-   - Expose only typed request/response contracts.
-   - Background-only agents can skip a public route and be wired from `backend/app/main.py` instead.
+    - Add a route file under `backend/app/api/routes/`.
+    - Expose only typed request/response contracts.
+    - Background-only agents can skip a public route and be wired from `backend/app/main.py` instead.
+    - For doctor-style consultation agents, do not add a new dedicated `xxx_agent_debug.py` by default.
+    - Register the doctor config in the unified doctor debug registry and reuse `doctor-agent-debug`.
 
 6. Decide EventBus outputs.
    - Emit events only after state transitions are committed.
@@ -58,10 +60,15 @@ This guide describes how a collaborator should add a new independent agent featu
    - Repository tests if new persistence is added
 
 8. Integrate frontend last.
-   - Add a dedicated frontend client call.
-   - Keep UI state separate from queue/NPC state.
-   - Do not patch everything back into one large file.
-   - If the agent is backend-driven only, keep the frontend as a passive viewer unless a UI action is truly needed.
+    - Add a dedicated frontend client call.
+    - Keep UI state separate from queue/NPC state.
+    - Do not patch everything back into one large file.
+    - If the agent is backend-driven only, keep the frontend as a passive viewer unless a UI action is truly needed.
+
+## Debug Guidance
+- `triage`, `patient_agent`, `npc_debug`, and runtime-level debug pages remain separate because they do not share the same consultation contract.
+- Doctor-style agents should prefer the unified `doctor-agent-debug` entrypoint.
+- Compatibility pages such as `internal-medicine-agent-debug` may remain temporarily, but new doctor agents should not copy that pattern forward.
 
 ## Example: Outpatient Doctor Agent
 If a collaborator adds an internal medicine doctor agent, the expected flow is:

@@ -27,6 +27,7 @@ class ClinicalPolicyCard:
     forbidden_actions: tuple[str, ...] = ()
     allowed_outputs: tuple[str, ...] = ()
     escalation_policy: dict[str, Any] = field(default_factory=dict)
+    outcome_policy: dict[str, Any] = field(default_factory=dict)
     output_mode: str = ""
     output_schema_name: str = ""
     required_fields: tuple[str, ...] = ()

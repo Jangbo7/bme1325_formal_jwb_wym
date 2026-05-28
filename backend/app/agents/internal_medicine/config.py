@@ -8,6 +8,7 @@ from app.agents.internal_medicine.policy import (
 )
 from app.agents.internal_medicine.prompts import (
     build_consultation_system_prompt,
+    build_follow_up_llm_messages,
     build_consultation_user_prompt,
     build_final_message,
     build_follow_up_question,
@@ -48,6 +49,7 @@ def build_internal_medicine_runtime_config() -> DepartmentAgentConfig:
         complete_events=("complete", "plan_treatment", "approve"),
         build_initial_message=build_initial_message,
         build_follow_up_question=build_follow_up_question,
+        build_follow_up_llm_messages=build_follow_up_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
         build_final_message=build_final_message,
         build_system_prompt=build_consultation_system_prompt,

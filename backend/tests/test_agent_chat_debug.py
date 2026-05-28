@@ -84,6 +84,56 @@ def test_internal_medicine_agent_debug_preload_and_message(tmp_path, monkeypatch
     assert "parsed_result" in message["trace"]
 
 
+def test_unified_doctor_agent_debug_internal_medicine(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+
+    page = client.get("/doctor-agent-debug")
+    assert page.status_code == 200
+    assert "Doctor Agent Debug" in page.text
+
+    preload = get_data(
+        post_json(
+            client,
+            "/api/v1/doctor-agent-debug/preload",
+            {"agent_type": "internal_medicine", "preset_id": "im_round1_respiratory"},
+        )
+    )
+    assert preload["agent_type"] == "internal_medicine"
+    assert preload["department_id"] == "internal"
+    assert preload["agent_label"] == "Internal Medicine Agent Debug"
+
+    message = get_data(
+        post_json(
+            client,
+            "/api/v1/doctor-agent-debug/message",
+            {
+                "agent_type": "internal_medicine",
+                "message": "The cough is a little worse today and there is still no allergy history.",
+            },
+        )
+    )
+    assert message["latest_reply"] is not None
+    assert "parsed_result" in message["trace"]
+
+    snapshot = client.get("/api/v1/doctor-agent-debug/snapshot?agent_type=internal_medicine", headers=api_headers())
+    assert snapshot.status_code == 200
+    assert get_data(snapshot)["session_id"] == message["session_id"]
+
+
+def test_doctor_debug_registry_contains_surgery_config(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    registry = client.app.state.container["doctor_debug_registry"]
+
+    surgery_config = registry.get("surgery")
+    assert surgery_config.agent_type == "surgery"
+    assert surgery_config.department_id == "surgery"
+    assert surgery_config.service_container_key == "surgery_service"
+
+    available_agents = client.app.state.container["doctor_agent_debug_controller"].list_available_agents()
+    assert any(agent["agent_type"] == "internal_medicine" for agent in available_agents)
+    assert all(agent["agent_type"] != "surgery" for agent in available_agents)
+
+
 def test_patient_agent_chat_debug_preload_and_message(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     install_fake_patient_agent(client)

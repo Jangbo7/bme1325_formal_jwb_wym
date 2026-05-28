@@ -196,13 +196,13 @@ class DummyBus:
 
 
 class FakeDepartmentService(DepartmentAgentRuntime):
-    def __init__(self, *, counters: dict):
+    def __init__(self, *, counters: dict, llm_settings: dict | None = None):
         self.counters = counters
         config = build_fake_config(counters)
         graph = DepartmentAgentGraph(service=None, dialogue_state_machine=FakeDialogueStateMachine(), config=config)
         super().__init__(
             config=config,
-            llm_settings={},
+            llm_settings=llm_settings or {},
             patient_repo=DummyPatientRepo(),
             session_repo=DummySessionRepo(),
             memory_repo=DummyMemoryRepo(),
@@ -336,6 +336,13 @@ def build_fake_config(counters: dict) -> DepartmentAgentConfig:
         counters["build_follow_up_question"] += 1
         return f"please provide {field_name}"
 
+    def build_follow_up_llm_messages(shared_memory: dict, message: str, missing_fields: list[str], **kwargs):
+        counters["build_follow_up_llm_messages"] += 1
+        return [
+            {"role": "system", "content": "followup system"},
+            {"role": "user", "content": f"message={message},missing={missing_fields}"},
+        ]
+
     def build_transition_follow_up_question(shared_memory: dict):
         counters["build_transition_follow_up_question"] += 1
         return "please clarify"
@@ -369,6 +376,7 @@ def build_fake_config(counters: dict) -> DepartmentAgentConfig:
         complete_events=("complete",),
         build_initial_message=build_initial_message,
         build_follow_up_question=build_follow_up_question,
+        build_follow_up_llm_messages=build_follow_up_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
         build_final_message=build_final_message,
         build_system_prompt=build_system_prompt,
@@ -394,6 +402,7 @@ def test_department_agent_runtime_create_session_enters_followup():
         "validate_result": 0,
         "build_initial_message": 0,
         "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
         "build_transition_follow_up_question": 0,
         "build_final_message": 0,
         "build_user_prompt": 0,
@@ -426,6 +435,7 @@ def test_department_agent_runtime_continue_session_uses_fallback_and_hooks():
         "validate_result": 0,
         "build_initial_message": 0,
         "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
         "build_transition_follow_up_question": 0,
         "build_final_message": 0,
         "build_user_prompt": 0,
@@ -461,3 +471,87 @@ def test_department_agent_runtime_continue_session_uses_fallback_and_hooks():
     session_memory = service.memory_repo.get_agent_session_memory("fake-session-2", "patient-2", agent_type="fake_department")
     assert session_memory["latest_extraction"]["onset_time"] == "yesterday"
     assert len(service.session_repo.list_turns("fake-session-2")) == 3
+
+
+def test_department_agent_runtime_continue_session_followup_prefers_llm_when_available():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(
+        counters=counters,
+        llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
+    )
+    service.create_session(
+        {
+            "patient_id": "patient-3",
+            "session_id": "fake-session-3",
+            "visit_id": "visit-3",
+            "name": "Patient Three",
+        }
+    )
+
+    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "llm follow-up question"
+
+    response = service.continue_session(
+        "fake-session-3",
+        {
+            "patient_id": "patient-3",
+            "visit_id": "visit-3",
+            "name": "Patient Three",
+            "message": "I have cough.",
+        },
+    )
+
+    assert response["dialogue"]["status"] == FakeDialogueState.AWAITING.value
+    assert response["dialogue"]["message_type"] == "followup"
+    assert response["dialogue"]["assistant_message"] == "llm follow-up question"
+    assert counters["build_follow_up_question"] == 0
+    assert counters["build_transition_follow_up_question"] == 0
+
+
+def test_department_agent_runtime_continue_session_followup_falls_back_when_llm_unavailable():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(counters=counters, llm_settings={})
+    service.create_session(
+        {
+            "patient_id": "patient-4",
+            "session_id": "fake-session-4",
+            "visit_id": "visit-4",
+            "name": "Patient Four",
+        }
+    )
+
+    response = service.continue_session(
+        "fake-session-4",
+        {
+            "patient_id": "patient-4",
+            "visit_id": "visit-4",
+            "name": "Patient Four",
+            "message": "I have cough.",
+        },
+    )
+
+    assert response["dialogue"]["status"] == FakeDialogueState.AWAITING.value
+    assert response["dialogue"]["message_type"] == "followup"
+    assert response["dialogue"]["assistant_message"] == "please provide onset_time"
+    assert counters["build_follow_up_question"] == 1

@@ -5,11 +5,27 @@ import json
 from fastapi.responses import HTMLResponse
 
 
-def render_agent_debug_page(*, title: str, heading: str, description: str, page_slug: str, api_base: str, presets: list[dict]) -> HTMLResponse:
-    preset_json = json.dumps(
-        [{"preset_id": item["preset_id"], "label": item["label"], "payload": item["payload"]} for item in presets],
-        ensure_ascii=False,
-    )
+def render_agent_debug_page(
+    *,
+    title: str,
+    heading: str,
+    description: str,
+    page_slug: str,
+    api_base: str,
+    presets: list[dict],
+    agent_options: list[dict] | None = None,
+    selected_agent_type: str | None = None,
+    presets_by_agent: dict[str, list[dict]] | None = None,
+) -> HTMLResponse:
+    grouped_presets = presets_by_agent or {
+        selected_agent_type or "__default__": [
+            {"preset_id": item["preset_id"], "label": item["label"], "payload": item["payload"]}
+            for item in presets
+        ]
+    }
+    preset_json = json.dumps(grouped_presets, ensure_ascii=False)
+    agent_options_json = json.dumps(agent_options or [], ensure_ascii=False)
+    initial_agent_json = json.dumps(selected_agent_type or "", ensure_ascii=False)
     return HTMLResponse(
         f"""
 <!doctype html>
@@ -92,6 +108,10 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
     <h1>{heading}</h1>
     <div class="subtle">{description}</div>
     <div class="toolbar">
+      <label id="agentTypeField" style="display:none;">
+        <span class="label">Agent</span><br />
+        <select id="agentTypeSelect"></select>
+      </label>
       <label>
         <span class="label">Preset</span><br />
         <select id="presetSelect"></select>
@@ -110,6 +130,8 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
       <div class="grid">
         <div><div class="label">Debug Session</div><div class="value" id="debugSessionId">-</div></div>
         <div><div class="label">Agent</div><div class="value" id="agentType">-</div></div>
+        <div><div class="label">Department</div><div class="value" id="departmentId">-</div></div>
+        <div><div class="label">Agent Label</div><div class="value" id="agentLabel">-</div></div>
         <div><div class="label">Patient</div><div class="value" id="patientId">-</div></div>
         <div><div class="label">Visit</div><div class="value" id="visitId">-</div></div>
         <div><div class="label">Session</div><div class="value" id="sessionId">-</div></div>
@@ -132,9 +154,13 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
     </section>
   </main>
   <script>
-    const PRESETS = {preset_json};
+    const PRESETS_BY_AGENT = {preset_json};
+    const AGENT_OPTIONS = {agent_options_json};
+    const INITIAL_AGENT_TYPE = {initial_agent_json};
     const apiBase = "{api_base}";
     const statusEl = document.getElementById("status");
+    const agentTypeField = document.getElementById("agentTypeField");
+    const agentTypeSelect = document.getElementById("agentTypeSelect");
     const presetSelect = document.getElementById("presetSelect");
     const preloadJsonEl = document.getElementById("preloadJson");
     const traceBlock = document.getElementById("traceBlock");
@@ -142,6 +168,8 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
     const fields = {{
       debugSessionId: document.getElementById("debugSessionId"),
       agentType: document.getElementById("agentType"),
+      departmentId: document.getElementById("departmentId"),
+      agentLabel: document.getElementById("agentLabel"),
       patientId: document.getElementById("patientId"),
       visitId: document.getElementById("visitId"),
       sessionId: document.getElementById("sessionId"),
@@ -176,15 +204,45 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
       return payload.data;
     }}
 
+    function currentAgentType() {{
+      if (!AGENT_OPTIONS.length) {{
+        return INITIAL_AGENT_TYPE || Object.keys(PRESETS_BY_AGENT)[0] || "";
+      }}
+      return agentTypeSelect.value || INITIAL_AGENT_TYPE || AGENT_OPTIONS[0]?.agent_type || "";
+    }}
+
+    function currentPresets() {{
+      return PRESETS_BY_AGENT[currentAgentType()] || [];
+    }}
+
+    function fillAgentSelect() {{
+      if (!AGENT_OPTIONS.length) {{
+        return;
+      }}
+      agentTypeField.style.display = "";
+      agentTypeSelect.innerHTML = AGENT_OPTIONS.map((agent) => `<option value="${{agent.agent_type}}">${{agent.label}}</option>`).join("");
+      const preferred = INITIAL_AGENT_TYPE || AGENT_OPTIONS[0]?.agent_type || "";
+      if (preferred) {{
+        agentTypeSelect.value = preferred;
+      }}
+      agentTypeSelect.addEventListener("change", () => {{
+        fillPresetSelect();
+        refresh(false);
+      }});
+    }}
+
     function fillPresetSelect() {{
-      presetSelect.innerHTML = PRESETS.map((preset) => `<option value="${{preset.preset_id}}">${{preset.label}}</option>`).join("");
-      if (PRESETS.length > 0) {{
-        preloadJsonEl.value = JSON.stringify(PRESETS[0].payload, null, 2);
+      const presets = currentPresets();
+      presetSelect.innerHTML = presets.map((preset) => `<option value="${{preset.preset_id}}">${{preset.label}}</option>`).join("");
+      if (presets.length > 0) {{
+        preloadJsonEl.value = JSON.stringify(presets[0].payload, null, 2);
+      }} else {{
+        preloadJsonEl.value = "{{}}";
       }}
     }}
 
     function loadSelectedPreset() {{
-      const preset = PRESETS.find((item) => item.preset_id === presetSelect.value);
+      const preset = currentPresets().find((item) => item.preset_id === presetSelect.value);
       if (!preset) return;
       preloadJsonEl.value = JSON.stringify(preset.payload, null, 2);
     }}
@@ -211,6 +269,8 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
       }}
       fields.debugSessionId.textContent = snapshot.debug_session_id || "-";
       fields.agentType.textContent = snapshot.agent_type || "-";
+      fields.departmentId.textContent = snapshot.department_id || "-";
+      fields.agentLabel.textContent = snapshot.agent_label || "-";
       fields.patientId.textContent = snapshot.patient_id || "-";
       fields.visitId.textContent = snapshot.visit_id || "-";
       fields.sessionId.textContent = snapshot.session_id || "-";
@@ -228,7 +288,8 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
 
     async function refresh(showStatus = false) {{
       try {{
-        const snapshot = await api(`${{apiBase}}/snapshot`);
+        const query = currentAgentType() ? `?agent_type=${{encodeURIComponent(currentAgentType())}}` : "";
+        const snapshot = await api(`${{apiBase}}/snapshot${{query}}`);
         renderSnapshot(snapshot);
         if (showStatus) statusEl.textContent = "Snapshot refreshed.";
       }} catch (error) {{
@@ -241,6 +302,7 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
       try {{
         const payload = JSON.parse(preloadJsonEl.value || "{{}}");
         const data = await api(`${{apiBase}}/preload`, "POST", {{
+          agent_type: currentAgentType() || null,
           preset_id: presetSelect.value || null,
           payload,
         }});
@@ -253,7 +315,7 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
     document.getElementById("sendBtn").addEventListener("click", async () => {{
       try {{
         const message = document.getElementById("messageInput").value;
-        const data = await api(`${{apiBase}}/message`, "POST", {{ message }});
+        const data = await api(`${{apiBase}}/message`, "POST", {{ agent_type: currentAgentType() || null, message }});
         statusEl.textContent = "Message sent.";
         renderSnapshot(data);
       }} catch (error) {{
@@ -263,7 +325,7 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
     document.getElementById("refreshBtn").addEventListener("click", () => refresh(true));
     document.getElementById("resetBtn").addEventListener("click", async () => {{
       try {{
-        await api(`${{apiBase}}/reset`, "POST", {{}});
+        await api(`${{apiBase}}/reset`, "POST", {{ agent_type: currentAgentType() || null }});
         statusEl.textContent = "Debug session reset.";
         renderSnapshot(null);
       }} catch (error) {{
@@ -271,6 +333,7 @@ def render_agent_debug_page(*, title: str, heading: str, description: str, page_
       }}
     }});
 
+    fillAgentSelect();
     fillPresetSelect();
     setInterval(() => refresh(false), 2000);
     refresh(false);
