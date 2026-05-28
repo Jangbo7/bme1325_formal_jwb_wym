@@ -11,7 +11,7 @@
 说明：
 - 本文描述的是“当前有效架构”，不是历史遗留结构。
 - `scene/.history/`、旧版扁平 JS 文件只视为历史残留，不是主要维护入口。
-- 当前主线 Agent 已扩展为 `triage`、`internal_medicine`、`icu_doctor`，并配有 `patient_agent`、`npc_patient`、`test_simulator`、`multi_patient_debug` 等辅助模块。
+- 当前主线 Agent 已扩展为 `triage`、`internal_medicine`、`icu_doctor`，并配有 `patient_agent`、`npc_patient`、`test_simulator`、`interactive_debug`、`multi_patient_debug`、`department_runtime`、`clinical_policy` 和 `openemr` 集成层等辅助模块。
 - 前端仍以分诊场景为主，但已经能同步展示内科会话、`simulated_report` 和病历卡时间线；没有单独成型的检验科操作页。
 
 ---
@@ -21,7 +21,7 @@
 - 前端使用原生 `HTML + CSS + Canvas + ES Modules`
 - 前端主要承担场景渲染、分诊对话、任务板、病历卡和状态同步
 - 后端使用 `FastAPI + LangGraph(可用) + SQLite Repository + EventBus`
-- 后端已拆出 `triage`、`internal_medicine`、`icu_doctor` 和 `test_simulator` 等模块
+- 后端已拆出 `triage`、`internal_medicine`、`icu_doctor`、`patient_agent`、`npc_patient`、`test_simulator`、`interactive_debug`、`multi_patient_debug`、`department_runtime`、`clinical_policy` 和 `openemr` 等模块
 - 主线业务从“玩家分诊”扩展为“分诊 -> 内科/ICU 诊疗 -> 辅助检查仿真 -> 回诊/后续处理”
 
 ---
@@ -39,7 +39,7 @@
 | 持久化 | SQLite（通过 Repository 层封装） |
 | 事件机制 | 进程内同步 EventBus |
 | 状态控制 | 显式状态机 |
-| LLM 调用 | 仍以配置化 endpoint 为准，triage / internal_medicine / ICU / patient_agent 共用同类请求封装，仓库里同时存在主线与 legacy 直连路径 |
+| LLM 调用 | 仍以配置化 endpoint 为准，triage / internal_medicine / ICU / patient_agent / npc_patient 共用同类请求封装，仓库里同时存在主线与 legacy 直连路径 |
 | 测试 | pytest + 前端模块测试文件 |
 
 ---
@@ -51,22 +51,32 @@
 scene/
   index.html
   main.js
+  constants.js
+  gameLogic.js
+  gameObjects.js
+  render.js
+  utils.js
   styles.css
-  api.private.js
+  main.js
   core/
     bootstrap.js
+    state-debug-panel.js
   agent/
     client.js
     store.js
+    event-subscriber.js
     triage-form.js
     triage-dialogue.js
   queue/
     runtime.js
   npc/
     runtime.js
+    fixed-data.js
+    fixed-runtime.js
   ui/
     task-board.js
     medical-record.js
+    npc-dialogue.js
 ```
 
 ### 4.2 后端主结构
@@ -78,17 +88,39 @@ backend/app/
   api/
     routes/
       health.py
+      hospital_runtime_debug.py
+      department_runtime_debug.py
       patients.py
       queues.py
       triage.py
       internal_medicine.py
       icu.py
       visits.py
+      departments.py
+      encounters.py
+      events.py
+      medical_records.py
+      scene_snapshot.py
+      npc_debug.py
+      multi_patient_debug.py
+      triage_agent_debug.py
+      internal_medicine_agent_debug.py
+      patient_agent_debug.py
+      patient_agent_chat_debug.py
+      openemr.py
   agents/
     triage/
     internal_medicine/
     icu_doctor/
+    patient_agent/
+    npc_patient/
     test_simulator/
+    interactive_debug/
+    multi_patient_debug/
+    department_runtime/
+    clinical_policy/
+  integrations/
+    openemr/
   domain/
     patient/
       state_machine.py
@@ -233,7 +265,7 @@ backend/app/
 ## 6.1 后端总体职责
 后端负责五类事情：
 1. 提供统一 REST API
-2. 维护 triage agent 的运行时与流程状态
+2. 维护 triage / internal_medicine / ICU / patient_agent / NPC / supervisor / runtime projection 的运行时与流程状态
 3. 维护 patient / session / memory / queue 的持久化状态
 4. 用状态机控制流程合法性
 5. 用 EventBus 解耦“分诊完成后的副作用”
@@ -241,27 +273,13 @@ backend/app/
 ## 6.2 后端分层
 
 ### API 层：`backend/app/api/routes/`
-当前对外接口：
-- `POST /api/v1/visits`
-- `GET /api/v1/visits/{visit_id}`
-- `POST /api/v1/visits/{visit_id}/register`
-- `POST /api/v1/visits/{visit_id}/progress`
-- `POST /api/v1/visits/{visit_id}/enter-consultation`
-- `POST /api/v1/visits/{visit_id}/ready-payment`
-- `POST /api/v1/triage-sessions`
-- `POST /api/v1/triage-sessions/{session_id}/messages`
-- `GET /api/v1/triage-sessions/{session_id}`
-- `POST /api/v1/internal-medicine-sessions`
-- `POST /api/v1/internal-medicine-sessions/{session_id}/messages`
-- `GET /api/v1/internal-medicine-sessions/{session_id}`
-- `POST /api/v1/icu-sessions`
-- `POST /api/v1/icu-sessions/{session_id}/messages`
-- `GET /api/v1/icu-sessions/{session_id}`
-- `GET /api/v1/icu-patients`
-- `GET /api/v1/patients`
-- `GET /api/v1/patients/{patient_id}`
-- `GET /api/v1/queues`
-- `GET /api/v1/health`
+当前对外接口分成几类：
+- 核心业务路由：`visits`、`triage`、`internal_medicine`、`icu`、`patients`、`queues`
+- 运行时与投影路由：`scene_snapshot`、`department_runtime`、`hospital_runtime`、`medical_records`
+- 事件与科室路由：`events`、`departments`、`encounters`
+- 调试入口：`npc-debug`、`multi-patient-debug`、`triage-agent-debug`、`internal-medicine-agent-debug`、`patient-agent-debug`、`patient-agent-chat-debug`、`hospital-runtime-debug`、`department-runtime-debug`
+- 集成入口：`openemr`
+- 健康检查：`health`
 
 职责：
 - 请求接收
@@ -273,14 +291,14 @@ backend/app/
 职责：
 - 创建 FastAPI app
 - 初始化数据库
-- 创建 repository / event bus / state machine / triage / internal_medicine / ICU / npc simulator
+- 创建 repository / event bus / state machine / triage / internal_medicine / ICU / patient_agent / npc simulator / hospital supervisor / runtime projector
 - 注册 EventBus subscriber
 - 注入到 app container
 
 这是后端的“composition root”。
 
 ### Agent 层：`backend/app/agents/triage/`
-这是当前系统里最成熟的 Agent 包之一；除此之外还有内科、ICU 和辅助检查仿真模块。
+这是当前系统里最成熟的 Agent 包之一；除此之外还有内科、ICU、patient_agent、npc_patient、调试控制层和辅助检查仿真模块。
 
 分工如下：
 - `graph.py`
@@ -308,10 +326,30 @@ backend/app/
 - 负责高危症状下的 ICU 处理与紧急建议
 - 采用和 triage / internal_medicine 类似的独立会话与状态机模式
 
+### `backend/app/agents/patient_agent/`
+- 负责受控病人 agent 的病例生成、回复、RAG 上下文、prompt 组装与重试
+- 这是当前“可对话病人”的主线实现，不是 legacy NPC runner
+
+### `backend/app/agents/npc_patient/`
+- 负责 legacy 多患者调试中的病人画像、planner 和 runner
+- 主要用于 `legacy_template` 和 `department_mixed` 这类多患者调度模式
+
 ### `backend/app/agents/test_simulator/`
 - 负责把内科问诊结果映射为一级辅助检查分区
 - 生成可展示的仿真报告
 - 这个模块是无状态辅助服务，不承担完整对话流程
+
+### `backend/app/agents/interactive_debug/`
+- 负责共享的调试控制器和预设数据
+
+### `backend/app/agents/multi_patient_debug/`
+- 负责多患者调试页的兼容控制层
+
+### `backend/app/agents/department_runtime/`
+- 负责科室 runtime 的图和服务兼容层
+
+### `backend/app/agents/clinical_policy/`
+- 负责 specialty 卡片、matcher、loader 和运行时策略
 
 ### 领域状态机层：`backend/app/domain/patient/state_machine.py`
 这是全局患者生命周期状态机。
@@ -330,6 +368,14 @@ backend/app/
 - `pediatrics`
 - `emergency`
 - `fever`
+- `obgyn`
+- `ophthalmology`
+- `ent`
+- `dentistry`
+- `dermatology`
+- `psychiatry`
+- `rehabilitation`
+- `pain`
 
 它们现在是轻量模块，不是独立服务。
 
@@ -354,6 +400,10 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
   - 根据 lifecycle state 更新展示态
 - `audit.py`
   - 记录审计日志，包括内科和辅助检查事件
+- `department_runtime.py`
+  - 科室 runtime 投影
+- `openemr_sync.py`
+  - OpenEMR 同步副作用
 
 ### Repository 层：`backend/app/repositories/`
 负责持久化访问。
@@ -373,7 +423,7 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 负责：
 - API request/response schema
 - 枚举状态
-- patient / queue / triage 的公共结构
+- patient / queue / triage / visit / runtime / debug 的公共结构
 
 ---
 
@@ -489,6 +539,9 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
   - 姓名
   - 年龄
   - 性别
+- `medical_records.py`
+- `patient_agent_cases.py`
+- `department_runtime.py`
   - 过敏史
   - 慢病
 - clinical_memory
@@ -670,12 +723,33 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 - LLM API
 - Queue Board
 - NPC Runtime
+    medical_records.py
 
+    patient_agent_cases.py
+  services/
+    hospital_supervisor.py
+    department_runtime_service.py
+    patient_flow_engine.py
+    encounter_orchestration.py
+    scene_snapshot_service.py
+    npc_simulator.py
+    patient_agent_service.py
 ### 13.2 核心边
 - Player -> Triage Form
 - Triage Form -> Visit / Triage API
 - Triage API -> Triage Graph
 - Triage Graph -> Triage Service
+    department_catalog.py
+    department_runtime.py
+    encounter.py
+    hospital_runtime.py
+    multi_patient_debug.py
+    npc_debug.py
+    orchestration.py
+    patient_agent_debug.py
+    patient_flow.py
+    scene_snapshot.py
+    visit.py
 - Triage Service -> Rules
 - Triage Service -> LLM API
 - Triage Service -> Repositories
@@ -701,6 +775,6 @@ EventBus 只负责广播已发生的事实，不负责主业务决策。
 
 如果你只想给模型一句压缩描述，可以直接使用：
 
-> 当前项目是一个基于 FastAPI + SQLite + EventBus + 显式状态机的医院分诊与门诊流程模拟系统，前端使用原生 Canvas/ESM 实现。系统核心从 triage 扩展到 internal_medicine、ICU、patient_agent、NPC 模拟和辅助检查仿真，前端通过 bootstrap 连接分诊对话、内科会话、病历卡和队列展示，后端通过 repository、memory、LLM、事件桥和状态机协作完成 visit、patient、queue 和 simulated_report 的联动。
+> 当前项目是一个基于 FastAPI + SQLite + EventBus + 显式状态机的医院分诊与门诊流程模拟系统，前端使用原生 Canvas/ESM 实现。系统核心从 triage 扩展到 internal_medicine、ICU、patient_agent、npc_patient、辅助检查仿真、多患者调度和 OpenEMR 集成；前端通过 bootstrap 连接分诊对话、内科会话、病历卡、队列和调试页，后端通过 repository、memory、LLM、事件桥、supervisor 和状态机协作完成 visit、patient、queue、simulated_report 与 runtime 投影的联动。
 
 这是一套可持续扩展的基础架构。

@@ -743,6 +743,9 @@ class DepartmentAgentRuntime:
         elif red_flags:
             stage = "red_flag_screening"
             next_action = "escalate_urgency"
+        elif assistant_payload.get("message_type") == "followup":
+            stage = "history_taking" if chief_complaint else "chief_complaint_clarification"
+            next_action = "ask_follow_up"
         elif missing_fields:
             stage = "history_taking" if chief_complaint else "chief_complaint_clarification"
             next_action = "ask_follow_up"

@@ -203,7 +203,7 @@ class FakePolicyService(DepartmentAgentRuntime):
         graph = DepartmentAgentGraph(service=None, dialogue_state_machine=dialogue_state_machine, config=config)
         super().__init__(
             config=config,
-            llm_settings={},
+            llm_settings={"api_key": "fake-key", "endpoint": "http://unit.test", "model": "fake-model"},
             patient_repo=DummyPatientRepo(),
             session_repo=DummySessionRepo(),
             memory_repo=DummyMemoryRepo(),
@@ -247,6 +247,29 @@ class FakePolicyService(DepartmentAgentRuntime):
         private_memory.setdefault(self.config.progress_memory_key, {})
         private_memory.setdefault("final_result", {})
         private_memory.setdefault("consultation_round", 1)
+
+    def request_consultation_from_llm(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        historical_records_template: dict | None = None,
+        previous_final_result: dict | None = None,
+        post_final_reassessment: bool = False,
+        policy_runtime_context=None,
+    ) -> dict | None:
+        self.counters["request_consultation_from_llm"] += 1
+        self.build_consultation_llm_messages(
+            payload,
+            shared_memory,
+            missing_fields,
+            historical_records_template=historical_records_template,
+            previous_final_result=previous_final_result,
+            post_final_reassessment=post_final_reassessment,
+            policy_runtime_context=policy_runtime_context,
+        )
+        return None
 
 
 def build_fake_policy_registry() -> ClinicalPolicyRegistry:
@@ -500,6 +523,7 @@ def test_department_agent_runtime_policy_hooks_are_used():
         "policy_prompt_adapter": 0,
         "policy_validator": 0,
         "policy_fallback_builder": 0,
+        "request_consultation_from_llm": 0,
     }
     service = FakePolicyService(counters)
     service.create_session(
@@ -526,6 +550,7 @@ def test_department_agent_runtime_policy_hooks_are_used():
     assert counters["policy_phase_selector"] >= 2
     assert counters["policy_prompt_adapter"] >= 1
     assert counters["policy_validator"] >= 2
+    assert counters["request_consultation_from_llm"] == 1
     assert counters["build_system_prompt"] == 1
     assert counters["build_user_prompt"] == 1
     session_memory = service.memory_repo.get_agent_session_memory("fake-session-1", "patient-1", agent_type="fake_department")

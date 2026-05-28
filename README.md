@@ -1,7 +1,7 @@
 # Hospital Agent Simulation
 
 ## Overview
-This project is a hospital workflow simulation with a modular backend and a browser-based scene frontend.
+This project is a hospital workflow simulation with a modular backend, a browser-based scene frontend, and multiple runtime/debug layers for triage, doctor dialogues, NPCs, and multi-patient scheduling.
 
 ## Workflow Diagram
 
@@ -139,12 +139,26 @@ Current Phase 1 baseline:
 - `backend/app/agents/triage/`: triage agent graph, state, prompts, rules, service
 - `backend/app/agents/internal_medicine/`: outpatient internal medicine agent
 - `backend/app/agents/icu_doctor/`: ICU consultation agent
+- `backend/app/agents/patient_agent/`: controlled simulated patient agent
+- `backend/app/agents/npc_patient/`: legacy NPC patient profile, planner, and runner
 - `backend/app/agents/test_simulator/`: auxiliary test simulation service
+- `backend/app/agents/interactive_debug/`: shared debug controllers and presets
+- `backend/app/agents/multi_patient_debug/`: multi-patient debug compatibility wrapper
+- `backend/app/agents/department_runtime/`: department runtime compatibility package
+- `backend/app/agents/clinical_policy/`: specialty policy/routing cards and loader
 - `backend/app/domain/patient/`: patient lifecycle state machine
 - `backend/app/domain/visit/`: visit lifecycle state machine
 - `backend/app/events/`: EventBus and subscribers
 - `backend/app/repositories/`: persistence layer
+- `backend/app/services/`: orchestration services, schedulers, flow engine, and projections
 - `backend/app/services/npc_simulator.py`: background simulated patient loop
+- `backend/app/services/hospital_supervisor.py`: multi-patient supervisor used by debug modes
+- `backend/app/services/patient_flow_engine.py`: flow decision and execution engine
+- `backend/app/services/department_runtime_service.py`: department runtime projection service
+- `backend/app/services/patient_agent_service.py`: controlled patient agent service
+- `backend/app/services/encounter_orchestration.py`: encounter coordination helpers
+- `backend/app/services/scene_snapshot_service.py`: scene/runtime snapshot builder
+- `backend/app/integrations/openemr/`: OpenEMR adapter layer
 - `scene/`: browser scene and interaction modules
 - `docs/AGENT_DEVELOPMENT_README.md`: how collaborators should add a new agent
 
@@ -158,18 +172,20 @@ python server.py
 Backend default URL:
 - `http://127.0.0.1:8787`
 
-## Backend npc debug
+## Backend debug entrypoints
 one agent debug:
 - http://127.0.0.1:8787/npc-debug 
 
-muti agent debug:
+multi agent debug:
 - http://127.0.0.1:8787/multi-patient-debug
 
-three agents debug:
+agent dialogue debug:
 
 - http://127.0.0.1:8787/triage-agent-debug
 - http://127.0.0.1:8787/internal-medicine-agent-debug
+- http://127.0.0.1:8787/patient-agent-debug
 - http://127.0.0.1:8787/patient-agent-chat-debug
+- http://127.0.0.1:8787/hospital-runtime-debug
 - http://127.0.0.1:8787/department-runtime-debug
 
 

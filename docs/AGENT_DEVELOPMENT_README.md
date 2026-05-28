@@ -24,6 +24,17 @@ This guide describes how a collaborator should add a new independent agent featu
      - `rules.py`
      - `service.py`
    - For non-interactive simulators, a service-only package is acceptable if the feature does not need its own graph.
+    - Current repository packages that already follow this split include:
+       - `triage/`
+       - `internal_medicine/`
+       - `icu_doctor/`
+       - `patient_agent/`
+       - `npc_patient/`
+       - `test_simulator/`
+       - `interactive_debug/`
+       - `multi_patient_debug/`
+       - `department_runtime/`
+       - `clinical_policy/`
 
 4. Separate memory correctly.
    - Shared patient facts go to shared memory.
