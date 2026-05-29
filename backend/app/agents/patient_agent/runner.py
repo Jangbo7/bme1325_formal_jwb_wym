@@ -117,11 +117,6 @@ class PatientAgentDebugRunner:
         dispatch[planned.action](state, planned)
         state.step_count += 1
         self._sync_state(state, preserve_dialogue=preserve_dialogue)
-        if state.visit_state == VisitLifecycleState.WAITING_PAYMENT.value:
-            state.finished = True
-            state.phase = "finished"
-            state.status = "finished"
-            state.clear_dialogue()
         return state
 
     def _build_context(self, state: PatientAgentDebugState) -> NpcPlanningContext:
@@ -461,6 +456,9 @@ class PatientAgentDebugRunner:
                 )
             state.phase = "internal_medicine_round2"
             state.status = VisitLifecycleState.IN_SECOND_CONSULTATION.value
+        elif event in {"pay_medical", "plan_disposition", "choose_pharmacy", "choose_outpatient_treatment", "complete_visit"}:
+            state.phase = self._phase_for_visit_state(self.visit_repo.get(state.encounter_id).get("state") if self.visit_repo.get(state.encounter_id) else state.visit_state)
+            state.status = event
         else:
             state.phase = "testing"
             state.status = event
@@ -636,8 +634,8 @@ class PatientAgentDebugRunner:
             return "testing"
         if visit_state == "in_second_consultation":
             return "internal_medicine_round2"
-        if visit_state == "waiting_payment":
-            return "finished"
+        if visit_state in {"waiting_payment", "medical_payment_completed", "waiting_pharmacy"}:
+            return "payment"
         return "system"
 
     def _assigned_department(self, visit_row: dict) -> dict:

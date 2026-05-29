@@ -17,6 +17,13 @@ class MultiPatientDebugStartRequest(BaseModel):
     max_active_patients: int | None = 20
 
 
+class MultiPatientDebugUpdateRequest(BaseModel):
+    mode: MultiPatientMode | None = None
+    spawn_interval_seconds: float | None = None
+    step_interval_seconds: float | None = None
+    max_active_patients: int | None = None
+
+
 class MultiPatientDebugPatientSnapshot(BaseModel):
     npc_id: str
     mode: MultiPatientMode

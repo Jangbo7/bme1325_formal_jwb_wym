@@ -154,6 +154,42 @@ export function createBackendClient({ baseUrl, apiKey }) {
     listQueues() {
       return request("/api/v1/queues", { method: "GET" });
     },
+    listDepartments() {
+      return request("/api/v1/departments", { method: "GET" });
+    },
+    getMedicalRecordTimeline(visitId) {
+      return request(`/api/v1/medical-records/visit/${visitId}`, { method: "GET" });
+    },
+    getHospitalRuntimeSnapshot() {
+      return request("/api/v1/hospital-runtime/snapshot", { method: "GET" });
+    },
+    startHospitalRuntime(payload) {
+      return request("/api/v1/hospital-runtime-debug/start", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    stopHospitalRuntime() {
+      return request("/api/v1/hospital-runtime-debug/stop", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    },
+    updateHospitalRuntimeConfig(payload) {
+      return request("/api/v1/hospital-runtime-debug/update-config", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    resetHospitalRuntime() {
+      return request("/api/v1/hospital-runtime-debug/reset", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    },
+    getDepartmentRuntimeSnapshot() {
+      return request("/api/v1/department-runtime-debug/snapshot", { method: "GET" });
+    },
     createTriageSession(payload) {
       return request("/api/v1/triage-sessions", {
         method: "POST",
@@ -181,11 +217,32 @@ export function createBackendClient({ baseUrl, apiKey }) {
     getInternalMedicineSession(sessionId) {
       return request(`/api/v1/internal-medicine-sessions/${sessionId}`, { method: "GET" });
     },
+    createIcuSession(payload) {
+      return request("/api/v1/icu-sessions", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    sendIcuMessage(sessionId, payload) {
+      return request(`/api/v1/icu-sessions/${sessionId}/messages`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    getIcuSession(sessionId) {
+      return request(`/api/v1/icu-sessions/${sessionId}`, { method: "GET" });
+    },
+    listIcuPatients() {
+      return request("/api/v1/icu-patients", { method: "GET" });
+    },
     getSimulatedReport(visitId) {
       return request(`/api/v1/visits/${visitId}/simulated-report`, { method: "GET" });
     },
     completeAuxiliaryTest(visitId) {
       return request(`/api/v1/visits/${visitId}/complete-auxiliary-test`, { method: "POST" });
+    },
+    getOpenEmrHealth() {
+      return request("/api/v1/openemr/health", { method: "GET" });
     },
   };
 }

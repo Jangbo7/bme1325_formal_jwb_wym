@@ -16,9 +16,13 @@
         <button type="button" class="hud__btn" id="hudRestartBtn">Restart</button>
         <button type="button" class="hud__btn" id="hudResumeBtn">Resume</button>
         <button type="button" class="hud__btn" id="hudHelpToggle" aria-expanded="false" aria-controls="hudHelpPanel">Help</button>
+        <button type="button" class="hud__btn" id="hudRuntimeToggle" aria-pressed="false">Runtime</button>
         <button type="button" class="hud__btn" id="hudTasksToggle" aria-pressed="false">Tasks</button>
         <button type="button" class="hud__btn" id="hudLabelsToggle" aria-pressed="false">Labels</button>
         <button type="button" class="hud__btn" id="hudDebugToggle" aria-pressed="false">Debug</button>
+        <button type="button" class="hud__btn is-active" id="hudQueueToggle" aria-pressed="true">Queue</button>
+        <button type="button" class="hud__btn is-active" id="hudPatientsToggle" aria-pressed="true">Patients</button>
+        <button type="button" class="hud__btn" id="hudRuntimeStatsToggle" aria-pressed="false">Stats</button>
       </div>
     </div>
     <div class="hud__panel hidden" id="hudHelpPanel">
@@ -34,6 +38,42 @@
         <button type="button" class="hud__btn hud__btn--route" data-route-target="ward">To Ward</button>
         <button type="button" class="hud__btn hud__btn--route" data-route-target="hall">To Hall</button>
       </div>
+    </div>
+    <div class="hud__panel hidden hud__runtime-panel" id="hudRuntimePanel">
+      <div class="hud__panel-title hud__panel-title--drag" id="hudRuntimeDragHandle">Hospital Runtime</div>
+      <div class="hud__runtime-controls">
+        <label class="hud__runtime-field">
+          <span>Mode</span>
+          <select id="hudRuntimeMode">
+            <option value="intelligent_agent">intelligent_agent</option>
+            <option value="department_mixed">department_mixed</option>
+            <option value="legacy_template">legacy_template</option>
+          </select>
+        </label>
+        <label class="hud__runtime-field">
+          <span>Spawn(s)</span>
+          <input id="hudRuntimeSpawn" type="number" min="0" step="0.5" value="1.5" />
+        </label>
+        <label class="hud__runtime-field">
+          <span>Step(s)</span>
+          <input id="hudRuntimeStep" type="number" min="0.1" step="0.5" value="2" />
+        </label>
+        <label class="hud__runtime-field">
+          <span>Max</span>
+          <input id="hudRuntimeMax" type="number" min="1" step="1" value="200" />
+        </label>
+      </div>
+      <div class="hud__runtime-buttons">
+        <button type="button" class="hud__btn" id="hudRuntimeStartBtn">Start Runtime</button>
+        <button type="button" class="hud__btn" id="hudRuntimeApplyBtn">Apply Config</button>
+        <button type="button" class="hud__btn" id="hudRuntimeStopBtn">Stop Runtime</button>
+        <button type="button" class="hud__btn" id="hudRuntimeResetBtn">Reset Runtime</button>
+      </div>
+      <div class="hud__tips" id="hudRuntimeStatus">Runtime status unknown.</div>
+    </div>
+    <div class="hud__panel hidden hud__runtime-panel" id="hudRuntimeStatsPanel">
+      <div class="hud__panel-title hud__panel-title--drag" id="hudRuntimeStatsDragHandle">Runtime Stats</div>
+      <div class="hud__runtime-stats" id="hudRuntimeStatsContent">No runtime stats yet.</div>
     </div>
     <div class="hud__floor">
       <span id="floor-state">Current Zone: Main Campus</span>
@@ -200,6 +240,27 @@
       </div>
       <div id="testReportItems" class="test-report__items">Items: -</div>
       <pre id="testReportBody" class="test-report__body">No report available.</pre>
+    </div>
+  </div>
+
+  <div id="pharmacyPickupModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content triage-dialogue test-report" role="dialog" aria-modal="true" aria-labelledby="pharmacyPickupTitle">
+      <div class="triage-dialogue__header">
+        <div>
+          <h2 id="pharmacyPickupTitle">Medication Pickup</h2>
+          <p id="pharmacyPickupStatus" class="triage-dialogue__status">Review the medication list before pickup.</p>
+        </div>
+        <button type="button" id="pharmacyPickupCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+      <div class="triage-dialogue__meta">
+        <span id="pharmacyPickupVisitBadge" class="triage-badge">Visit: -</span>
+        <span id="pharmacyPickupStepBadge" class="triage-badge triage-badge--muted">Step: review</span>
+      </div>
+      <div id="pharmacyPickupItems" class="test-report__items">Items: -</div>
+      <pre id="pharmacyPickupBody" class="test-report__body">No medication list available.</pre>
+      <div class="triage-form__actions">
+        <button type="button" id="pharmacyPickupConfirmBtn" class="triage-btn triage-btn--primary">Confirm Pickup</button>
+      </div>
     </div>
   </div>
 

@@ -100,24 +100,28 @@ class HospitalSupervisor:
         with self._lock:
             if self._running:
                 raise RuntimeError("multi patient debug already running")
+            existing_slots = bool(self._slots)
             self._running = True
             self._mode = mode
             self._spawn_interval_seconds = max(0.0, float(spawn_interval_seconds))
             self._step_interval_seconds = max(0.1, float(step_interval_seconds))
             resolved_max = 20 if max_active_patients is None else int(max_active_patients)
             self._max_active_patients = max(1, resolved_max)
-            self._slots = []
-            self._spawned_by_department = {}
-            self._round_robin_index = 0
-            self._total_spawned = 0
-            self._dispatch_count = 0
-            self._blocked_count = 0
             self._last_error = None
-            self._last_spawn_at = None
-            self._last_tick_at = None
-            self._next_spawn_at = now_utc()
-            if self._department_runtime_service:
-                self._department_runtime_service.clear_all()
+            now = now_utc()
+            if existing_slots:
+                if self._next_spawn_at is None or self._next_spawn_at < now:
+                    self._next_spawn_at = now + timedelta(seconds=self._spawn_interval_seconds)
+            else:
+                self._slots = []
+                self._spawned_by_department = {}
+                self._round_robin_index = 0
+                self._total_spawned = 0
+                self._dispatch_count = 0
+                self._blocked_count = 0
+                self._last_spawn_at = None
+                self._last_tick_at = None
+                self._next_spawn_at = now
         self._ensure_thread_running()
         return self.get_snapshot()
 
@@ -125,6 +129,40 @@ class HospitalSupervisor:
         with self._lock:
             self._running = False
         self._stop_background_thread()
+        return self.get_snapshot()
+
+    def update_config(
+        self,
+        *,
+        mode: MultiPatientMode | None = None,
+        spawn_interval_seconds: float | None = None,
+        step_interval_seconds: float | None = None,
+        max_active_patients: int | None = None,
+    ) -> MultiPatientDebugSnapshot:
+        with self._lock:
+            running = self._running
+            if mode is not None:
+                self._mode = mode
+            if spawn_interval_seconds is not None:
+                self._spawn_interval_seconds = max(0.0, float(spawn_interval_seconds))
+            if step_interval_seconds is not None:
+                self._step_interval_seconds = max(0.1, float(step_interval_seconds))
+            if max_active_patients is not None:
+                self._max_active_patients = max(1, int(max_active_patients))
+            if running:
+                self._next_spawn_at = now_utc()
+            else:
+                self._slots = []
+                self._spawned_by_department = {}
+                self._round_robin_index = 0
+                self._total_spawned = 0
+                self._dispatch_count = 0
+                self._blocked_count = 0
+                self._last_spawn_at = None
+                self._last_tick_at = None
+                self._next_spawn_at = None
+                if self._department_runtime_service:
+                    self._department_runtime_service.clear_all()
         return self.get_snapshot()
 
     def reset(self) -> MultiPatientDebugSnapshot:
@@ -145,7 +183,7 @@ class HospitalSupervisor:
 
     def get_snapshot(self) -> MultiPatientDebugSnapshot:
         with self._lock:
-            patients = [self._to_patient_snapshot(slot) for slot in self._slots]
+            patients = [self._to_patient_snapshot(slot) for slot in self._slots if not slot.state.finished]
             active_count = sum(1 for slot in self._slots if not slot.state.finished)
             active_by_department: dict[str, int] = {}
             for slot in self._slots:
@@ -205,7 +243,11 @@ class HospitalSupervisor:
         self._thread.start()
 
     def _run_loop(self) -> None:
-        while not self._stop_event.wait(0.5):
+        while True:
+            with self._lock:
+                sleep_seconds = max(0.05, min(0.5, float(self._step_interval_seconds) * 0.5))
+            if self._stop_event.wait(sleep_seconds):
+                break
             try:
                 self.tick_once()
             except Exception:
@@ -234,46 +276,43 @@ class HospitalSupervisor:
         now = now_utc()
         target_department_id = self._next_department_for_spawn()
         if self._mode == "legacy_template":
-            profile_pool = list_profiles(target_department_id) or list_profiles()
-            profile = random.choice(profile_pool)
-            state = self._legacy_runner.spawn(profile)
-            state.npc_id = npc_id
-            slot = _PatientSlot(
-                npc_id=npc_id,
-                mode="legacy_template",
-                state=state,
-                profile=profile,
-                next_step_at=now + timedelta(seconds=self._step_interval_seconds),
-            )
-            self._assign_slot_department(slot, profile.target_department_id, profile.target_department_name)
-            return slot
+            return self._spawn_legacy_slot(npc_id, now, target_department_id)
 
         if self._mode == "department_mixed" and target_department_id != "internal":
-            profile_pool = list_profiles(target_department_id) or list_profiles()
-            profile = random.choice(profile_pool)
-            state = self._legacy_runner.spawn(profile)
+            return self._spawn_legacy_slot(npc_id, now, target_department_id)
+
+        try:
+            state = self._intelligent_runner.spawn(seed=f"{npc_id}-{target_department_id}-{random.randint(1000, 9999)}")
             state.npc_id = npc_id
+            assigned_department_name = self._department_name(target_department_id)
             slot = _PatientSlot(
                 npc_id=npc_id,
-                mode="legacy_template",
+                mode="intelligent_agent",
                 state=state,
-                profile=profile,
+                profile=None,
                 next_step_at=now + timedelta(seconds=self._step_interval_seconds),
             )
-            self._assign_slot_department(slot, profile.target_department_id, profile.target_department_name)
+            self._assign_slot_department(slot, target_department_id, assigned_department_name)
             return slot
+        except ContractError as exc:
+            if exc.code in {"LLM_UNAVAILABLE", "LLM_REQUEST_FAILED", "LLM_RESPONSE_INVALID"}:
+                self._last_error = f"intelligent_agent fallback -> legacy_template ({exc.code})"
+                return self._spawn_legacy_slot(npc_id, now, target_department_id)
+            raise
 
-        state = self._intelligent_runner.spawn(seed=f"{npc_id}-{target_department_id}-{random.randint(1000, 9999)}")
+    def _spawn_legacy_slot(self, npc_id: str, now: datetime, target_department_id: str) -> _PatientSlot:
+        profile_pool = list_profiles(target_department_id) or list_profiles()
+        profile = random.choice(profile_pool)
+        state = self._legacy_runner.spawn(profile)
         state.npc_id = npc_id
-        assigned_department_name = self._department_name(target_department_id)
         slot = _PatientSlot(
             npc_id=npc_id,
-            mode="intelligent_agent",
+            mode="legacy_template",
             state=state,
-            profile=None,
+            profile=profile,
             next_step_at=now + timedelta(seconds=self._step_interval_seconds),
         )
-        self._assign_slot_department(slot, target_department_id, assigned_department_name)
+        self._assign_slot_department(slot, profile.target_department_id, profile.target_department_name)
         return slot
 
     def _step_due_patients(self) -> None:
@@ -299,6 +338,7 @@ class HospitalSupervisor:
                 slot.state.finished = True
                 self._last_error = self._format_exception(exc)
             self._sync_runtime_for_slot(slot)
+        self._slots = [slot for slot in self._slots if not slot.state.finished]
 
     def _decide_and_step(self, slot: _PatientSlot, dispatch_budget: dict[str, int], now: datetime) -> str | None:
         if slot.mode == "legacy_template":

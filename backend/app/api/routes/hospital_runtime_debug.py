@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from app.schemas.multi_patient_debug import MultiPatientDebugStartRequest
+from app.schemas.multi_patient_debug import MultiPatientDebugStartRequest, MultiPatientDebugUpdateRequest
 
 
 router = APIRouter()
@@ -116,6 +116,20 @@ def start_hospital_runtime_debug(body: MultiPatientDebugStartRequest, request: R
 @router.post("/api/v1/hospital-runtime-debug/stop")
 def stop_hospital_runtime_debug(request: Request):
     snapshot = _controller(request).stop()
+    data = _runtime_service(request).build_hospital_runtime_snapshot(snapshot)
+    return {"ok": True, "data": data.model_dump()}
+
+
+@router.post("/api/v1/hospital-runtime-debug/update-config")
+def update_hospital_runtime_debug_config(body: MultiPatientDebugUpdateRequest, request: Request):
+    if body.max_active_patients is not None and body.max_active_patients < 1:
+        raise HTTPException(status_code=422, detail="max_active_patients must be >= 1")
+    snapshot = _controller(request).update_config(
+        mode=body.mode,
+        spawn_interval_seconds=body.spawn_interval_seconds,
+        step_interval_seconds=body.step_interval_seconds,
+        max_active_patients=body.max_active_patients,
+    )
     data = _runtime_service(request).build_hospital_runtime_snapshot(snapshot)
     return {"ok": True, "data": data.model_dump()}
 

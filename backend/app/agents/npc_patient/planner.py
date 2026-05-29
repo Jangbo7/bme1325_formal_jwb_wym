@@ -11,6 +11,12 @@ TRIGGER_EVENT_BY_VISIT_STATE = {
     "waiting_return_consultation": "results_ready",
     "results_ready": "queue_second_consultation",
     "waiting_second_consultation": "start_second_consultation",
+    "in_second_consultation": "finalize_diagnosis",
+    "diagnosis_finalized": "request_medical_payment",
+    "waiting_payment": "pay_medical",
+    "medical_payment_completed": "plan_disposition",
+    "disposition_pending": "choose_pharmacy",
+    "waiting_pharmacy": "complete_visit",
 }
 
 
@@ -32,9 +38,6 @@ class NpcPlanningContext:
 
 def plan_next_action(context: NpcPlanningContext) -> PlannedNpcAction:
     visit_state = context.visit_state
-
-    if visit_state == "waiting_payment":
-        return PlannedNpcAction("finished")
 
     if not context.encounter_id:
         return PlannedNpcAction("create_encounter")
@@ -65,14 +68,5 @@ def plan_next_action(context: NpcPlanningContext) -> PlannedNpcAction:
 
     if visit_state in TRIGGER_EVENT_BY_VISIT_STATE:
         return PlannedNpcAction("trigger_encounter_event", {"event": TRIGGER_EVENT_BY_VISIT_STATE[visit_state]})
-
-    if visit_state == "in_second_consultation":
-        if not context.internal_medicine_round2_state:
-            return PlannedNpcAction("create_internal_medicine_session", {"round": 2})
-        if context.internal_medicine_round2_state != "completed":
-            return PlannedNpcAction("reply_internal_medicine", {"round": 2})
-
-    if visit_state == "waiting_payment":
-        return PlannedNpcAction("finished")
 
     return PlannedNpcAction("idle")
