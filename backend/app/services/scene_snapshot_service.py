@@ -14,6 +14,11 @@ from app.schemas.scene_snapshot import (
     SceneTimers,
     SceneUiFlags,
 )
+from app.services.consultation_registry import (
+    get_consultation_agent_by_type,
+    is_second_consultation_flow,
+    resolve_consultation_agent_for_visit,
+)
 
 
 def now_iso() -> str:
@@ -87,23 +92,15 @@ class SceneSnapshotService:
         agent_type = patient_view.dialogue_source_agent or patient_view.active_agent_type or "triage"
         session_refs = patient_view.session_refs or {}
         visit_state = patient_view.visit_state.value if patient_view and patient_view.visit_state else None
-        is_second_consultation_flow = visit_state in {
-            VisitLifecycleState.IN_SECOND_CONSULTATION.value,
-            VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
-            VisitLifecycleState.WAITING_PAYMENT.value,
-            VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
-            VisitLifecycleState.DISPOSITION_PENDING.value,
-            VisitLifecycleState.WAITING_PHARMACY.value,
-            VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
-            VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
-            VisitLifecycleState.DISPOSITION_REFERRAL.value,
-        }
-        if agent_type == "internal_medicine":
-            session_id = (
-                session_refs.get("internal_medicine_round2_session_id")
-                if is_second_consultation_flow
-                else session_refs.get("internal_medicine_session_id")
-            ) or patient_view.session_id
+        second_consultation_flow = is_second_consultation_flow(visit_state)
+        consultation_definition = get_consultation_agent_by_type(agent_type)
+        if consultation_definition is not None:
+            session_key = (
+                consultation_definition.round2_session_ref_key
+                if second_consultation_flow and consultation_definition.round2_session_ref_key
+                else consultation_definition.session_ref_key
+            )
+            session_id = session_refs.get(session_key) or patient_view.session_id
         else:
             session_id = session_refs.get("triage_session_id") or patient_view.session_id
 
@@ -156,6 +153,11 @@ class SceneSnapshotService:
         patient_state = patient_view.lifecycle_state.value if patient_view and patient_view.lifecycle_state else None
         queue_status = patient_view.queue_ticket.status if patient_view and patient_view.queue_ticket else None
         active_dialogue_agent = active_dialogue.agent_type if active_dialogue else None
+        consultation_definition = resolve_consultation_agent_for_visit(
+            visit_view.model_dump() if hasattr(visit_view, "model_dump") else visit_view,
+            patient_view.model_dump() if hasattr(patient_view, "model_dump") else patient_view,
+        )
+        consultation_agent_type = consultation_definition.agent_type if consultation_definition else None
         can_chat_with_doctor = visit_state in {
             VisitLifecycleState.IN_CONSULTATION.value,
             VisitLifecycleState.IN_SECOND_CONSULTATION.value,
@@ -178,6 +180,9 @@ class SceneSnapshotService:
                 and visit_state == VisitLifecycleState.WAITING_CONSULTATION.value
                 and queue_status == "called"
             ),
+            consultation_agent_type=consultation_agent_type,
+            can_start_consultation=can_chat_with_doctor and active_dialogue_agent != consultation_agent_type,
+            can_continue_consultation=can_chat_with_doctor and active_dialogue_agent == consultation_agent_type,
             can_start_internal_medicine=can_chat_with_doctor and active_dialogue_agent != "internal_medicine",
             can_continue_internal_medicine=can_chat_with_doctor and active_dialogue_agent == "internal_medicine",
             can_view_test_report=latest_test_report is not None,

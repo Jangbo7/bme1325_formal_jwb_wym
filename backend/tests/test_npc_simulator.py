@@ -141,3 +141,50 @@ def test_queue_view_exposes_patient_name_for_simulated_patients(tmp_path):
 
     assert npc_ticket.patient_name is not None
     assert npc_ticket.patient_name.startswith("NPC ")
+
+
+def test_simulator_creates_surgery_session_for_surgery_patient(tmp_path):
+    db = Database(f"sqlite:///{tmp_path / 'npc_surgery_session.db'}")
+    db.init_schema()
+
+    patient_repo = PatientRepository(db)
+    queue_repo = QueueRepository(db)
+    visit_repo = VisitRepository(db)
+    session_repo = SessionRepository(db)
+    bus = EventBus()
+
+    simulator = build_simulator(
+        patient_repo=patient_repo,
+        visit_repo=visit_repo,
+        queue_repo=queue_repo,
+        session_repo=session_repo,
+        bus=bus,
+        spawn_interval_seconds=0,
+        queue_wait_seconds=0,
+        consult_seconds=999,
+        max_active_patients=1,
+    )
+    simulator.archetypes = [
+        {
+            "id": "wound_case",
+            "display_name": "Wound Case",
+            "age": 34,
+            "symptom_tags": ["wound", "cut"],
+            "target_department": "Surgery",
+            "priority": "M",
+            "triage_level": 4,
+        }
+    ]
+
+    for _ in range(4):
+        simulator.tick()
+
+    patient_row = next(row for row in patient_repo.list() if row["id"].startswith(SIMULATED_PATIENT_ID_PREFIX))
+    visit_row = visit_repo.get(patient_row["visit_id"])
+    assert visit_row is not None
+    assert visit_row["assigned_department_id"] == "surgery"
+    assert visit_row["active_agent_type"] == "surgery"
+
+    surgery_session = session_repo.get_latest_by_visit_and_agent(visit_row["id"], "surgery")
+    assert surgery_session is not None
+    assert session_repo.get_latest_by_visit_and_agent(visit_row["id"], "internal_medicine") is None

@@ -37,6 +37,8 @@ StateLike = NpcPatientDebugState | PatientAgentDebugState
 class _PatientSlot:
     npc_id: str
     mode: MultiPatientMode
+    llm_mode: str
+    llm_sampled_probability: float | None
     state: StateLike
     profile: NpcPatientProfile | None
     next_step_at: datetime
@@ -66,6 +68,7 @@ class HospitalSupervisor:
         self._spawn_interval_seconds = 5.0
         self._step_interval_seconds = 2.0
         self._max_active_patients = 20
+        self._llm_probability: float | None = None
 
         self._next_spawn_at: datetime | None = None
         self._last_spawn_at: str | None = None
@@ -96,6 +99,7 @@ class HospitalSupervisor:
         spawn_interval_seconds: float,
         step_interval_seconds: float,
         max_active_patients: int | None,
+        llm_probability: float | None = None,
     ) -> MultiPatientDebugSnapshot:
         with self._lock:
             if self._running:
@@ -106,6 +110,7 @@ class HospitalSupervisor:
             self._step_interval_seconds = max(0.1, float(step_interval_seconds))
             resolved_max = 20 if max_active_patients is None else int(max_active_patients)
             self._max_active_patients = max(1, resolved_max)
+            self._llm_probability = llm_probability
             self._slots = []
             self._spawned_by_department = {}
             self._round_robin_index = 0
@@ -139,6 +144,7 @@ class HospitalSupervisor:
             self._last_spawn_at = None
             self._last_tick_at = None
             self._next_spawn_at = None
+            self._llm_probability = None
             if self._department_runtime_service:
                 self._department_runtime_service.clear_all()
         return self.get_snapshot()
@@ -158,6 +164,7 @@ class HospitalSupervisor:
                 spawn_interval_seconds=self._spawn_interval_seconds,
                 step_interval_seconds=self._step_interval_seconds,
                 max_active_patients=self._max_active_patients,
+                llm_probability=self._llm_probability,
                 total_spawned=self._total_spawned,
                 active_count=active_count,
                 last_spawn_at=self._last_spawn_at,
@@ -234,6 +241,7 @@ class HospitalSupervisor:
         now = now_utc()
         target_department_id = self._next_department_for_spawn()
         if self._mode == "legacy_template":
+            llm_mode = "offline"
             profile_pool = list_profiles(target_department_id) or list_profiles()
             profile = random.choice(profile_pool)
             state = self._legacy_runner.spawn(profile)
@@ -241,6 +249,27 @@ class HospitalSupervisor:
             slot = _PatientSlot(
                 npc_id=npc_id,
                 mode="legacy_template",
+                llm_mode=llm_mode,
+                llm_sampled_probability=None,
+                state=state,
+                profile=profile,
+                next_step_at=now + timedelta(seconds=self._step_interval_seconds),
+            )
+            self._assign_slot_department(slot, profile.target_department_id, profile.target_department_name)
+            return slot
+
+        if self._mode == "legacy_probabilistic_llm":
+            sampled_probability = float(self._llm_probability or 0.0)
+            llm_mode = "online" if random.random() < sampled_probability else "offline"
+            profile_pool = list_profiles(target_department_id) or list_profiles()
+            profile = random.choice(profile_pool)
+            state = self._legacy_runner.spawn(profile)
+            state.npc_id = npc_id
+            slot = _PatientSlot(
+                npc_id=npc_id,
+                mode="legacy_probabilistic_llm",
+                llm_mode=llm_mode,
+                llm_sampled_probability=sampled_probability,
                 state=state,
                 profile=profile,
                 next_step_at=now + timedelta(seconds=self._step_interval_seconds),
@@ -256,6 +285,8 @@ class HospitalSupervisor:
             slot = _PatientSlot(
                 npc_id=npc_id,
                 mode="legacy_template",
+                llm_mode="online",
+                llm_sampled_probability=None,
                 state=state,
                 profile=profile,
                 next_step_at=now + timedelta(seconds=self._step_interval_seconds),
@@ -269,6 +300,8 @@ class HospitalSupervisor:
         slot = _PatientSlot(
             npc_id=npc_id,
             mode="intelligent_agent",
+            llm_mode="online",
+            llm_sampled_probability=None,
             state=state,
             profile=None,
             next_step_at=now + timedelta(seconds=self._step_interval_seconds),
@@ -335,6 +368,7 @@ class HospitalSupervisor:
                 profile=slot.profile,
                 planned=planned,
                 decision=decision,
+                force_offline_llm=slot.llm_mode == "offline",
             )
         else:
             result = self._flow_executor.execute_intelligent(
@@ -375,6 +409,8 @@ class HospitalSupervisor:
         return MultiPatientDebugPatientSnapshot(
             npc_id=slot.npc_id,
             mode=slot.mode,
+            llm_mode=slot.llm_mode,
+            llm_probability=slot.llm_sampled_probability,
             profile_id=profile_id,
             patient_id=slot.state.patient_id,
             encounter_id=slot.state.encounter_id,

@@ -215,6 +215,7 @@ class DepartmentAgentRuntime:
         clinical["risk_flags"] = self.config.derive_risk_flags(clinical.get("symptoms") or [], clinical.get("vitals") or {})
 
         self.configure_private_memory_defaults(private_memory, payload)
+        private_memory["force_offline_llm"] = bool(payload.get("_force_offline_llm") or private_memory.get("force_offline_llm"))
         private_memory["dialogue_state"] = dialogue_state.value
         if payload.get("debug_read_historical_records"):
             template = self.load_historical_records_template(
@@ -339,6 +340,8 @@ class DepartmentAgentRuntime:
         post_final_reassessment: bool = False,
         policy_runtime_context=None,
     ) -> dict | None:
+        if payload.get("_force_offline_llm"):
+            return None
         if not self.llm_settings.get("api_key"):
             return None
         req = urlrequest.Request(
@@ -413,6 +416,8 @@ class DepartmentAgentRuntime:
         question_focus: str | None = None,
         policy_runtime_context=None,
     ) -> str | None:
+        if payload.get("_force_offline_llm"):
+            return None
         if not self.llm_settings.get("api_key"):
             return None
         if not self.config.build_follow_up_llm_messages:
@@ -467,6 +472,7 @@ class DepartmentAgentRuntime:
 
     def evaluate(self, merged_payload: dict, memory, mode: str) -> tuple[dict, list[dict], list[str], dict, bool]:
         progress = memory.consultation_progress
+        force_offline_llm = bool(memory.private_memory.get("force_offline_llm"))
         previous_final_result = memory.private_memory.get("final_result") if isinstance(memory.private_memory.get("final_result"), dict) else {}
         is_post_final_reassessment = mode == "continue_session" and progress.completed
         policy_runtime_context = self.resolve_policy_runtime_context(
@@ -521,7 +527,7 @@ class DepartmentAgentRuntime:
         if is_post_final_reassessment:
             try:
                 llm_result = self.request_consultation_from_llm(
-                    merged_payload,
+                    {**merged_payload, "_force_offline_llm": force_offline_llm},
                     memory.shared_memory,
                     missing_fields,
                     historical_records_template=merged_payload.get("historical_records_template"),
@@ -564,7 +570,7 @@ class DepartmentAgentRuntime:
             if mode == "continue_session" and progress.patient_reply_count >= 1:
                 try:
                     llm_followup_message = self.request_follow_up_message_from_llm(
-                        merged_payload,
+                        {**merged_payload, "_force_offline_llm": force_offline_llm},
                         memory.shared_memory,
                         missing_fields,
                         question_focus=question_focus,
@@ -610,7 +616,7 @@ class DepartmentAgentRuntime:
 
         try:
             llm_result = self.request_consultation_from_llm(
-                merged_payload,
+                {**merged_payload, "_force_offline_llm": force_offline_llm},
                 memory.shared_memory,
                 missing_fields,
                 historical_records_template=merged_payload.get("historical_records_template"),

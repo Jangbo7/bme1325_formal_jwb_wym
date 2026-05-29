@@ -132,3 +132,30 @@ def test_triage_level_4_keeps_normal_outpatient_chain(api_client_factory):
     assert visit_resp.status_code == 200
     visit = _get_data(visit_resp)["visit"]
     assert "triage_route_hint" not in (visit.get("data") or {})
+    assert visit["assigned_department_id"] == "internal"
+
+
+def test_triage_level_4_surgery_like_case_routes_to_surgery(api_client_factory):
+    client = api_client_factory("triage_route_surgery.db")
+    session_id = f"triage-{uuid.uuid4().hex[:8]}"
+    resp = client.post(
+        "/api/v1/triage-sessions",
+        headers=_headers(),
+        json={
+            "patient_id": PATIENT_ID,
+            "session_id": session_id,
+            "name": "Player",
+            "symptoms": "minor wound after kitchen knife cut, no fever, no dizziness",
+            "onset_time": "today morning",
+            "allergies": [],
+            "vitals": {"heart_rate": 84, "temp_c": 36.8, "pain_score": 3},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    data = _get_data(resp)
+    assert data["visit_state"] == "triaged"
+
+    visit_resp = client.get(f"/api/v1/visits/{data['visit_id']}", headers=_headers())
+    assert visit_resp.status_code == 200
+    visit = _get_data(visit_resp)["visit"]
+    assert visit["assigned_department_id"] == "surgery"

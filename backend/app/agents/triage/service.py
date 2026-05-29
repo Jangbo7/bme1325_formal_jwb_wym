@@ -2,6 +2,12 @@ import json
 from datetime import datetime, timezone
 from urllib import request as urlrequest
 
+from app.agents.clinical_policy import ClinicalPolicyRuntimeContext
+from app.agents.triage.policy import (
+    TRIAGE_POLICY_PHASE,
+    load_triage_policy_registry,
+    load_triage_policy_runtime,
+)
 from app.departments.registry import resolve_department
 from app.agents.triage.prompts import (
     build_fallback_follow_up_message,
@@ -24,6 +30,13 @@ from app.agents.triage.schemas import WorkingMemory
 from app.domain.patient.state_machine import PatientStateMachine
 from app.events.types import PATIENT_STATE_CHANGED, TRIAGE_COMPLETED, VISIT_STATE_CHANGED
 from app.schemas.common import PatientLifecycleState, TriageDialogueState, VisitLifecycleState
+from app.services.consultation_registry import (
+    get_consultation_agent_by_type,
+    is_consultation_owned_visit_state,
+    is_second_consultation_flow,
+    list_consultation_agents,
+    resolve_consultation_agent_for_visit,
+)
 
 
 def now_iso() -> str:
@@ -70,6 +83,10 @@ class TriageService:
         self.bus = bus
         self.graph = graph
         self.medical_record_repo = medical_record_repo
+        self.consultation_services: dict[str, object] = {}
+
+    def configure_consultation_services(self, services_by_agent_type: dict[str, object]) -> None:
+        self.consultation_services = dict(services_by_agent_type or {})
 
     def ensure_visit_for_payload(self, payload: dict) -> dict:
         patient_id = payload["patient_id"]
@@ -168,29 +185,23 @@ class TriageService:
     def _resolve_session_refs(self, patient: dict, visit_row: dict | None) -> dict:
         visit_data = self._decode_visit_data(visit_row)
         visit_state = str(visit_row.get("state") or "") if visit_row else ""
-        is_second_consultation_flow = visit_state in {
-            VisitLifecycleState.IN_SECOND_CONSULTATION.value,
-            VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
-            VisitLifecycleState.WAITING_PAYMENT.value,
-            VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
-            VisitLifecycleState.DISPOSITION_PENDING.value,
-            VisitLifecycleState.WAITING_PHARMACY.value,
-            VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
-            VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
-            VisitLifecycleState.DISPOSITION_REFERRAL.value,
-        }
-        refs = {
-            "triage_session_id": visit_data.get("triage_session_id"),
-            "internal_medicine_session_id": visit_data.get("internal_medicine_session_id"),
-            "internal_medicine_round2_session_id": visit_data.get("internal_medicine_round2_session_id"),
-        }
+        second_consultation_flow = is_second_consultation_flow(visit_state)
+        refs = {"triage_session_id": visit_data.get("triage_session_id")}
+        for definition in list_consultation_agents():
+            refs[definition.session_ref_key] = visit_data.get(definition.session_ref_key)
+            if definition.round2_session_ref_key:
+                refs[definition.round2_session_ref_key] = visit_data.get(definition.round2_session_ref_key)
 
         patient_session_id = patient.get("session_id")
-        if patient_session_id and not is_second_consultation_flow:
+        if patient_session_id and not second_consultation_flow:
             session_text = str(patient_session_id)
-            if session_text.startswith("im-session-"):
-                refs["internal_medicine_session_id"] = refs["internal_medicine_session_id"] or session_text
-            else:
+            matched_consultation_session = False
+            for definition in list_consultation_agents():
+                if session_text.startswith(definition.session_prefix):
+                    refs[definition.session_ref_key] = refs[definition.session_ref_key] or session_text
+                    matched_consultation_session = True
+                    break
+            if not matched_consultation_session:
                 refs["triage_session_id"] = refs["triage_session_id"] or session_text
 
         visit_id = visit_row.get("id") if visit_row else None
@@ -198,21 +209,45 @@ class TriageService:
             triage_row = self.session_repo.get_latest_by_visit_and_agent(visit_id, "triage")
             if triage_row:
                 refs["triage_session_id"] = triage_row["id"]
-        if visit_id and not refs["internal_medicine_session_id"] and not is_second_consultation_flow:
-            internal_row = self.session_repo.get_latest_by_visit_and_agent(visit_id, "internal_medicine")
-            if internal_row:
-                refs["internal_medicine_session_id"] = internal_row["id"]
+        for definition in list_consultation_agents():
+            selected_key = (
+                definition.round2_session_ref_key
+                if second_consultation_flow and definition.round2_session_ref_key
+                else definition.session_ref_key
+            )
+            if visit_id and not refs.get(selected_key):
+                session_row = self.session_repo.get_latest_by_visit_and_agent(visit_id, definition.agent_type)
+                if session_row:
+                    refs[selected_key] = session_row["id"]
 
         return refs
 
     @staticmethod
     def _resolve_active_agent_type(patient: dict, visit_row: dict | None, session_refs: dict) -> str:
         visit_agent = visit_row.get("active_agent_type") if visit_row else None
-        if visit_agent in {"triage", "internal_medicine"}:
+        if visit_agent == "triage":
             return visit_agent
+        definition = get_consultation_agent_by_type(visit_agent) if visit_agent else None
+        if definition is not None:
+            return definition.agent_type
 
-        if session_refs.get("internal_medicine_session_id") and patient.get("lifecycle_state") == PatientLifecycleState.IN_CONSULTATION.value:
-            return "internal_medicine"
+        visit_state = str(visit_row.get("state") or "") if visit_row else ""
+        consultation_definition = resolve_consultation_agent_for_visit(visit_row, patient)
+        if consultation_definition is not None:
+            has_consultation_session = bool(
+                session_refs.get(consultation_definition.session_ref_key)
+                or (
+                    consultation_definition.round2_session_ref_key
+                    and session_refs.get(consultation_definition.round2_session_ref_key)
+                )
+            )
+            if has_consultation_session or is_consultation_owned_visit_state(visit_state):
+                return consultation_definition.agent_type
+            if patient.get("lifecycle_state") in {
+                PatientLifecycleState.IN_CONSULTATION.value,
+                PatientLifecycleState.IN_TEST.value,
+            }:
+                return consultation_definition.agent_type
         return "triage"
 
     def get_patient_view(self, patient_id: str):
@@ -226,29 +261,14 @@ class TriageService:
             self.patient_repo.update_patient(patient_id, visit_id=visit_row["id"])
             patient = self.patient_repo.get(patient_id)
 
-        visit_state = str(visit_row.get("state") or "") if visit_row else ""
-        is_second_consultation_flow = visit_state in {
-            VisitLifecycleState.IN_SECOND_CONSULTATION.value,
-            VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
-            VisitLifecycleState.WAITING_PAYMENT.value,
-            VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
-            VisitLifecycleState.DISPOSITION_PENDING.value,
-            VisitLifecycleState.WAITING_PHARMACY.value,
-            VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
-            VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
-            VisitLifecycleState.DISPOSITION_REFERRAL.value,
-        }
-
         session_refs = self._resolve_session_refs(patient, visit_row)
         active_agent_type = self._resolve_active_agent_type(patient, visit_row, session_refs)
-        if active_agent_type == "internal_medicine":
-            selected_session_id = (
-                session_refs.get("internal_medicine_round2_session_id")
-                if is_second_consultation_flow
-                else session_refs.get("internal_medicine_session_id")
-            )
-        else:
-            selected_session_id = session_refs.get("triage_session_id")
+        if active_agent_type != "triage":
+            delegated_service = self.consultation_services.get(active_agent_type)
+            if delegated_service is not None:
+                return delegated_service.get_patient_view(patient_id)
+
+        selected_session_id = session_refs.get("triage_session_id")
 
         private_memory = None
         dialogue = None
@@ -346,6 +366,7 @@ class TriageService:
         private_memory.setdefault("recommendation_changed", False)
         private_memory.setdefault("message_type", "followup")
         private_memory.setdefault("latest_extraction", {})
+        private_memory["force_offline_llm"] = bool(payload.get("_force_offline_llm") or private_memory.get("force_offline_llm"))
         private_memory["dialogue_state"] = dialogue_state.value
         private_memory["latest_summary"] = {
             "chief_complaint": clinical.get("chief_complaint"),
@@ -399,11 +420,21 @@ class TriageService:
         return merged
 
     @staticmethod
-    def build_triage_llm_messages(payload: dict, evidence_rules: list[dict], memory_context: WorkingMemory) -> list[dict]:
+    def build_triage_llm_messages(
+        payload: dict,
+        evidence_rules: list[dict],
+        memory_context: WorkingMemory,
+        *,
+        policy_runtime_context: ClinicalPolicyRuntimeContext | None = None,
+    ) -> list[dict]:
+        policy_prompt_context = ""
+        if policy_runtime_context is not None and policy_runtime_context.prompt_policy_context:
+            policy_prompt_context = " Policy context: " + policy_runtime_context.prompt_policy_context
         prompt = (
             "You are a hospital triage nurse assistant. "
             "Use the retrieved triage knowledge as supporting evidence, and consider both short-term conversation memory and long-term patient memory. "
             "Return strict JSON only with keys: triage_level (integer 1-5), priority (H/M/L), department (string), note (string). "
+            "For non-emergency outpatient routing, department must be either Internal Medicine or Surgery. "
             "Patient data: "
             + json.dumps(payload, ensure_ascii=False)
             + " Short-term memory: "
@@ -414,8 +445,27 @@ class TriageService:
             + json.dumps(memory_context.private_memory, ensure_ascii=False)
             + " Retrieved rules: "
             + json.dumps(evidence_rules, ensure_ascii=False)
+            + policy_prompt_context
         )
         return [{"role": "user", "content": prompt}]
+
+    def resolve_policy_runtime_context(self, merged_payload: dict, memory: WorkingMemory) -> ClinicalPolicyRuntimeContext:
+        registry = load_triage_policy_registry()
+        runtime = load_triage_policy_runtime()
+        match_result = registry.find(
+            agent_scope="triage_agent",
+            department_scope="triage",
+            phase=TRIAGE_POLICY_PHASE,
+            context={
+                "message": merged_payload.get("message"),
+                "chief_complaint": merged_payload.get("chief_complaint"),
+                "symptoms": merged_payload.get("symptoms"),
+                "risk_flags": (memory.shared_memory.get("clinical_memory") or {}).get("risk_flags") or [],
+                "patient": {"age": merged_payload.get("age")},
+                "visit": {},
+            },
+        )
+        return runtime.build_runtime_context(match_result)
 
     @staticmethod
     def build_followup_llm_messages(
@@ -484,9 +534,25 @@ class TriageService:
             print(f"Error calling LLM API: {e}")
             return None
 
-    def request_triage_from_llm(self, payload: dict, evidence_rules: list[dict], memory_context: WorkingMemory):
+    def request_triage_from_llm(
+        self,
+        payload: dict,
+        evidence_rules: list[dict],
+        memory_context: WorkingMemory,
+        *,
+        policy_runtime_context: ClinicalPolicyRuntimeContext | None = None,
+    ):
+        if memory_context.private_memory.get("force_offline_llm"):
+            return None
         try:
-            return self.request_llm_json(self.build_triage_llm_messages(payload, evidence_rules, memory_context))
+            return self.request_llm_json(
+                self.build_triage_llm_messages(
+                    payload,
+                    evidence_rules,
+                    memory_context,
+                    policy_runtime_context=policy_runtime_context,
+                )
+            )
         except Exception as e:
             print(f"Error in request_triage_from_llm: {e}")
             return None
@@ -499,6 +565,8 @@ class TriageService:
         memory: WorkingMemory,
         recommendation_changed: bool,
     ) -> dict | None:
+        if memory.private_memory.get("force_offline_llm"):
+            return None
         if not missing_fields:
             return None
         prompt_messages = self.build_followup_llm_messages(
@@ -627,20 +695,37 @@ class TriageService:
         return payload
 
     def evaluate(self, merged_payload: dict, memory: WorkingMemory) -> tuple[dict, list[dict], list[str], dict]:
+        policy_runtime_context = self.resolve_policy_runtime_context(merged_payload, memory)
         retrieved_rules = retrieve_relevant_rules(merged_payload, top_k=3)
-        fallback = rule_based_triage(merged_payload)
+        fallback = rule_based_triage(merged_payload, policy_runtime_context=policy_runtime_context)
         try:
-            llm_result = self.request_triage_from_llm(merged_payload, retrieved_rules, memory)
+            llm_result = self.request_triage_from_llm(
+                merged_payload,
+                retrieved_rules,
+                memory,
+                policy_runtime_context=policy_runtime_context,
+            )
         except Exception:
             llm_result = None
-        final_result = validate_triage_result(llm_result, fallback)
+        final_result = validate_triage_result(
+            llm_result,
+            fallback,
+            policy_runtime_context=policy_runtime_context,
+            payload=merged_payload,
+        )
         evidence = [{"id": rule.get("id"), "title": rule.get("title"), "source": rule.get("source")} for rule in retrieved_rules]
-        missing_fields = prioritize_missing_fields(memory.shared_memory, memory.private_memory)
+        missing_fields = prioritize_missing_fields(
+            memory.shared_memory,
+            memory.private_memory,
+            policy_runtime_context=policy_runtime_context,
+        )
         followup_rounds = len(memory.private_memory.get("asked_fields_history") or [])
         if missing_fields and followup_rounds >= MAX_TRIAGE_FOLLOWUP_ROUNDS:
             # Hard stop for triage interaction length: force a final recommendation after 3 follow-up rounds.
             missing_fields = []
         assistant_payload = self.generate_dialogue_payload(final_result, missing_fields, memory)
+        if policy_runtime_context.primary_card is not None:
+            memory.private_memory["policy_card_id"] = policy_runtime_context.primary_card.id
         return final_result, evidence, missing_fields, assistant_payload
 
     def persist_result(
@@ -734,7 +819,15 @@ class TriageService:
         visit_for_assignment = self.visit_repo.get(visit_id) if visit_id else None
         preassigned_id = (visit_for_assignment or {}).get("assigned_department_id")
         preassigned_name = (visit_for_assignment or {}).get("assigned_department_name")
-        if preassigned_id and preassigned_name:
+        if missing_fields:
+            assigned_department = {
+                "id": preassigned_id,
+                "label": preassigned_name,
+            } if preassigned_id and preassigned_name else None
+        elif preassigned_id and preassigned_name and preassigned_id == resolve_department(
+            triage_result.get("department"),
+            triage_result.get("priority", "M"),
+        )["id"]:
             assigned_department = {
                 "id": preassigned_id,
                 "label": preassigned_name,

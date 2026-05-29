@@ -115,10 +115,10 @@ class FlowDecisionEngine:
 class FlowExecutor:
     """Execute already-decided action by delegating to existing runner primitives."""
 
-    def execute_legacy(self, *, runner, state, profile, planned: PlannedNpcAction, decision: FlowDecision) -> FlowExecutionResult:
+    def execute_legacy(self, *, runner, state, profile, planned: PlannedNpcAction, decision: FlowDecision, force_offline_llm: bool = False) -> FlowExecutionResult:
         if not self._guard_passed(decision, state, planned, runner, profile=profile):
             return FlowExecutionResult(ok=False, action=decision.next_action, target_node=decision.target_node, error=decision.reason)
-        runner.execute_planned_action(state, profile, planned)
+        runner.execute_planned_action(state, profile, planned, force_offline_llm=force_offline_llm)
         return FlowExecutionResult(ok=True, action=decision.next_action, target_node=decision.target_node)
 
     def execute_intelligent(self, *, runner, state, planned: PlannedNpcAction, decision: FlowDecision) -> FlowExecutionResult:

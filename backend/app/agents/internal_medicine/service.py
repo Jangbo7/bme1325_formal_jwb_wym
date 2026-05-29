@@ -75,7 +75,7 @@ class InternalMedicineService(DepartmentAgentRuntime):
         queue_ticket = self.queue_repo.get_active_ticket_for_patient(patient_id, visit_id=visit_row["id"] if visit_row else None)
         session_refs = {
             "triage_session_id": visit_data.get("triage_session_id"),
-            "internal_medicine_session_id": session_id,
+            "internal_medicine_session_id": visit_data.get("internal_medicine_session_id") or session_id,
             "internal_medicine_round2_session_id": visit_data.get("internal_medicine_round2_session_id"),
         }
         return self.patient_repo.to_view(

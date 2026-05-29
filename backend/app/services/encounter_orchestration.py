@@ -87,6 +87,7 @@ _EVENT_ALIASES = {
     "queue_wait_elapsed": StateTransitionEvent.CALL_PATIENT.value,
     "start_consultation": StateTransitionEvent.START_INITIAL_CONSULTATION.value,
     "consultation_completed": StateTransitionEvent.ORDER_TESTS.value,
+    "finalize_without_tests": StateTransitionEvent.FINALIZE_WITHOUT_TESTS.value,
     "ready_payment": StateTransitionEvent.REQUEST_MEDICAL_PAYMENT.value,
     "request_test_payment": StateTransitionEvent.REQUEST_TEST_PAYMENT.value,
     "pay_test": StateTransitionEvent.PAY_TEST.value,
@@ -153,6 +154,7 @@ _GUARD_TABLE: dict[StandardOutpatientState, dict[str, StandardOutpatientState]] 
     },
     StandardOutpatientState.IN_INITIAL_CONSULTATION: {
         StateTransitionEvent.ORDER_TESTS.value: StandardOutpatientState.TEST_ORDERED,
+        StateTransitionEvent.FINALIZE_WITHOUT_TESTS.value: StandardOutpatientState.DIAGNOSIS_FINALIZED,
         StateTransitionEvent.START_TRANSFER.value: StandardOutpatientState.TRANSFERRING,
         StateTransitionEvent.MARK_ERROR.value: StandardOutpatientState.ERROR,
     },

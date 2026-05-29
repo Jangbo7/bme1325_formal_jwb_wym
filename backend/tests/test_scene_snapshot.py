@@ -301,3 +301,62 @@ def test_scene_snapshot_does_not_reuse_round1_dialogue_in_second_consultation(tm
     assert round2_snapshot["active_dialogue"] is not None
     assert round2_snapshot["active_dialogue"]["agent_type"] == "internal_medicine"
     assert round2_snapshot["active_dialogue"]["session_id"] == round2_session_id
+
+
+def test_scene_snapshot_reflects_surgery_consultation_dialogue(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    patient_id = "P-44444444"
+    triage_session_id = f"session-{uuid.uuid4().hex[:8]}"
+
+    triage_resp = post_json(
+        client,
+        "/api/v1/triage-sessions",
+        {
+            "patient_id": patient_id,
+            "session_id": triage_session_id,
+            "name": "Player",
+            "symptoms": "minor wound after kitchen knife cut, no fever, no dizziness",
+            "onset_time": "today morning",
+            "allergies": [],
+            "vitals": {"heart_rate": 84, "temp_c": 36.8, "pain_score": 3},
+        },
+    )
+    visit_id = get_data(triage_resp)["visit_id"]
+    post_json(client, f"/api/v1/visits/{visit_id}/register", registration_payload("Player"))
+
+    visit_repo = client.app.state.container["visit_repo"]
+    visit_row = visit_repo.get(visit_id)
+    visit_data = visit_repo.to_view(visit_row).data
+    visit_data["registration_completed_at"] = (datetime.now(timezone.utc) - timedelta(seconds=11)).isoformat()
+    visit_repo.update_visit(visit_id, data=visit_data)
+
+    assert post_json(client, f"/api/v1/visits/{visit_id}/progress").status_code == 200
+    assert post_json(client, f"/api/v1/visits/{visit_id}/enter-consultation").status_code == 200
+
+    ready_snapshot = get_snapshot(client, patient_id)
+    assert ready_snapshot["active_visit"]["assigned_department_id"] == "surgery"
+    assert ready_snapshot["active_visit"]["active_agent_type"] == "surgery"
+    assert ready_snapshot["active_dialogue"] is None
+    assert ready_snapshot["ui_flags"]["consultation_agent_type"] == "surgery"
+    assert ready_snapshot["ui_flags"]["can_start_consultation"] is True
+    assert ready_snapshot["ui_flags"]["can_continue_consultation"] is False
+
+    create_resp = post_json(
+        client,
+        "/api/v1/surgery-sessions",
+        {
+            "patient_id": patient_id,
+            "name": "Player",
+            "visit_id": visit_id,
+        },
+    )
+    assert create_resp.status_code == 200
+    surgery_session_id = get_data(create_resp)["session_id"]
+
+    after_create_snapshot = get_snapshot(client, patient_id)
+    assert after_create_snapshot["active_dialogue"] is not None
+    assert after_create_snapshot["active_dialogue"]["agent_type"] == "surgery"
+    assert after_create_snapshot["active_dialogue"]["session_id"] == surgery_session_id
+    assert after_create_snapshot["ui_flags"]["consultation_agent_type"] == "surgery"
+    assert after_create_snapshot["ui_flags"]["can_start_consultation"] is False
+    assert after_create_snapshot["ui_flags"]["can_continue_consultation"] is True

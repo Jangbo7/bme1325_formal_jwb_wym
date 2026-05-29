@@ -460,3 +460,99 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
     simulated_report_resp = client.get(f"/api/v1/visits/{visit_id}/simulated-report", headers=headers())
     assert simulated_report_resp.status_code == 200
     assert get_data(simulated_report_resp)["report"]["report_text"]
+
+
+def test_surgery_session_route_and_patient_view_follow_surgery_assignment(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    triage_session_id = f"session-{uuid.uuid4().hex[:8]}"
+
+    triage_resp = client.post(
+        "/api/v1/triage-sessions",
+        headers=headers(),
+        json={
+            "patient_id": PATIENT_ID,
+            "session_id": triage_session_id,
+            "name": "Player",
+            "symptoms": "minor wound after kitchen knife cut, no fever, no dizziness",
+            "onset_time": "today morning",
+            "allergies": [],
+            "vitals": {"heart_rate": 84, "temp_c": 36.8, "pain_score": 3},
+        },
+    )
+    assert triage_resp.status_code == 200
+    visit_id = get_data(triage_resp)["visit_id"]
+
+    visit_resp = client.get(f"/api/v1/visits/{visit_id}", headers=headers())
+    assert visit_resp.status_code == 200
+    assert get_data(visit_resp)["visit"]["assigned_department_id"] == "surgery"
+
+    register_resp = client.post(
+        f"/api/v1/visits/{visit_id}/register",
+        headers=headers(),
+        json=registration_payload("Player"),
+    )
+    assert register_resp.status_code == 200
+
+    app = client.app
+    visit_repo = app.state.container["visit_repo"]
+    visit_row = visit_repo.get(visit_id)
+    data = visit_repo.to_view(visit_row).data
+    data["registration_completed_at"] = (datetime.now(timezone.utc) - timedelta(seconds=11)).isoformat()
+    visit_repo.update_visit(visit_id, data=data)
+
+    progress_resp = client.post(f"/api/v1/visits/{visit_id}/progress", headers=headers())
+    assert progress_resp.status_code == 200
+    assert get_data(progress_resp)["visit"]["state"] == "waiting_consultation"
+
+    enter_resp = client.post(f"/api/v1/visits/{visit_id}/enter-consultation", headers=headers())
+    assert enter_resp.status_code == 200
+    enter_data = get_data(enter_resp)
+    assert enter_data["visit"]["state"] == "in_consultation"
+    assert enter_data["visit"]["active_agent_type"] == "surgery"
+
+    create_resp = client.post(
+        "/api/v1/surgery-sessions",
+        headers=headers(),
+        json={
+            "patient_id": PATIENT_ID,
+            "name": "Player",
+            "visit_id": visit_id,
+        },
+    )
+    assert create_resp.status_code == 200
+    create_data = get_data(create_resp)
+    assert create_data["visit_id"] == visit_id
+    assert create_data["visit_state"] == "in_consultation"
+    assert create_data["session_id"].startswith("surgery-session-")
+
+    get_session_resp = client.get(
+        f"/api/v1/surgery-sessions/{create_data['session_id']}",
+        headers=headers(),
+    )
+    assert get_session_resp.status_code == 200
+    get_session_data = get_data(get_session_resp)
+    assert get_session_data["session_id"] == create_data["session_id"]
+    assert get_session_data["visit_id"] == visit_id
+
+    message_resp = client.post(
+        f"/api/v1/surgery-sessions/{create_data['session_id']}/messages",
+        headers=headers(),
+        json={
+            "patient_id": PATIENT_ID,
+            "visit_id": visit_id,
+            "name": "Player",
+            "message": "The wound is still painful and swollen, but there is no fever or pus.",
+        },
+    )
+    assert message_resp.status_code == 200
+    message_data = get_data(message_resp)
+    assert message_data["visit_id"] == visit_id
+    assert message_data["session_id"] == create_data["session_id"]
+    assert message_data["dialogue"]["status"] in {"awaiting_patient_reply", "completed"}
+
+    patient_resp = client.get(f"/api/v1/patients/{PATIENT_ID}", headers=headers())
+    assert patient_resp.status_code == 200
+    patient_view = get_data(patient_resp)["patient"]
+    assert patient_view["active_agent_type"] == "surgery"
+    assert patient_view["dialogue_source_agent"] == "surgery"
+    assert patient_view["session_refs"]["surgery_session_id"] == create_data["session_id"]

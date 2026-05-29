@@ -104,7 +104,7 @@ def build_consultation_user_prompt(
         response_keys = (
             "department, priority, diagnosis_level, note, patient_plan, tests_suggested, "
             "medication_or_action, red_flags, test_required, test_category, test_items, test_reason, "
-            "next_step_decision, needs_second_internal_medicine_consultation, next_step_reason, "
+            "next_step_decision, needs_second_consultation, needs_second_internal_medicine_consultation, next_step_reason, "
             "clinical_impression, needs_tests, needs_medication, recommended_department, "
             "recommended_department_reason, disposition_advice."
         )
@@ -194,7 +194,9 @@ def build_final_message(result: dict, *, message_type: str = "final") -> str:
     disposition_advice = str(result.get("disposition_advice") or "").strip()
     clinical_impression = str(result.get("clinical_impression") or "").strip()
     recommended_department = _display_department_name(str(result.get("recommended_department") or "").strip())
-    needs_second_consult = result.get("needs_second_internal_medicine_consultation")
+    needs_second_consult = result.get("needs_second_consultation")
+    if needs_second_consult is None:
+        needs_second_consult = result.get("needs_second_internal_medicine_consultation")
 
     lines = [
         heading,

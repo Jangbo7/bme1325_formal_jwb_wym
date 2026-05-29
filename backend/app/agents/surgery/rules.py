@@ -538,6 +538,7 @@ def _apply_round1_outcome_policy(
 
     applied["next_step_decision"] = decision
     applied["needs_second_internal_medicine_consultation"] = decision == "test_first"
+    applied["needs_second_consultation"] = decision == "test_first"
     applied["next_step_reason"] = next_step_reason
     applied["clinical_impression"] = clinical_impression
     applied["needs_tests"] = decision == "test_first"
@@ -612,6 +613,7 @@ def final_result_changed(previous: dict | None, current: dict | None) -> bool:
         "red_flags",
         "test_category",
         "next_step_decision",
+        "needs_second_consultation",
         "needs_second_internal_medicine_consultation",
         "recommended_department",
     }
@@ -649,6 +651,7 @@ def validate_surgery_result(
                     "test_items": llm_result.get("test_items", base.get("test_items", [])),
                     "test_reason": llm_result.get("test_reason", base.get("test_reason", "")),
                     "next_step_decision": llm_result.get("next_step_decision"),
+                    "needs_second_consultation": llm_result.get("needs_second_consultation"),
                     "needs_second_internal_medicine_consultation": llm_result.get("needs_second_internal_medicine_consultation"),
                     "next_step_reason": llm_result.get("next_step_reason"),
                     "clinical_impression": llm_result.get("clinical_impression"),
@@ -661,6 +664,14 @@ def validate_surgery_result(
             )
     except Exception:
         base = dict(fallback)
+
+    if base.get("needs_second_consultation") is None and base.get("needs_second_internal_medicine_consultation") is not None:
+        base["needs_second_consultation"] = bool(base.get("needs_second_internal_medicine_consultation"))
+    if (
+        base.get("needs_second_internal_medicine_consultation") is None
+        and base.get("needs_second_consultation") is not None
+    ):
+        base["needs_second_internal_medicine_consultation"] = bool(base.get("needs_second_consultation"))
 
     normalized = _normalize_final_result(base, payload)
     consultation_round = None

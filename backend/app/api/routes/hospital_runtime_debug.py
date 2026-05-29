@@ -46,12 +46,13 @@ def hospital_runtime_debug_page():
 <body>
   <main>
     <h1>Hospital Runtime Debug</h1>
-    <div class="muted">Engine-driven multi patient simulation with node + department runtime projection.</div>
+    <div class="muted">Engine-driven multi patient simulation with node + department runtime projection, including legacy offline/probabilistic LLM controls.</div>
     <div class="panel toolbar">
-      <div><div class="small">Mode</div><select id="mode"><option value="intelligent_agent">intelligent_agent</option><option value="department_mixed">department_mixed</option><option value="legacy_template">legacy_template</option></select></div>
+      <div><div class="small">Mode</div><select id="mode"><option value="intelligent_agent">intelligent_agent</option><option value="department_mixed">department_mixed</option><option value="legacy_template">legacy_template</option><option value="legacy_probabilistic_llm">legacy_probabilistic_llm</option></select></div>
       <div><div class="small">Spawn(s)</div><input id="spawn" type="number" min="0" step="0.5" value="4"></div>
       <div><div class="small">Step(s)</div><input id="step" type="number" min="0.1" step="0.5" value="2"></div>
       <div><div class="small">Max</div><input id="max" type="number" min="1" step="1" value="20"></div>
+      <div><div class="small">LLM Probability</div><input id="llmProbability" type="number" min="0" max="1" step="0.1" value="0"></div>
       <button id="start">Start</button><button id="stop">Stop</button><button id="reset">Reset</button><button id="refresh">Refresh</button>
     </div>
     <div class="panel"><div id="stats"></div></div>
@@ -67,7 +68,7 @@ def hospital_runtime_debug_page():
       const p=await r.json(); if(!r.ok||p.ok===false){throw new Error(p.error?.message||p.error?.details||r.statusText);} return p.data;
     }
     function render(s){
-      document.getElementById("stats").textContent = `running=${s.running} mode=${s.mode} active=${s.active_count} spawned=${s.total_spawned} dispatch=${s.dispatch_count} blocked=${s.blocked_count} fairness=${s.fairness_policy} last_tick=${s.last_tick_at||"-"}`;
+      document.getElementById("stats").textContent = `running=${s.running} mode=${s.mode} active=${s.active_count} spawned=${s.total_spawned} llm_probability=${s.llm_probability ?? "-"} dispatch=${s.dispatch_count} blocked=${s.blocked_count} fairness=${s.fairness_policy} last_tick=${s.last_tick_at||"-"}`;
       document.getElementById("nodes").innerHTML = (s.nodes||[]).map(n=>`
         <div class="card">
           <div><strong>${n.node.name}</strong> <span class="small">(${n.node.node_id})</span></div>
@@ -82,7 +83,7 @@ def hospital_runtime_debug_page():
         </div>`).join("");
     }
     async function refresh(){ render(await api("/api/v1/hospital-runtime-debug/snapshot")); }
-    document.getElementById("start").onclick = async ()=>{render(await api("/api/v1/hospital-runtime-debug/start","POST",{mode:document.getElementById("mode").value,spawn_interval_seconds:Number(document.getElementById("spawn").value),step_interval_seconds:Number(document.getElementById("step").value),max_active_patients:Number(document.getElementById("max").value)}));};
+    document.getElementById("start").onclick = async ()=>{render(await api("/api/v1/hospital-runtime-debug/start","POST",{mode:document.getElementById("mode").value,spawn_interval_seconds:Number(document.getElementById("spawn").value),step_interval_seconds:Number(document.getElementById("step").value),max_active_patients:Number(document.getElementById("max").value),llm_probability:document.getElementById("llmProbability").value.trim()===""?null:Number(document.getElementById("llmProbability").value)}));};
     document.getElementById("stop").onclick = async ()=>{render(await api("/api/v1/hospital-runtime-debug/stop","POST",{}));};
     document.getElementById("reset").onclick = async ()=>{render(await api("/api/v1/hospital-runtime-debug/reset","POST",{}));};
     document.getElementById("refresh").onclick = async ()=>refresh();
@@ -104,6 +105,7 @@ def start_hospital_runtime_debug(body: MultiPatientDebugStartRequest, request: R
             spawn_interval_seconds=body.spawn_interval_seconds,
             step_interval_seconds=body.step_interval_seconds,
             max_active_patients=body.max_active_patients,
+            llm_probability=body.llm_probability,
         )
     except RuntimeError as exc:
         detail = str(exc)

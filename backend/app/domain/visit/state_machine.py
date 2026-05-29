@@ -51,6 +51,7 @@ VISIT_TRANSITIONS = {
     },
     VisitLifecycleState.IN_CONSULTATION: {
         "consultation_completed": VisitLifecycleState.WAITING_TEST,
+        "finalize_without_tests": VisitLifecycleState.DIAGNOSIS_FINALIZED,
         "complete_visit": VisitLifecycleState.COMPLETED,
         "mark_error": VisitLifecycleState.ERROR,
     },

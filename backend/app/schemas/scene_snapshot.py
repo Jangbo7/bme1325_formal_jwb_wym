@@ -43,6 +43,9 @@ class SceneUiFlags(BaseModel):
     can_progress_visit: bool = False
     ready_for_consultation: bool = False
     can_enter_consultation: bool = False
+    consultation_agent_type: str | None = None
+    can_start_consultation: bool = False
+    can_continue_consultation: bool = False
     can_start_internal_medicine: bool = False
     can_continue_internal_medicine: bool = False
     can_view_test_report: bool = False

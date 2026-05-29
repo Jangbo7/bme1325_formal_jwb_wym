@@ -79,7 +79,7 @@ def multi_patient_debug_page():
 <body>
   <main>
     <h1>Multi Patient Debug</h1>
-    <div class="muted">Engine-driven hospital supervisor with fair scheduling, node capacity limits, and per-node step delays.</div>
+    <div class="muted">Engine-driven hospital supervisor with fair scheduling, node capacity limits, per-node step delays, and legacy offline/probabilistic LLM controls.</div>
     <div class="toolbar">
       <div>
         <label>Mode</label><br />
@@ -87,6 +87,7 @@ def multi_patient_debug_page():
           <option value="intelligent_agent">intelligent_agent</option>
           <option value="department_mixed">department_mixed</option>
           <option value="legacy_template">legacy_template</option>
+          <option value="legacy_probabilistic_llm">legacy_probabilistic_llm</option>
         </select>
       </div>
       <div>
@@ -100,6 +101,10 @@ def multi_patient_debug_page():
       <div>
         <label>Max Active Patients</label><br />
         <input id="maxPatients" type="number" min="1" step="1" value="20" />
+      </div>
+      <div>
+        <label>LLM Probability</label><br />
+        <input id="llmProbability" type="number" min="0" max="1" step="0.1" value="0" />
       </div>
       <button id="startBtn">Start</button>
       <button id="stopBtn" class="secondary">Stop</button>
@@ -165,6 +170,7 @@ def multi_patient_debug_page():
         <div class="stat"><strong>spawned</strong><div>${snapshot.total_spawned}</div></div>
         <div class="stat"><strong>spawn interval</strong><div>${snapshot.spawn_interval_seconds}</div></div>
         <div class="stat"><strong>step interval</strong><div>${snapshot.step_interval_seconds}</div></div>
+        <div class="stat"><strong>llm probability</strong><div>${snapshot.llm_probability ?? "-"}</div></div>
         <div class="stat"><strong>dispatch</strong><div>${snapshot.dispatch_count}</div></div>
         <div class="stat"><strong>blocked</strong><div>${snapshot.blocked_count}</div></div>
         <div class="stat"><strong>coverage</strong><div>${coverage}</div></div>
@@ -219,13 +225,14 @@ def multi_patient_debug_page():
         };
         return `
           <article class="card">
-            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span></div>
+            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.llm_mode || "-"}</span></div>
             <div class="row">department: ${p.assigned_department_name || "-"} (${p.assigned_department_id || "-"})</div>
             <div class="row">patient: ${p.patient_id}</div>
             <div class="row">encounter: ${p.encounter_id || "-"}</div>
             <div class="row">visit: ${p.visit_state || "-"}</div>
             <div class="row">lifecycle: ${p.patient_lifecycle_state || "-"}</div>
             <div class="row">phase/status: ${p.phase} / ${p.status}</div>
+            <div class="row">llm: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
             <div class="row">node: ${p.current_node_id || "-" } -> ${p.target_node_id || "-"}</div>
             <div class="row">last action: ${p.last_action || "-"}</div>
             <div class="row">step: ${p.step_count} | finished: ${p.finished}</div>
@@ -258,6 +265,7 @@ def multi_patient_debug_page():
           spawn_interval_seconds: Number(document.getElementById("spawnInterval").value),
           step_interval_seconds: Number(document.getElementById("stepInterval").value),
           max_active_patients: maxRaw ? Number(maxRaw) : null,
+          llm_probability: document.getElementById("llmProbability").value.trim() === "" ? null : Number(document.getElementById("llmProbability").value),
         });
         statusEl.textContent = "Started.";
         render(data);
@@ -308,6 +316,7 @@ def start_multi_patient_debug(body: MultiPatientDebugStartRequest, request: Requ
             spawn_interval_seconds=body.spawn_interval_seconds,
             step_interval_seconds=body.step_interval_seconds,
             max_active_patients=body.max_active_patients,
+            llm_probability=body.llm_probability,
         )
     except RuntimeError as exc:
         detail = str(exc)

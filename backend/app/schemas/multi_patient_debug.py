@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from app.schemas.npc_debug import CounterpartyType, NpcDebugCurrentDialogue
 
 
-MultiPatientMode = Literal["legacy_template", "intelligent_agent", "department_mixed"]
+MultiPatientMode = Literal["legacy_template", "legacy_probabilistic_llm", "intelligent_agent", "department_mixed"]
 
 
 class MultiPatientDebugStartRequest(BaseModel):
@@ -15,11 +15,14 @@ class MultiPatientDebugStartRequest(BaseModel):
     spawn_interval_seconds: float = 5.0
     step_interval_seconds: float = 2.0
     max_active_patients: int | None = 20
+    llm_probability: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class MultiPatientDebugPatientSnapshot(BaseModel):
     npc_id: str
     mode: MultiPatientMode
+    llm_mode: Literal["offline", "online"] | None = None
+    llm_probability: float | None = None
     profile_id: str | None = None
     patient_id: str
     encounter_id: str | None = None
@@ -47,6 +50,7 @@ class MultiPatientDebugSnapshot(BaseModel):
     spawn_interval_seconds: float
     step_interval_seconds: float
     max_active_patients: int
+    llm_probability: float | None = None
     total_spawned: int
     active_count: int
     last_spawn_at: str | None = None

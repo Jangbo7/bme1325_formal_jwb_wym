@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.internal_medicine import create_internal_medicine_service
+from app.agents.surgery import create_surgery_service
 from app.agents.interactive_debug import (
     DoctorAgentDebugController,
     FixedDoctorDebugController,
@@ -41,6 +42,7 @@ from app.api.routes.openemr import router as openemr_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.queues import router as queues_router
 from app.api.routes.scene_snapshot import router as scene_snapshot_router
+from app.api.routes.surgery import router as surgery_router
 from app.api.routes.triage_agent_debug import router as triage_agent_debug_router
 from app.api.routes.triage import router as triage_router
 from app.api.routes.visits import router as visits_router
@@ -175,6 +177,29 @@ def create_container():
         encounter_orchestration_service=encounter_orchestration_service,
         medical_record_repo=medical_record_repo,
     )
+    surgery_service = create_surgery_service(
+        llm_settings={
+            "endpoint": settings["llm_endpoint"],
+            "model": settings["llm_model"],
+            "api_key": settings["llm_api_key"],
+        },
+        patient_repo=patient_repo,
+        session_repo=session_repo,
+        memory_repo=memory_repo,
+        queue_repo=queue_repo,
+        visit_repo=visit_repo,
+        patient_state_machine=patient_state_machine,
+        visit_state_machine=visit_state_machine,
+        bus=bus,
+        encounter_orchestration_service=encounter_orchestration_service,
+        medical_record_repo=medical_record_repo,
+    )
+    triage_service.configure_consultation_services(
+        {
+            "internal_medicine": internal_medicine_service,
+            "surgery": surgery_service,
+        }
+    )
 
     icu_doctor_service = create_icub_doctor_service(
         llm_settings={
@@ -213,6 +238,7 @@ def create_container():
             "visit_repo": visit_repo,
             "triage_service": triage_service,
             "internal_medicine_service": internal_medicine_service,
+            "surgery_service": surgery_service,
             "encounter_orchestration_service": encounter_orchestration_service,
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
@@ -250,6 +276,7 @@ def create_container():
             "visit_repo": visit_repo,
             "triage_service": triage_service,
             "internal_medicine_service": internal_medicine_service,
+            "surgery_service": surgery_service,
             "encounter_orchestration_service": encounter_orchestration_service,
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
@@ -267,6 +294,7 @@ def create_container():
             "visit_repo": visit_repo,
             "medical_record_repo": medical_record_repo,
             "internal_medicine_service": internal_medicine_service,
+            "surgery_service": surgery_service,
         },
         registry=doctor_debug_registry,
     )
@@ -306,6 +334,7 @@ def create_container():
             "visit_repo": visit_repo,
             "triage_service": triage_service,
             "internal_medicine_service": internal_medicine_service,
+            "surgery_service": surgery_service,
             "encounter_orchestration_service": encounter_orchestration_service,
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
@@ -394,6 +423,7 @@ def create_container():
         "emr_service": emr_service,
         "triage_service": triage_service,
         "internal_medicine_service": internal_medicine_service,
+        "surgery_service": surgery_service,
         "icu_doctor_service": icu_doctor_service,
         "npc_simulator": npc_simulator,
         "npc_patient_debug_controller": npc_patient_debug_controller,
@@ -622,6 +652,7 @@ def create_app() -> FastAPI:
     app.include_router(visits_router)
     app.include_router(triage_router)
     app.include_router(internal_medicine_router)
+    app.include_router(surgery_router)
     app.include_router(doctor_agent_debug_router)
     app.include_router(medical_records_router)
     app.include_router(npc_debug_router)

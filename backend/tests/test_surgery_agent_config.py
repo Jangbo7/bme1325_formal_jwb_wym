@@ -95,6 +95,7 @@ def test_surgery_round1_can_recommend_direct_discharge_for_stable_dressing_chang
     result = validate_surgery_result(None, rule_based_surgery(payload), payload, memory=memory, policy_runtime_context=context)
 
     assert result["next_step_decision"] == "treat_and_discharge"
+    assert result["needs_second_consultation"] is False
     assert result["needs_second_internal_medicine_consultation"] is False
     assert result["needs_tests"] is False
     assert result["needs_medication"] is False
@@ -124,6 +125,7 @@ def test_surgery_round1_defaults_to_test_first_for_abdominal_pain():
     result = validate_surgery_result(None, rule_based_surgery(payload), payload, memory=memory, policy_runtime_context=context)
 
     assert result["next_step_decision"] == "test_first"
+    assert result["needs_second_consultation"] is True
     assert result["needs_second_internal_medicine_consultation"] is True
     assert result["needs_tests"] is True
 
@@ -153,6 +155,7 @@ def test_surgery_round1_can_recommend_orthopedics():
 
     assert result["next_step_decision"] == "recommend_other_clinic"
     assert result["recommended_department"] == "Orthopedics"
+    assert result["needs_second_consultation"] is False
     assert result["needs_second_internal_medicine_consultation"] is False
 
 
@@ -180,6 +183,7 @@ def test_surgery_round1_escalates_postoperative_fever_and_pus():
     result = validate_surgery_result(None, rule_based_surgery(payload), payload, memory=memory, policy_runtime_context=context)
 
     assert result["next_step_decision"] == "urgent_escalation"
+    assert result["needs_second_consultation"] is False
     assert result["needs_second_internal_medicine_consultation"] is False
     assert result["priority"] == "H"
     assert result["red_flags"]
@@ -221,6 +225,7 @@ def test_surgery_final_result_matches_internal_round1_contract():
         "test_items",
         "test_reason",
         "next_step_decision",
+        "needs_second_consultation",
         "needs_second_internal_medicine_consultation",
         "next_step_reason",
         "clinical_impression",

@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 import threading
 import uuid
 
+from app.agents.surgery.state import SurgeryDialogueState
 from app.departments.registry import resolve_department
 from app.events.types import PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, QUEUE_TICKET_COMPLETED, QUEUE_TICKET_CREATED, VISIT_STATE_CHANGED
+from app.services.consultation_registry import resolve_consultation_agent_for_visit
 from app.services.department_assignment import resolve_assigned_department_for_visit
 from app.schemas.common import (
     InternalMedicineDialogueState,
@@ -380,24 +382,30 @@ class NpcPatientSimulator:
         visit_data = self._get_visit_data(visit_row)
         visit_data["consultation_started_at"] = now_iso()
 
-        internal_session_id = visit_data.get("internal_medicine_session_id")
-        if not internal_session_id:
-            internal_session_id = f"im-session-npc-{uuid.uuid4().hex[:8]}"
+        consultation_definition = resolve_consultation_agent_for_visit(visit_row, patient_row)
+        session_id = visit_data.get(consultation_definition.session_ref_key) if consultation_definition else None
+        if not session_id and consultation_definition:
+            session_id = f"{consultation_definition.session_prefix}npc-{uuid.uuid4().hex[:8]}"
+            dialogue_state = (
+                SurgeryDialogueState.COLLECTING_INFO.value
+                if consultation_definition.agent_type == "surgery"
+                else InternalMedicineDialogueState.COLLECTING_INFO.value
+            )
             self.session_repo.create_or_update(
-                internal_session_id,
+                session_id,
                 patient_row["id"],
-                InternalMedicineDialogueState.COLLECTING_INFO.value,
-                agent_type="internal_medicine",
+                dialogue_state,
+                agent_type=consultation_definition.agent_type,
                 visit_id=visit_row["id"],
             )
-            visit_data["internal_medicine_session_id"] = internal_session_id
+            visit_data[consultation_definition.session_ref_key] = session_id
 
         self._update_patient_state(
             patient_row["id"],
             next_state,
             location=CONSULTATION_ROOM,
             visit_id=visit_row["id"],
-            session_id=internal_session_id,
+            session_id=session_id,
         )
 
         self._transition_visit(
@@ -405,7 +413,7 @@ class NpcPatientSimulator:
             "start_consultation",
             current_node=f"{assigned_department['id']}_consultation_room",
             current_department=CONSULTATION_ROOM,
-            active_agent_type="internal_medicine",
+            active_agent_type=consultation_definition.agent_type if consultation_definition else None,
             data=visit_data,
         )
 

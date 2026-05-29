@@ -9,6 +9,7 @@ from app.agents.patient_agent.debug_state import PatientAgentDebugState
 from app.domain.identifiers import generate_patient_id
 from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, QUEUE_TICKET_COMPLETED, QUEUE_TICKET_CREATED
 from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
+from app.services.consultation_registry import resolve_consultation_agent_for_visit
 from app.services.department_assignment import resolve_assigned_department_for_visit
 
 
@@ -31,6 +32,7 @@ class PatientAgentDebugRunner:
         self.patient_agent_service = container["patient_agent_service"]
         self.triage_service = container["triage_service"]
         self.internal_medicine_service = container["internal_medicine_service"]
+        self.surgery_service = container.get("surgery_service")
         self.encounter_orchestration_service = container["encounter_orchestration_service"]
         self.patient_state_machine = self.triage_service.patient_state_machine
         self.bus = container["event_bus"]
@@ -127,12 +129,17 @@ class PatientAgentDebugRunner:
     def _build_context(self, state: PatientAgentDebugState) -> NpcPlanningContext:
         visit_row = self._get_visit_row(state)
         visit_data = self._decode_visit_data(visit_row)
+        consultation_definition = self._consultation_definition_for_visit(visit_row)
         triage_session = self._resolve_session(visit_data.get("triage_session_id"), visit_row, "triage")
-        round1_session = self._resolve_session(visit_data.get("internal_medicine_session_id"), visit_row, "internal_medicine")
-        round2_session = self._resolve_session(
-            visit_data.get("internal_medicine_round2_session_id"),
+        round1_session = self._resolve_session(
+            visit_data.get(consultation_definition.session_ref_key) if consultation_definition else None,
             visit_row,
-            "internal_medicine",
+            consultation_definition.agent_type if consultation_definition else "internal_medicine",
+        )
+        round2_session = self._resolve_session(
+            visit_data.get(consultation_definition.round2_session_ref_key) if consultation_definition and consultation_definition.round2_session_ref_key else None,
+            visit_row,
+            consultation_definition.agent_type if consultation_definition else "internal_medicine",
             allow_latest=False,
         )
         patient_row = self.patient_repo.get(state.patient_id)
@@ -311,6 +318,7 @@ class PatientAgentDebugRunner:
         if ticket.get("status") != QueueTicketStatus.CALLED.value:
             return
         assigned_department = self._assigned_department(visit_row)
+        consultation_definition = self._consultation_definition_for_visit(visit_row)
         next_state = self.patient_state_machine.transition(PatientLifecycleState.CALLED, "start_consultation")
         self.patient_repo.update_patient(
             state.patient_id,
@@ -327,7 +335,7 @@ class PatientAgentDebugRunner:
             "start_consultation",
             current_node=f"{assigned_department['id']}_consultation_room",
             current_department=CONSULTATION_ROOM,
-            active_agent_type="doctor",
+            active_agent_type=consultation_definition.agent_type if consultation_definition else None,
             data=self._decode_visit_data(visit_row),
         )
         completed_ticket = self.queue_repo.mark_completed(ticket["id"])
@@ -342,14 +350,16 @@ class PatientAgentDebugRunner:
 
     def _create_internal_medicine_session(self, state: PatientAgentDebugState, planned: PlannedNpcAction) -> None:
         round_number = int(planned.payload.get("round") or 1)
+        consultation_definition = self._require_consultation_definition(state)
+        consultation_service = self._require_consultation_service(consultation_definition.agent_type)
         payload = self.patient_agent_service.build_initial_payload(
             patient_id=state.patient_id,
             visit_id=state.encounter_id,
             round_number=round_number,
         )
-        payload["session_id"] = f"im-session-{uuid.uuid4().hex[:8]}"
+        payload["session_id"] = f"{consultation_definition.session_prefix}{uuid.uuid4().hex[:8]}"
         payload["debug_read_historical_records"] = True
-        response = self.internal_medicine_service.create_session(payload)
+        response = consultation_service.create_session(payload)
         state.active_session_id = response["session_id"]
         state.phase = self._phase_for_round(round_number)
         state.status = response.get("dialogue", {}).get("status") or "awaiting_patient_reply"
@@ -357,13 +367,15 @@ class PatientAgentDebugRunner:
             state,
             session_id=response["session_id"],
             phase=state.phase,
-            counterparty="internal_medicine_agent",
+            counterparty=f"{consultation_definition.agent_type}_agent",
         )
 
     def _reply_internal_medicine(self, state: PatientAgentDebugState, planned: PlannedNpcAction) -> None:
         round_number = int(planned.payload.get("round") or 1)
+        consultation_definition = self._require_consultation_definition(state)
+        consultation_service = self._require_consultation_service(consultation_definition.agent_type)
         session_id = self._resolve_internal_session_id(state, round_number)
-        current = self.internal_medicine_service.build_response(state.patient_id, session_id)
+        current = consultation_service.build_response(state.patient_id, session_id)
         question = current.get("dialogue", {}).get("assistant_message") or ""
         phase = self._phase_for_round(round_number)
         reply = self.patient_agent_service.build_patient_reply(
@@ -373,7 +385,7 @@ class PatientAgentDebugRunner:
             phase=phase,
             recent_question=question,
         )
-        response = self.internal_medicine_service.continue_session(
+        response = consultation_service.continue_session(
             session_id,
             {
                 "patient_id": state.patient_id,
@@ -391,7 +403,7 @@ class PatientAgentDebugRunner:
             state,
             session_id=session_id,
             phase=phase,
-            counterparty="internal_medicine_agent",
+            counterparty=f"{consultation_definition.agent_type}_agent",
         )
 
     def _trigger_encounter_event(self, state: PatientAgentDebugState, planned: PlannedNpcAction) -> None:
@@ -485,14 +497,21 @@ class PatientAgentDebugRunner:
     def _resolve_internal_session_id(self, state: PatientAgentDebugState, round_number: int) -> str:
         visit_row = self._require_visit_row(state)
         visit_data = self._decode_visit_data(visit_row)
-        session_key = "internal_medicine_round2_session_id" if round_number == 2 else "internal_medicine_session_id"
+        consultation_definition = self._consultation_definition_for_visit(visit_row)
+        if not consultation_definition:
+            raise ValueError("consultation definition not found")
+        session_key = (
+            consultation_definition.round2_session_ref_key
+            if round_number == 2 and consultation_definition.round2_session_ref_key
+            else consultation_definition.session_ref_key
+        )
         session_id = visit_data.get(session_key)
         if session_id:
             return session_id
-        latest = self.session_repo.get_latest_by_visit_and_agent(visit_row["id"], "internal_medicine")
+        latest = self.session_repo.get_latest_by_visit_and_agent(visit_row["id"], consultation_definition.agent_type)
         if latest:
             return latest["id"]
-        raise ValueError("internal medicine session not found")
+        raise ValueError("consultation session not found")
 
     def _require_triage_session_id(self, state: PatientAgentDebugState) -> str:
         visit_row = self._require_visit_row(state)
@@ -643,3 +662,23 @@ class PatientAgentDebugRunner:
     def _assigned_department(self, visit_row: dict) -> dict:
         patient_row = self.patient_repo.get(visit_row["patient_id"])
         return resolve_assigned_department_for_visit(visit_row, patient_row)
+
+    def _consultation_definition_for_visit(self, visit_row: dict | None):
+        if not visit_row:
+            return None
+        patient_row = self.patient_repo.get(visit_row["patient_id"])
+        return resolve_consultation_agent_for_visit(visit_row, patient_row)
+
+    def _require_consultation_definition(self, state: PatientAgentDebugState):
+        visit_row = self._require_visit_row(state)
+        definition = self._consultation_definition_for_visit(visit_row)
+        if definition is None:
+            raise ValueError("consultation definition not found")
+        return definition
+
+    def _require_consultation_service(self, agent_type: str):
+        if agent_type == "internal_medicine":
+            return self.internal_medicine_service
+        if agent_type == "surgery" and self.surgery_service is not None:
+            return self.surgery_service
+        raise ValueError(f"consultation service not configured for {agent_type}")
