@@ -96,11 +96,14 @@ def test_surgery_round1_can_recommend_direct_discharge_for_stable_dressing_chang
 
     result = validate_surgery_result(None, rule_based_surgery(payload), payload, memory=memory, policy_runtime_context=context)
 
-    assert result["next_step_decision"] == "treat_and_discharge"
-    assert result["needs_second_consultation"] is False
-    assert result["needs_second_internal_medicine_consultation"] is False
+    assert result["next_step_decision"] == "test_first"
+    assert result["needs_second_consultation"] is True
+    assert result["needs_second_internal_medicine_consultation"] is True
     assert result["needs_tests"] is False
     assert result["needs_medication"] is False
+    assert result["needs_outpatient_procedure"] is True
+    assert result["outpatient_procedure_category"] == "wound_care"
+    assert result["procedure_can_parallel_with_tests"] is False
 
 
 def test_surgery_round1_defaults_to_test_first_for_abdominal_pain():
@@ -233,11 +236,45 @@ def test_surgery_final_result_matches_internal_round1_contract():
         "clinical_impression",
         "needs_tests",
         "needs_medication",
+        "needs_outpatient_procedure",
+        "outpatient_procedure_category",
+        "outpatient_procedure_reason",
+        "procedure_can_parallel_with_tests",
         "recommended_department",
         "recommended_department_reason",
         "disposition_advice",
     }
     assert expected_keys.issubset(result.keys())
+
+
+def test_surgery_round1_can_require_tests_and_outpatient_procedure_together():
+    payload = {
+        "chief_complaint": "forearm laceration",
+        "symptoms": "cut, swelling, dressing needed",
+        "message": "I cut my forearm on metal. It is still swollen and may need cleaning or dressing before follow-up.",
+        "onset_time": "today",
+        "allergies": [],
+        "vitals": {"temp_c": 37.0, "heart_rate": 92},
+    }
+    memory = _build_memory(
+        chief_complaint=payload["chief_complaint"],
+        onset_time="today",
+        symptoms=["cut", "swelling", "dressing needed"],
+        vitals=payload["vitals"],
+    )
+    context = _build_policy_runtime_context(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=payload["symptoms"],
+        message=payload["message"],
+    )
+
+    result = validate_surgery_result(None, rule_based_surgery(payload), payload, memory=memory, policy_runtime_context=context)
+
+    assert result["next_step_decision"] == "test_first"
+    assert result["needs_tests"] is True
+    assert result["needs_outpatient_procedure"] is True
+    assert result["procedure_can_parallel_with_tests"] is True
+    assert result["outpatient_procedure_category"] == "debridement_dressing"
 
 
 def test_surgery_reassessment_reply_answers_question_without_template_prefix():

@@ -292,6 +292,13 @@ class DepartmentAgentRuntime:
                 merged["simulated_report"] = simulated_report
             if isinstance(diagnostic_session, dict):
                 merged["diagnostic_session"] = diagnostic_session
+            outpatient_procedure_plan = visit_data.get("outpatient_procedure_plan")
+            outpatient_procedure_summary = visit_data.get("outpatient_procedure_summary")
+            if isinstance(outpatient_procedure_plan, dict):
+                merged["outpatient_procedure_plan"] = outpatient_procedure_plan
+            if isinstance(outpatient_procedure_summary, dict):
+                merged["outpatient_procedure_summary"] = outpatient_procedure_summary
+                merged["procedure_completed"] = bool(outpatient_procedure_summary.get("completed"))
             if merged["consultation_round"] >= 2:
                 previous_round_summary = self._extract_previous_round_summary(visit_data)
                 if isinstance(previous_round_summary, dict):

@@ -39,6 +39,11 @@ def _target_node_for_state(visit_state: str | None, assigned_department_id: str 
     }:
         return "testing"
     if visit_state in {
+        VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE.value,
+        VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
+    }:
+        return "outpatient_procedure"
+    if visit_state in {
         VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
         VisitLifecycleState.WAITING_PAYMENT.value,
         VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
@@ -108,6 +113,8 @@ class FlowDecisionEngine:
                 return FlowDecision(next_action="enter_round2_consult", target_node=context.assigned_department_id, reason=event, payload=planned.payload)
             if event in {"request_test_payment", "pay_test", "start_exam", "finish_exam", "results_ready"}:
                 return FlowDecision(next_action="send_to_test", target_node="testing", reason=event, payload=planned.payload)
+            if event in {"start_outpatient_procedure", "finish_outpatient_procedure"}:
+                return FlowDecision(next_action="send_to_test", target_node="outpatient_procedure", reason=event, payload=planned.payload)
             return FlowDecision(next_action="idle", target_node=target_node, reason=f"unsupported event {event}", guard_result="blocked", payload=planned.payload)
         return FlowDecision(next_action="error", target_node=target_node, reason=f"unsupported planned action {planned.action}", guard_result="blocked")
 

@@ -486,6 +486,10 @@ def _normalize_final_result(result: dict, payload: dict) -> dict:
     normalized["patient_plan"] = str(normalized.get("patient_plan") or _build_patient_plan(normalized))
     normalized["assistant_message"] = str(normalized.get("assistant_message") or "").strip()
     normalized["prescription_plan"] = normalize_prescription_plan(normalized.get("prescription_plan"))
+    normalized["needs_outpatient_procedure"] = bool(normalized.get("needs_outpatient_procedure", False))
+    normalized["outpatient_procedure_category"] = str(normalized.get("outpatient_procedure_category") or "").strip()
+    normalized["outpatient_procedure_reason"] = str(normalized.get("outpatient_procedure_reason") or "").strip()
+    normalized["procedure_can_parallel_with_tests"] = bool(normalized.get("procedure_can_parallel_with_tests", False))
     normalized["icu_escalation"] = False
     return normalized
 
@@ -592,6 +596,8 @@ def _build_round2_surgery_result(payload: dict) -> dict | None:
     if not report:
         return None
 
+    procedure_completed = bool(payload.get("procedure_completed"))
+    procedure_summary = payload.get("outpatient_procedure_summary") or {}
     report_text = _round2_report_summary_text(report)
     combined_text = " ".join(
         part for part in [
@@ -599,6 +605,7 @@ def _build_round2_surgery_result(payload: dict) -> dict | None:
             str(payload.get("symptoms") or ""),
             str(payload.get("message") or ""),
             report_text,
+            str(procedure_summary.get("category") or ""),
         ] if part
     ).lower()
     red_flags = _detect_surgery_red_flags(payload)
@@ -780,6 +787,79 @@ def _build_round2_surgery_result(payload: dict) -> dict | None:
     )
 
 
+def _infer_outpatient_procedure_plan(payload: dict, *, decision: str, recommended_department: str | None) -> dict:
+    if decision in {"urgent_escalation", "recommend_other_clinic"}:
+        return {
+            "needs_outpatient_procedure": False,
+            "outpatient_procedure_category": "",
+            "outpatient_procedure_reason": "",
+            "procedure_can_parallel_with_tests": False,
+        }
+    if recommended_department and str(recommended_department).strip() and str(recommended_department).strip().lower() != "surgery":
+        return {
+            "needs_outpatient_procedure": False,
+            "outpatient_procedure_category": "",
+            "outpatient_procedure_reason": "",
+            "procedure_can_parallel_with_tests": False,
+        }
+
+    text = " ".join(
+        str(part or "")
+        for part in [
+            payload.get("chief_complaint"),
+            payload.get("symptoms"),
+            payload.get("message"),
+        ]
+    ).lower()
+    category = ""
+    reason = ""
+    if any(token in text for token in ("dressing change", "wound care", "postoperative dressing", "wound check", "换药", "包扎", "伤口")):
+        category = "wound_care"
+        reason = "The current wound-focused presentation is more suitable for outpatient wound care before the second surgical review."
+    elif any(token in text for token in ("debridement", "laceration", "abrasion", "cut", "清创", "裂伤", "擦伤")):
+        category = "debridement_dressing"
+        reason = "The local wound presentation may need outpatient debridement or dressing management before follow-up."
+    elif any(token in text for token in ("cast", "splint", "immobilization", "plaster", "石膏", "夹板", "固定")):
+        category = "immobilization"
+        reason = "The injury presentation may need outpatient immobilization handling before follow-up reassessment."
+
+    needs_outpatient_procedure = bool(category)
+    return {
+        "needs_outpatient_procedure": needs_outpatient_procedure,
+        "outpatient_procedure_category": category,
+        "outpatient_procedure_reason": reason,
+        "procedure_can_parallel_with_tests": needs_outpatient_procedure and decision == "test_first",
+    }
+
+
+def _apply_completed_procedure_context(result: dict, payload: dict) -> dict:
+    if not bool(payload.get("procedure_completed")):
+        return result
+    applied = dict(result)
+    summary = dict(payload.get("outpatient_procedure_summary") or {})
+    category = str(summary.get("category") or "").strip()
+    prefix = "前面的门诊处置已经完成，当前重点是"
+    patient_plan = str(applied.get("patient_facing_plan") or "").strip()
+    if patient_plan and "前面的门诊处置已经完成" not in patient_plan:
+        patient_plan = patient_plan.lstrip("，,。.;； ")
+        applied["patient_facing_plan"] = f"{prefix}{patient_plan}"
+    followup = dict(applied.get("followup_recommendation") or {})
+    if followup and not applied.get("medication_recommendation", {}).get("recommended") and category in {"wound_care", "debridement_dressing"}:
+        applied["medication_recommendation"] = {
+            "recommended": True,
+            "intent": "post_procedure_care",
+            "summary": "处置后的换药、局部护理或辅助用药，建议由外科医生结合复查情况继续评估。",
+        }
+    procedure = dict(applied.get("procedure_recommendation") or {})
+    if applied.get("primary_disposition") in {"outpatient_management", "observe_then_revisit"} and procedure.get("surgery_evaluation_recommended"):
+        applied["procedure_recommendation"] = {
+            "surgery_evaluation_recommended": False,
+            "urgency": "none",
+            "reason": "前面的门诊处置已经完成，当前重点转为复查、维护和后续观察。",
+        }
+    return applied
+
+
 def _apply_round1_outcome_policy(
     result: dict,
     payload: dict,
@@ -830,16 +910,41 @@ def _apply_round1_outcome_policy(
             next_step_reason = "The case does not meet urgent escalation criteria and does not qualify for the conservative direct-discharge whitelist."
             disposition_advice = "Recommended next step: complete the suggested tests first and then return for surgical follow-up."
 
+    procedure_only_override = False
+    procedure_plan = _infer_outpatient_procedure_plan(
+        payload,
+        decision=decision,
+        recommended_department=recommended_department,
+    )
+    if procedure_plan["needs_outpatient_procedure"] and decision == "treat_and_discharge":
+        decision = "test_first"
+        procedure_only_override = True
+        clinical_impression = "The current presentation is low risk overall, but it still needs an outpatient surgical procedure stage before the follow-up review can be considered complete."
+        next_step_reason = procedure_plan["outpatient_procedure_reason"] or "An outpatient surgery procedure step is needed before the next reassessment."
+        disposition_advice = "Recommended next step: complete the outpatient procedure arrangement first, then return for the surgical follow-up review."
+    elif (
+        procedure_plan["outpatient_procedure_category"] == "wound_care"
+        and decision == "test_first"
+        and not red_flags
+    ):
+        procedure_only_override = True
+        next_step_reason = procedure_plan["outpatient_procedure_reason"] or next_step_reason
+        disposition_advice = "Recommended next step: complete the outpatient wound-care arrangement first, then return for the surgical follow-up review."
+
     applied["next_step_decision"] = decision
-    applied["needs_second_internal_medicine_consultation"] = decision == "test_first"
-    applied["needs_second_consultation"] = decision == "test_first"
+    applied["needs_second_internal_medicine_consultation"] = decision == "test_first" or procedure_plan["needs_outpatient_procedure"]
+    applied["needs_second_consultation"] = decision == "test_first" or procedure_plan["needs_outpatient_procedure"]
     applied["next_step_reason"] = next_step_reason
     applied["clinical_impression"] = clinical_impression
-    applied["needs_tests"] = decision == "test_first"
+    applied["needs_tests"] = decision == "test_first" and not procedure_only_override
     applied["needs_medication"] = False
     applied["recommended_department"] = recommended_department
     applied["recommended_department_reason"] = recommended_department_reason
     applied["disposition_advice"] = disposition_advice
+    applied["needs_outpatient_procedure"] = procedure_plan["needs_outpatient_procedure"]
+    applied["outpatient_procedure_category"] = procedure_plan["outpatient_procedure_category"]
+    applied["outpatient_procedure_reason"] = procedure_plan["outpatient_procedure_reason"]
+    applied["procedure_can_parallel_with_tests"] = procedure_plan["procedure_can_parallel_with_tests"]
 
     if decision == "urgent_escalation":
         applied["department"] = "Emergency"
@@ -871,7 +976,11 @@ def _apply_round1_outcome_policy(
         applied["red_flags"] = []
     else:
         applied["department"] = "Surgery"
-        applied["test_required"] = True
+        applied["test_required"] = bool(applied.get("needs_tests"))
+        if not applied["test_required"]:
+            applied["test_category"] = "none"
+            applied["test_items"] = []
+            applied["tests_suggested"] = []
         applied["patient_plan"] = disposition_advice
         applied["note"] = f"Preliminary impression: {clinical_impression}"
 
@@ -887,7 +996,7 @@ def rule_based_surgery(payload: dict) -> dict:
     if consultation_round >= 2:
         round2_result = _build_round2_surgery_result(payload)
         if round2_result is not None:
-            return round2_result
+            return _apply_completed_procedure_context(round2_result, payload)
     rules = retrieve_relevant_surgery_rules(payload, top_k=1)
     if rules:
         result = dict(rules[0]["result"])
@@ -919,6 +1028,8 @@ def final_result_changed(previous: dict | None, current: dict | None) -> bool:
         "needs_second_consultation",
         "needs_second_internal_medicine_consultation",
         "recommended_department",
+        "needs_outpatient_procedure",
+        "outpatient_procedure_category",
         "primary_disposition",
         "medication_recommendation",
         "admission_recommendation",
@@ -979,6 +1090,10 @@ def validate_surgery_result(
                     "recommended_department": llm_result.get("recommended_department"),
                     "recommended_department_reason": llm_result.get("recommended_department_reason"),
                     "disposition_advice": llm_result.get("disposition_advice"),
+                    "needs_outpatient_procedure": llm_result.get("needs_outpatient_procedure"),
+                    "outpatient_procedure_category": llm_result.get("outpatient_procedure_category"),
+                    "outpatient_procedure_reason": llm_result.get("outpatient_procedure_reason"),
+                    "procedure_can_parallel_with_tests": llm_result.get("procedure_can_parallel_with_tests"),
                 }
             )
     except Exception:

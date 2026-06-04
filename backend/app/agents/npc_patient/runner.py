@@ -663,6 +663,8 @@ class NpcPatientRunner:
             "waiting_test_payment",
             "test_payment_completed",
             "in_test",
+            "waiting_outpatient_procedure",
+            "in_outpatient_procedure",
             "waiting_return_consultation",
             "results_ready",
             "waiting_second_consultation",

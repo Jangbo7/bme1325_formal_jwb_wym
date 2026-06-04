@@ -13,9 +13,10 @@ PRIMARY_TEST_ZONE_LABELS = {
 
 
 class SurgeryService(DepartmentAgentRuntime):
-    def __init__(self, *args, test_simulator=None, **kwargs):
+    def __init__(self, *args, test_simulator=None, outpatient_procedure_service=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.test_simulator = test_simulator or TestSimulationAgent()
+        self.outpatient_procedure_service = outpatient_procedure_service
 
     def get_patient_view(self, patient_id: str):
         patient = self.patient_repo.get(patient_id)
@@ -174,7 +175,8 @@ class SurgeryService(DepartmentAgentRuntime):
         consultation_round = int(private_memory.get("consultation_round") or 1)
         current_patient_state = PatientLifecycleState(existing_patient["lifecycle_state"])
         needs_second_consultation = bool(consultation_result.get("needs_second_consultation"))
-        if consultation_round == 1 and needs_second_consultation:
+        needs_outpatient_procedure = bool(consultation_result.get("needs_outpatient_procedure"))
+        if consultation_round == 1 and (needs_second_consultation or needs_outpatient_procedure):
             return self.patient_state_machine.transition(current_patient_state, "internal_medicine_completed"), "Auxiliary Diagnostic Center"
         return self.patient_state_machine.transition(current_patient_state, "finish"), "Payment"
 
@@ -193,6 +195,8 @@ class SurgeryService(DepartmentAgentRuntime):
         consultation_round = int(memory.private_memory.get("consultation_round") or 1)
         visit_id = payload.get("visit_id")
         needs_second_consultation = bool(consultation_result.get("needs_second_consultation"))
+        needs_tests = bool(consultation_result.get("needs_tests"))
+        needs_outpatient_procedure = bool(consultation_result.get("needs_outpatient_procedure"))
         if complete and not was_completed and consultation_round == 1:
             self._append_medical_record_entry(
                 patient_id=patient_id,
@@ -211,6 +215,9 @@ class SurgeryService(DepartmentAgentRuntime):
                     "diagnosis_level": consultation_result.get("diagnosis_level"),
                     "next_step_decision": consultation_result.get("next_step_decision"),
                     "needs_second_consultation": needs_second_consultation,
+                    "needs_outpatient_procedure": needs_outpatient_procedure,
+                    "outpatient_procedure_category": consultation_result.get("outpatient_procedure_category"),
+                    "outpatient_procedure_reason": consultation_result.get("outpatient_procedure_reason"),
                     "recommended_department": consultation_result.get("recommended_department"),
                     "assistant_message": assistant_message,
                 },
@@ -219,84 +226,103 @@ class SurgeryService(DepartmentAgentRuntime):
         if not visit_row:
             return
 
-        if consultation_round == 1 and complete and not was_completed and needs_second_consultation:
-            simulation_report = self.test_simulator.generate_report(consultation_result, memory.shared_memory)
-            assigned_category = simulation_report["category_code"]
-            assigned_zone_label = PRIMARY_TEST_ZONE_LABELS.get(assigned_category, "Auxiliary Diagnostic Center")
+        if consultation_round == 1 and complete and not was_completed and (needs_tests or needs_outpatient_procedure):
             visit_data = self._get_visit_data(visit_row)
-            existing_diagnostic_session = visit_data.get("diagnostic_session")
-            existing_diagnostic_session = existing_diagnostic_session if isinstance(existing_diagnostic_session, dict) else {}
-            diagnostic_session = {
-                "id": existing_diagnostic_session.get("id") or f"diag-session-{visit_row['id']}",
-                "type": "auxiliary_diagnostic_center",
-                "primary_category": assigned_category,
-                "primary_category_label": assigned_zone_label,
-                "window_code": simulation_report.get("window_code"),
-                "window_label": simulation_report.get("window_label"),
-                "recommended_items": simulation_report.get("test_items", []),
-                "status": "report_generated",
-                "created_at": existing_diagnostic_session.get("created_at") or timestamp,
-                "generated_at": simulation_report.get("generated_at", timestamp),
-                "source_session_id": session_id,
-                "report": simulation_report,
+            extra_visit_data = {
+                "surgery_session_id": session_id,
+                "surgery_round": consultation_round,
             }
-            self._transition_visit(
-                visit_row,
-                "consultation_completed",
-                current_node="diagnostic_wait",
-                current_department="Auxiliary Diagnostic Center",
-                active_agent_type=self.config.agent_type,
-                extra_data={
-                    "surgery_session_id": session_id,
-                    "surgery_round": consultation_round,
-                    "diagnostic_session": diagnostic_session,
-                    "test_required": True,
-                    "test_category": assigned_category,
-                    "test_category_label": assigned_zone_label,
-                    "test_items": simulation_report.get("test_items", []),
-                    "simulated_report": simulation_report,
-                },
-            )
-            self.bus.publish(
-                TEST_ZONE_ASSIGNED,
-                {
-                    "patient_id": patient_id,
-                    "visit_id": visit_row["id"],
-                    "session_id": session_id,
-                    "test_category": assigned_category,
-                    "window_label": simulation_report.get("window_label"),
-                },
-            )
-            self.bus.publish(
-                TEST_REPORT_GENERATED,
-                {
-                    "patient_id": patient_id,
-                    "visit_id": visit_row["id"],
-                    "session_id": session_id,
-                    "test_category": assigned_category,
-                    "report_summary": simulation_report.get("report_summary", {}),
-                },
-            )
-            self._append_medical_record_entry(
-                patient_id=patient_id,
-                visit_id=visit_row["id"],
-                phase="testing",
-                entry_type="test_result_note",
-                title="Auxiliary Test Report",
-                content_text=(
-                    f"category={assigned_category}; "
-                    f"window={simulation_report.get('window_label')}; "
-                    f"summary={simulation_report.get('report_summary')}"
-                ),
-                content={
-                    "test_category": assigned_category,
+            if needs_tests:
+                simulation_report = self.test_simulator.generate_report(consultation_result, memory.shared_memory)
+                assigned_category = simulation_report["category_code"]
+                assigned_zone_label = PRIMARY_TEST_ZONE_LABELS.get(assigned_category, "Auxiliary Diagnostic Center")
+                existing_diagnostic_session = visit_data.get("diagnostic_session")
+                existing_diagnostic_session = existing_diagnostic_session if isinstance(existing_diagnostic_session, dict) else {}
+                diagnostic_session = {
+                    "id": existing_diagnostic_session.get("id") or f"diag-session-{visit_row['id']}",
+                    "type": "auxiliary_diagnostic_center",
+                    "primary_category": assigned_category,
+                    "primary_category_label": assigned_zone_label,
                     "window_code": simulation_report.get("window_code"),
                     "window_label": simulation_report.get("window_label"),
-                    "test_items": simulation_report.get("test_items", []),
-                    "report_summary": simulation_report.get("report_summary", {}),
+                    "recommended_items": simulation_report.get("test_items", []),
+                    "status": "report_generated",
+                    "created_at": existing_diagnostic_session.get("created_at") or timestamp,
                     "generated_at": simulation_report.get("generated_at", timestamp),
-                },
-            )
+                    "source_session_id": session_id,
+                    "report": simulation_report,
+                }
+                extra_visit_data.update(
+                    {
+                        "diagnostic_session": diagnostic_session,
+                        "test_required": True,
+                        "test_category": assigned_category,
+                        "test_category_label": assigned_zone_label,
+                        "test_items": simulation_report.get("test_items", []),
+                        "simulated_report": simulation_report,
+                    }
+                )
+                self.bus.publish(
+                    TEST_ZONE_ASSIGNED,
+                    {
+                        "patient_id": patient_id,
+                        "visit_id": visit_row["id"],
+                        "session_id": session_id,
+                        "test_category": assigned_category,
+                        "window_label": simulation_report.get("window_label"),
+                    },
+                )
+                self.bus.publish(
+                    TEST_REPORT_GENERATED,
+                    {
+                        "patient_id": patient_id,
+                        "visit_id": visit_row["id"],
+                        "session_id": session_id,
+                        "test_category": assigned_category,
+                        "report_summary": simulation_report.get("report_summary", {}),
+                    },
+                )
+                self._append_medical_record_entry(
+                    patient_id=patient_id,
+                    visit_id=visit_row["id"],
+                    phase="testing",
+                    entry_type="test_result_note",
+                    title="Auxiliary Test Report",
+                    content_text=(
+                        f"category={assigned_category}; "
+                        f"window={simulation_report.get('window_label')}; "
+                        f"summary={simulation_report.get('report_summary')}"
+                    ),
+                    content={
+                        "test_category": assigned_category,
+                        "window_code": simulation_report.get("window_code"),
+                        "window_label": simulation_report.get("window_label"),
+                        "test_items": simulation_report.get("test_items", []),
+                        "report_summary": simulation_report.get("report_summary", {}),
+                        "generated_at": simulation_report.get("generated_at", timestamp),
+                    },
+                )
+            if self.outpatient_procedure_service is not None:
+                self.outpatient_procedure_service.route_after_round1(
+                    visit_row,
+                    session_id=session_id,
+                    active_agent_type=self.config.agent_type,
+                    tests_required=needs_tests,
+                    outpatient_procedure_required=needs_outpatient_procedure,
+                    outpatient_procedure_category=str(consultation_result.get("outpatient_procedure_category") or "").strip(),
+                    outpatient_procedure_reason=str(consultation_result.get("outpatient_procedure_reason") or "").strip(),
+                    extra_data=extra_visit_data,
+                    ordered_at=timestamp,
+                )
+            elif needs_tests:
+                self._transition_visit(
+                    visit_row,
+                    "consultation_completed",
+                    current_node="diagnostic_wait",
+                    current_department="Auxiliary Diagnostic Center",
+                    active_agent_type=self.config.agent_type,
+                    extra_data=extra_visit_data,
+                )
         elif consultation_round == 1 and complete and not was_completed:
             visit_data = self._get_visit_data(visit_row)
             visit_data["surgery_session_id"] = session_id
@@ -387,6 +413,20 @@ class SurgeryService(DepartmentAgentRuntime):
 
     def extend_dialogue_payload(self, private_memory: dict, progress) -> dict:
         return {"round": int(private_memory.get("consultation_round") or 1)}
+
+    def extend_merged_payload(self, merged: dict, payload: dict, shared_memory: dict, private_memory: dict) -> None:
+        del payload, shared_memory
+        if int(private_memory.get("consultation_round") or 1) < 2:
+            return
+        visit_id = merged.get("visit_id")
+        if not visit_id or self.visit_repo is None:
+            return
+        visit_row = self.visit_repo.get(visit_id)
+        visit_data = self._get_visit_data(visit_row) if visit_row else {}
+        procedure_summary = visit_data.get("outpatient_procedure_summary")
+        if isinstance(procedure_summary, dict):
+            merged["outpatient_procedure_summary"] = procedure_summary
+            merged["procedure_completed"] = bool(procedure_summary.get("completed"))
 
     def _append_medical_record_entry(
         self,

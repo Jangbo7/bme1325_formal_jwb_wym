@@ -24,6 +24,8 @@ CONSULTATION_OWNED_VISIT_STATES = {
     VisitLifecycleState.WAITING_TEST_PAYMENT.value,
     VisitLifecycleState.TEST_PAYMENT_COMPLETED.value,
     VisitLifecycleState.IN_TEST.value,
+    VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE.value,
+    VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
     VisitLifecycleState.WAITING_RETURN_CONSULTATION.value,
     VisitLifecycleState.RESULTS_READY.value,
     VisitLifecycleState.WAITING_SECOND_CONSULTATION.value,

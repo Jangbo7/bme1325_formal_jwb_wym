@@ -37,11 +37,11 @@ def _prescription_reply(result: dict) -> str:
             )
             instructions = str(item.get("instructions") or "").strip()
             if detail and instructions:
-                parts.append(f"{item['drug_name']}，{detail}，{instructions}")
+                parts.append(f"{item['drug_name']}（{detail}，{instructions}）")
             elif detail:
-                parts.append(f"{item['drug_name']}，{detail}")
+                parts.append(f"{item['drug_name']}（{detail}）")
             elif instructions:
-                parts.append(f"{item['drug_name']}，{instructions}")
+                parts.append(f"{item['drug_name']}（{instructions}）")
             else:
                 parts.append(item["drug_name"])
         return f"用药方面，现阶段更适合由外科医生结合这次复查结果后，再决定是否使用{_join_items(parts)}。"
@@ -93,9 +93,15 @@ def _round2_answer(result: dict, topics: set[str], *, include_guidance: bool) ->
     followup = dict(result.get("followup_recommendation") or {})
     return_precautions = [str(item).strip() for item in (result.get("return_precautions") or result.get("red_flags") or []) if str(item).strip()]
     tests = [str(item).strip() for item in (result.get("tests_suggested") or []) if str(item).strip()]
+    reply_payload = result.get("_reply_payload") or {}
+    procedure_completed = bool(reply_payload.get("procedure_completed"))
 
     lines: list[str] = []
+    if procedure_completed and not topics:
+        lines.append("前面的门诊处置已经完成，现在重点是结合复查结果继续给你后续处理和维护建议。")
     if "report" in topics or "diagnosis" in topics:
+        if procedure_completed:
+            lines.append("前面的门诊处置已经完成。")
         if impression:
             lines.append(f"这次复查结果主要提示{impression}。")
         elif final_summary:
@@ -114,6 +120,8 @@ def _round2_answer(result: dict, topics: set[str], *, include_guidance: bool) ->
 
     if not lines:
         if impression:
+            if procedure_completed:
+                lines.append("前面的门诊处置已经完成。")
             lines.append(f"按目前掌握的信息，{impression}。")
         elif patient_plan:
             lines.append(f"{patient_plan}。")
@@ -145,6 +153,8 @@ def build_patient_reply(
     memory=None,
 ) -> str:
     del previous_final_result, changed_fields, update_reason, reply_rendering_mode, memory
+    reply_result = dict(result)
+    reply_result["_reply_payload"] = dict(payload or {})
     topics = detect_reassessment_topics((payload or {}).get("message") or "")
 
     if reply_style.endswith("_reassessment"):
@@ -172,13 +182,15 @@ def build_patient_reply(
             return "".join(part for part in lines if part).strip()
 
         if consultation_round >= 2:
-            return _round2_answer(result, topics, include_guidance=reassessment_intent == "question_with_minor_guidance")
-        return _round1_answer(result, topics, include_guidance=reassessment_intent == "question_with_minor_guidance")
+            return _round2_answer(reply_result, topics, include_guidance=reassessment_intent == "question_with_minor_guidance")
+        return _round1_answer(reply_result, topics, include_guidance=reassessment_intent == "question_with_minor_guidance")
 
     if consultation_round >= 2:
         lines = ["结合上一轮判断和这次检查结果，我的看法是这样的。"]
-        base = _round2_answer(result, topics, include_guidance=True)
+        if (payload or {}).get("procedure_completed"):
+            lines = ["前面的门诊处置已经完成，现在我会结合这次复查结果继续给你后续处理和维护建议。"]
+        base = _round2_answer(reply_result, topics, include_guidance=True)
         if base:
             lines.append(base)
         return "".join(lines).strip()
-    return _round1_answer(result, topics, include_guidance=True)
+    return _round1_answer(reply_result, topics, include_guidance=True)

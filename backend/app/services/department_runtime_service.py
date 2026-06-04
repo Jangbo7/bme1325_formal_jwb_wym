@@ -37,6 +37,8 @@ TEST_VISIT_STATES = {
     VisitLifecycleState.WAITING_TEST_PAYMENT.value,
     VisitLifecycleState.TEST_PAYMENT_COMPLETED.value,
     VisitLifecycleState.IN_TEST.value,
+    VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE.value,
+    VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
     VisitLifecycleState.WAITING_RETURN_CONSULTATION.value,
     VisitLifecycleState.RESULTS_READY.value,
 }
@@ -481,8 +483,15 @@ class DepartmentRuntimeService:
             VisitLifecycleState.WAITING_TEST_PAYMENT.value,
             VisitLifecycleState.TEST_PAYMENT_COMPLETED.value,
             VisitLifecycleState.IN_TEST.value,
+            VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE.value,
+            VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
             VisitLifecycleState.WAITING_RETURN_CONSULTATION.value,
         }:
+            if visit_state in {
+                VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE.value,
+                VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
+            }:
+                return "outpatient_procedure"
             return "testing"
         if visit_state in {
             VisitLifecycleState.DIAGNOSIS_FINALIZED.value,

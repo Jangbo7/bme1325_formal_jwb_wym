@@ -93,6 +93,7 @@ from app.services import (
     DepartmentRuntimeService,
     EncounterOrchestrationService,
     NpcPatientSimulator,
+    OutpatientProcedureService,
     PatientAgentService,
     SceneSnapshotService,
 )
@@ -136,6 +137,12 @@ def create_container():
     encounter_orchestration_service = EncounterOrchestrationService(
         visit_repo=visit_repo,
         patient_repo=patient_repo,
+        bus=bus,
+    )
+    outpatient_procedure_service = OutpatientProcedureService(
+        visit_repo=visit_repo,
+        visit_state_machine=visit_state_machine,
+        encounter_orchestration_service=encounter_orchestration_service,
         bus=bus,
     )
     dialogue_state_machine = TriageDialogueStateMachine()
@@ -193,6 +200,7 @@ def create_container():
         bus=bus,
         encounter_orchestration_service=encounter_orchestration_service,
         medical_record_repo=medical_record_repo,
+        outpatient_procedure_service=outpatient_procedure_service,
     )
     triage_service.configure_consultation_services(
         {
@@ -429,6 +437,7 @@ def create_container():
         "npc_patient_debug_controller": npc_patient_debug_controller,
         "patient_agent_service": patient_agent_service,
         "department_runtime_service": department_runtime_service,
+        "outpatient_procedure_service": outpatient_procedure_service,
         "scene_snapshot_service": scene_snapshot_service,
         "patient_agent_debug_controller": patient_agent_debug_controller,
         "doctor_debug_registry": doctor_debug_registry,

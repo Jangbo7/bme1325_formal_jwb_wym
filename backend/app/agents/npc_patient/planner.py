@@ -8,6 +8,8 @@ TRIGGER_EVENT_BY_VISIT_STATE = {
     "waiting_test_payment": "pay_test",
     "test_payment_completed": "start_exam",
     "in_test": "finish_exam",
+    "waiting_outpatient_procedure": "start_outpatient_procedure",
+    "in_outpatient_procedure": "finish_outpatient_procedure",
     "waiting_return_consultation": "results_ready",
     "results_ready": "queue_second_consultation",
     "waiting_second_consultation": "start_second_consultation",
