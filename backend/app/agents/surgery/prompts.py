@@ -1,4 +1,10 @@
 from app.agents.surgery.workflow import ConsultationProgress
+from app.agents.department_runtime.prompting import (
+    build_shared_consultation_system_prompt,
+    build_shared_consultation_user_prompt,
+    build_shared_follow_up_llm_messages,
+)
+from app.agents.department_runtime.conclusions import round2_response_keys
 
 
 FIELD_PROMPTS = {
@@ -77,15 +83,41 @@ def build_initial_message(shared_memory: dict, progress: ConsultationProgress, *
     return "I received your update. Please continue with specific changes in pain, bleeding, swelling, or wound status."
 
 
-def build_consultation_system_prompt(*, policy_prompt_context: str = "", policy_runtime_context=None) -> str:
+def build_initial_message(
+    shared_memory: dict,
+    progress: ConsultationProgress,
+    *,
+    consultation_round: int = 1,
+    policy_runtime_context=None,
+) -> str:
     del policy_runtime_context
-    prompt = (
-        "You are a surgery outpatient consultation assistant. "
-        "Base your response only on patient-provided facts and return strict JSON."
+    complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or "the current surgical problem"
+    if progress.patient_reply_count == 0:
+        if int(consultation_round or 1) >= 2:
+            return (
+                f"I will continue the second-round surgical reassessment using the prior consultation summary and available test results. "
+                f"You mentioned '{complaint}'. Please focus on what changed after the tests and what feels worst right now."
+            )
+        return (
+            f"I will start with a first-round surgery intake. You mentioned '{complaint}'. "
+            "Please add when it started, whether there was trauma or a recent procedure, any allergy history, and what feels worst right now."
+        )
+    return "I received your update. Please continue with specific changes in pain, bleeding, swelling, or wound status."
+
+
+def build_consultation_system_prompt(
+    *,
+    policy_prompt_context: str = "",
+    policy_runtime_context=None,
+    consultation_round: int = 1,
+) -> str:
+    del policy_runtime_context
+    return build_shared_consultation_system_prompt(
+        base_role_text="You are a surgery outpatient consultation assistant.",
+        consultation_round=consultation_round,
+        language="en",
+        policy_prompt_context=policy_prompt_context,
     )
-    if policy_prompt_context:
-        prompt = f"{prompt}\n{policy_prompt_context}"
-    return prompt
 
 
 def build_consultation_user_prompt(
@@ -93,45 +125,36 @@ def build_consultation_user_prompt(
     message: str,
     missing_fields: list[str],
     *,
+    payload: dict | None = None,
     historical_records_template: dict | None = None,
     previous_final_result: dict | None = None,
     post_final_reassessment: bool = False,
     policy_prompt_context: str = "",
     policy_runtime_context=None,
+    consultation_round: int = 1,
 ) -> str:
-    phase = ""
-    if policy_runtime_context is not None:
-        phase = str(policy_runtime_context.policy_context.get("phase") or "")
-
-    reassessment_instruction = (
-        "This is a reassessment after a completed result. Do not ask follow-up questions. Return only the updated final JSON."
-        if post_final_reassessment
-        else "If the information is sufficient, return the final JSON directly."
-    )
-    if phase == "round1_initial_consultation":
-        response_keys = (
+    return build_shared_consultation_user_prompt(
+        shared_memory,
+        message,
+        missing_fields,
+        payload=payload,
+        historical_records_template=historical_records_template,
+        previous_final_result=previous_final_result,
+        post_final_reassessment=post_final_reassessment,
+        policy_prompt_context=policy_prompt_context,
+        policy_runtime_context=policy_runtime_context,
+        consultation_round=consultation_round,
+        language="en",
+        round1_response_keys=(
             "department, priority, diagnosis_level, note, patient_plan, tests_suggested, "
             "medication_or_action, red_flags, test_required, test_category, test_items, test_reason, "
-            "next_step_decision, needs_second_internal_medicine_consultation, next_step_reason, "
+            "next_step_decision, needs_second_consultation, needs_second_internal_medicine_consultation, next_step_reason, "
             "clinical_impression, needs_tests, needs_medication, recommended_department, "
             "recommended_department_reason, disposition_advice."
-        )
-    else:
-        response_keys = (
-            "department, priority, diagnosis_level, note, patient_plan, tests_suggested, "
-            "medication_or_action, red_flags, test_required, test_category, test_items, test_reason."
-        )
-
-    return (
-        f"Patient shared facts: {shared_memory}\n"
-        f"Historical medical records template: {historical_records_template or {}}\n"
-        f"Latest patient message: {message}\n"
-        f"Missing fields: {missing_fields}\n"
-        f"Previous final result: {previous_final_result or {}}\n"
-        f"Policy prompt context: {policy_prompt_context}\n"
-        f"{reassessment_instruction}\n"
-        f"Return strict JSON with keys: {response_keys}"
+        ),
+        default_response_keys=round2_response_keys(),
     )
+
 
 
 def build_final_message(result: dict, *, message_type: str = "final") -> str:
@@ -159,7 +182,9 @@ def build_final_message(result: dict, *, message_type: str = "final") -> str:
     disposition_advice = str(result.get("disposition_advice") or "").strip()
     clinical_impression = str(result.get("clinical_impression") or "").strip()
     recommended_department = str(result.get("recommended_department") or "").strip()
-    needs_second_consult = result.get("needs_second_internal_medicine_consultation")
+    needs_second_consult = result.get("needs_second_consultation")
+    if needs_second_consult is None:
+        needs_second_consult = result.get("needs_second_internal_medicine_consultation")
 
     lines = [
         heading,
@@ -181,3 +206,24 @@ def build_final_message(result: dict, *, message_type: str = "final") -> str:
         lines.append(f"Red flags: {', '.join(red_flags)}")
     lines.append("Seek urgent reassessment immediately if symptoms worsen significantly.")
     return "\n".join(lines)
+
+
+def build_follow_up_llm_messages(
+    shared_memory: dict,
+    message: str,
+    missing_fields: list[str],
+    *,
+    question_focus: str | None = None,
+    payload: dict | None = None,
+    policy_runtime_context=None,
+) -> list[dict]:
+    return build_shared_follow_up_llm_messages(
+        shared_memory,
+        message,
+        missing_fields,
+        question_focus=question_focus,
+        payload=payload,
+        policy_runtime_context=policy_runtime_context,
+        language="en",
+        assistant_label="surgery outpatient",
+    )

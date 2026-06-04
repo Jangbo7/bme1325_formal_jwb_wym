@@ -157,3 +157,38 @@ def test_npc_debug_page_is_available(tmp_path, monkeypatch):
     response = client.get("/npc-debug")
     assert response.status_code == 200
     assert "NPC Patient Debug" in response.text
+
+
+def test_npc_debug_surgery_profile_uses_surgery_consultation_agent(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    triage_service = client.app.state.container["triage_service"]
+    surgery_service = client.app.state.container["surgery_service"]
+    triage_service.request_triage_from_llm = lambda *args, **kwargs: None
+    triage_service.request_followup_from_llm = lambda *args, **kwargs: None
+    surgery_service.request_consultation_from_llm = lambda *args, **kwargs: None
+    surgery_service.request_follow_up_message_from_llm = lambda *args, **kwargs: None
+
+    spawn_data = get_data(post_json(client, "/api/v1/npc-debug/spawn", {"profile_id": "surgery_wound_pain"}))
+    assert spawn_data["encounter_id"]
+
+    final_snapshot = None
+    for _ in range(24):
+        step_resp = post_json(client, "/api/v1/npc-debug/step")
+        assert step_resp.status_code == 200
+        final_snapshot = get_data(step_resp)
+        if final_snapshot["finished"]:
+            break
+
+    assert final_snapshot is not None
+    transcript = final_snapshot["transcript"]
+    assert transcript
+    assert any(entry["counterparty"] == "surgery_agent" for entry in transcript)
+
+    visit_repo = client.app.state.container["visit_repo"]
+    session_repo = client.app.state.container["session_repo"]
+    visit_row = visit_repo.get(final_snapshot["encounter_id"])
+    assert visit_row is not None
+    assert visit_row["assigned_department_id"] == "surgery"
+
+    surgery_session = session_repo.get_latest_by_visit_and_agent(final_snapshot["encounter_id"], "surgery")
+    assert surgery_session is not None

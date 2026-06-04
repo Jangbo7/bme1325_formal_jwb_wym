@@ -10,6 +10,7 @@ from app.agents.npc_patient.profile import NpcPatientProfile
 from app.domain.identifiers import generate_patient_id
 from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, QUEUE_TICKET_COMPLETED, QUEUE_TICKET_CREATED
 from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
+from app.services.consultation_registry import resolve_consultation_agent_for_visit
 from app.services.department_assignment import resolve_assigned_department_for_visit
 
 
@@ -31,6 +32,7 @@ class NpcPatientRunner:
         self.medical_record_repo = container.get("medical_record_repo")
         self.triage_service = container["triage_service"]
         self.internal_medicine_service = container["internal_medicine_service"]
+        self.surgery_service = container.get("surgery_service")
         self.encounter_orchestration_service = container["encounter_orchestration_service"]
         self.patient_state_machine = self.triage_service.patient_state_machine
         self.bus = container["event_bus"]
@@ -75,6 +77,8 @@ class NpcPatientRunner:
         state: NpcPatientDebugState,
         profile: NpcPatientProfile,
         planned: PlannedNpcAction,
+        *,
+        force_offline_llm: bool = False,
     ) -> NpcPatientDebugState:
         if state.finished:
             state.last_action = "finished"
@@ -112,7 +116,7 @@ class NpcPatientRunner:
             "create_internal_medicine_session",
             "reply_internal_medicine",
         }
-        dispatch[planned.action](state, profile, planned)
+        dispatch[planned.action](state, profile, planned, force_offline_llm=force_offline_llm)
         state.step_count += 1
         self._sync_state(state, preserve_dialogue=preserve_dialogue)
         return state
@@ -120,16 +124,17 @@ class NpcPatientRunner:
     def _build_context(self, state: NpcPatientDebugState) -> NpcPlanningContext:
         visit_row = self._get_visit_row(state)
         visit_data = self._decode_visit_data(visit_row)
+        consultation_definition = self._consultation_definition_for_visit(visit_row)
         triage_session = self._resolve_session(visit_data.get("triage_session_id"), visit_row, "triage")
         round1_session = self._resolve_session(
-            visit_data.get("internal_medicine_session_id"),
+            visit_data.get(consultation_definition.session_ref_key) if consultation_definition else None,
             visit_row,
-            "internal_medicine",
+            consultation_definition.agent_type if consultation_definition else "internal_medicine",
         )
         round2_session = self._resolve_session(
-            visit_data.get("internal_medicine_round2_session_id"),
+            visit_data.get(consultation_definition.round2_session_ref_key) if consultation_definition and consultation_definition.round2_session_ref_key else None,
             visit_row,
-            "internal_medicine",
+            consultation_definition.agent_type if consultation_definition else "internal_medicine",
             allow_latest=False,
         )
         patient_row = self.patient_repo.get(state.patient_id)
@@ -142,7 +147,8 @@ class NpcPatientRunner:
             internal_medicine_round2_state=round2_session.get("dialogue_state") if round2_session else None,
         )
 
-    def _create_encounter(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _create_encounter(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
+        del force_offline_llm
         encounter = self.encounter_orchestration_service.create_or_get_encounter(
             patient_id=state.patient_id,
             patient_name=profile.name,
@@ -152,7 +158,7 @@ class NpcPatientRunner:
         state.status = "ready"
         state.clear_dialogue()
 
-    def _create_triage_session(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _create_triage_session(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
         payload = {
             "patient_id": state.patient_id,
             "visit_id": state.encounter_id,
@@ -165,6 +171,8 @@ class NpcPatientRunner:
             "vitals": dict(profile.vitals),
             "chronic_conditions": list(profile.chronic_conditions),
         }
+        if force_offline_llm:
+            payload["_force_offline_llm"] = True
         response = self.triage_service.create_session(payload)
         state.encounter_id = response.get("visit_id") or state.encounter_id
         state.active_session_id = response["session_id"]
@@ -177,7 +185,7 @@ class NpcPatientRunner:
             counterparty="triage_agent",
         )
 
-    def _reply_triage(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _reply_triage(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
         session_id = self._require_triage_session_id(state)
         current = self.triage_service.build_response(state.patient_id, session_id)
         missing_fields = current.get("dialogue", {}).get("missing_fields") or []
@@ -189,6 +197,7 @@ class NpcPatientRunner:
                 "visit_id": state.encounter_id,
                 "name": profile.name,
                 "message": message,
+                "_force_offline_llm": force_offline_llm,
             },
         )
         state.reply_counters["triage"] += 1
@@ -202,7 +211,8 @@ class NpcPatientRunner:
             counterparty="triage_agent",
         )
 
-    def _register_visit(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _register_visit(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
+        del force_offline_llm
         visit_row = self._require_visit_row(state)
         visit_state = VisitLifecycleState(visit_row["state"])
         if visit_state != VisitLifecycleState.TRIAGED:
@@ -254,7 +264,8 @@ class NpcPatientRunner:
         state.status = VisitLifecycleState.REGISTERED.value
         state.clear_dialogue()
 
-    def _progress_visit(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _progress_visit(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
+        del force_offline_llm
         visit_row = self._require_visit_row(state)
         if VisitLifecycleState(visit_row["state"]) != VisitLifecycleState.REGISTERED:
             return
@@ -293,7 +304,8 @@ class NpcPatientRunner:
         state.status = VisitLifecycleState.WAITING_CONSULTATION.value
         state.clear_dialogue()
 
-    def _enter_consultation(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _enter_consultation(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
+        del force_offline_llm
         visit_row = self._require_visit_row(state)
         patient_row = self.patient_repo.get(state.patient_id)
         ticket = self.queue_repo.get_active_ticket_for_patient(state.patient_id, visit_id=visit_row["id"])
@@ -306,6 +318,7 @@ class NpcPatientRunner:
         if ticket.get("status") != QueueTicketStatus.CALLED.value:
             return
         assigned_department = self._assigned_department(visit_row)
+        consultation_definition = self._consultation_definition_for_visit(visit_row)
         next_state = self.patient_state_machine.transition(PatientLifecycleState.CALLED, "start_consultation")
         self.patient_repo.update_patient(
             state.patient_id,
@@ -322,7 +335,7 @@ class NpcPatientRunner:
             "start_consultation",
             current_node=f"{assigned_department['id']}_consultation_room",
             current_department=CONSULTATION_ROOM,
-            active_agent_type="doctor",
+            active_agent_type=consultation_definition.agent_type if consultation_definition else None,
             data=self._decode_visit_data(visit_row),
         )
         completed_ticket = self.queue_repo.mark_completed(ticket["id"])
@@ -335,12 +348,14 @@ class NpcPatientRunner:
         state.status = VisitLifecycleState.IN_CONSULTATION.value
         state.clear_dialogue()
 
-    def _create_internal_medicine_session(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _create_internal_medicine_session(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
         round_number = int(planned.payload.get("round") or 1)
+        consultation_definition = self._require_consultation_definition(state)
+        consultation_service = self._require_consultation_service(consultation_definition.agent_type)
         payload = {
             "patient_id": state.patient_id,
             "visit_id": state.encounter_id,
-            "session_id": f"im-session-{uuid.uuid4().hex[:8]}",
+            "session_id": f"{consultation_definition.session_prefix}{uuid.uuid4().hex[:8]}",
             "name": profile.name,
             "age": profile.age,
             "sex": profile.sex,
@@ -353,7 +368,9 @@ class NpcPatientRunner:
             "round": round_number,
             "debug_read_historical_records": True,
         }
-        response = self.internal_medicine_service.create_session(payload)
+        if force_offline_llm:
+            payload["_force_offline_llm"] = True
+        response = consultation_service.create_session(payload)
         state.active_session_id = response["session_id"]
         state.phase = self._phase_for_round(round_number)
         state.status = response.get("dialogue", {}).get("status") or "awaiting_patient_reply"
@@ -361,11 +378,13 @@ class NpcPatientRunner:
             state,
             session_id=response["session_id"],
             phase=state.phase,
-            counterparty="internal_medicine_agent",
+            counterparty=f"{consultation_definition.agent_type}_agent",
         )
 
-    def _reply_internal_medicine(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _reply_internal_medicine(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
         round_number = int(planned.payload.get("round") or 1)
+        consultation_definition = self._require_consultation_definition(state)
+        consultation_service = self._require_consultation_service(consultation_definition.agent_type)
         session_id = self._resolve_internal_session_id(state, round_number)
         reply_key = self._phase_for_round(round_number)
         replies = (
@@ -375,13 +394,14 @@ class NpcPatientRunner:
         )
         reply_index = min(state.reply_counters[reply_key], len(replies) - 1)
         message = replies[reply_index]
-        response = self.internal_medicine_service.continue_session(
+        response = consultation_service.continue_session(
             session_id,
             {
                 "patient_id": state.patient_id,
                 "visit_id": state.encounter_id,
                 "name": profile.name,
                 "message": message,
+                "_force_offline_llm": force_offline_llm,
             },
         )
         state.reply_counters[reply_key] += 1
@@ -392,10 +412,11 @@ class NpcPatientRunner:
             state,
             session_id=session_id,
             phase=reply_key,
-            counterparty="internal_medicine_agent",
+            counterparty=f"{consultation_definition.agent_type}_agent",
         )
 
-    def _trigger_encounter_event(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction) -> None:
+    def _trigger_encounter_event(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
+        del force_offline_llm
         event = planned.payload["event"]
         visit_row = self._require_visit_row(state)
         assigned_department = self._assigned_department(visit_row)
@@ -489,14 +510,21 @@ class NpcPatientRunner:
     def _resolve_internal_session_id(self, state: NpcPatientDebugState, round_number: int) -> str:
         visit_row = self._require_visit_row(state)
         visit_data = self._decode_visit_data(visit_row)
-        session_key = "internal_medicine_round2_session_id" if round_number == 2 else "internal_medicine_session_id"
+        consultation_definition = self._consultation_definition_for_visit(visit_row)
+        if not consultation_definition:
+            raise ValueError("consultation definition not found")
+        session_key = (
+            consultation_definition.round2_session_ref_key
+            if round_number == 2 and consultation_definition.round2_session_ref_key
+            else consultation_definition.session_ref_key
+        )
         session_id = visit_data.get(session_key)
         if session_id:
             return session_id
-        latest = self.session_repo.get_latest_by_visit_and_agent(visit_row["id"], "internal_medicine")
+        latest = self.session_repo.get_latest_by_visit_and_agent(visit_row["id"], consultation_definition.agent_type)
         if latest:
             return latest["id"]
-        raise ValueError("internal medicine session not found")
+        raise ValueError("consultation session not found")
 
     def _require_triage_session_id(self, state: NpcPatientDebugState) -> str:
         visit_row = self._require_visit_row(state)
@@ -633,6 +661,8 @@ class NpcPatientRunner:
             "waiting_test_payment",
             "test_payment_completed",
             "in_test",
+            "waiting_outpatient_procedure",
+            "in_outpatient_procedure",
             "waiting_return_consultation",
             "results_ready",
             "waiting_second_consultation",
@@ -647,3 +677,23 @@ class NpcPatientRunner:
     def _assigned_department(self, visit_row: dict) -> dict:
         patient_row = self.patient_repo.get(visit_row["patient_id"])
         return resolve_assigned_department_for_visit(visit_row, patient_row)
+
+    def _consultation_definition_for_visit(self, visit_row: dict | None):
+        if not visit_row:
+            return None
+        patient_row = self.patient_repo.get(visit_row["patient_id"])
+        return resolve_consultation_agent_for_visit(visit_row, patient_row)
+
+    def _require_consultation_definition(self, state: NpcPatientDebugState):
+        visit_row = self._require_visit_row(state)
+        definition = self._consultation_definition_for_visit(visit_row)
+        if definition is None:
+            raise ValueError("consultation definition not found")
+        return definition
+
+    def _require_consultation_service(self, agent_type: str):
+        if agent_type == "internal_medicine":
+            return self.internal_medicine_service
+        if agent_type == "surgery" and self.surgery_service is not None:
+            return self.surgery_service
+        raise ValueError(f"consultation service not configured for {agent_type}")

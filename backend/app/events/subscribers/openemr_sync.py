@@ -15,6 +15,8 @@ class OpenEMRSyncSubscriber:
         "in_consultation",
         "waiting_test",
         "in_test",
+        "waiting_outpatient_procedure",
+        "in_outpatient_procedure",
     }
 
     def __init__(self, *, emr_service, visit_repo, session_repo):

@@ -298,6 +298,7 @@ def render_agent_debug_page(
     }}
 
     document.getElementById("loadPresetBtn").addEventListener("click", loadSelectedPreset);
+    presetSelect.addEventListener("change", loadSelectedPreset);
     document.getElementById("applyBtn").addEventListener("click", async () => {{
       try {{
         const payload = JSON.parse(preloadJsonEl.value || "{{}}");

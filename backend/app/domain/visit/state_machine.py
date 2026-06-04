@@ -51,6 +51,8 @@ VISIT_TRANSITIONS = {
     },
     VisitLifecycleState.IN_CONSULTATION: {
         "consultation_completed": VisitLifecycleState.WAITING_TEST,
+        "order_outpatient_procedure": VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE,
+        "finalize_without_tests": VisitLifecycleState.DIAGNOSIS_FINALIZED,
         "complete_visit": VisitLifecycleState.COMPLETED,
         "mark_error": VisitLifecycleState.ERROR,
     },
@@ -59,6 +61,11 @@ VISIT_TRANSITIONS = {
         "begin_triage": VisitLifecycleState.TRIAGING,
         "request_test_payment": VisitLifecycleState.WAITING_TEST_PAYMENT,
         "results_ready": VisitLifecycleState.RESULTS_READY,
+        "order_outpatient_procedure": VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE: {
+        "start_outpatient_procedure": VisitLifecycleState.IN_OUTPATIENT_PROCEDURE,
         "mark_error": VisitLifecycleState.ERROR,
     },
     VisitLifecycleState.WAITING_TEST_PAYMENT: {
@@ -73,8 +80,14 @@ VISIT_TRANSITIONS = {
         "finish_exam": VisitLifecycleState.WAITING_RETURN_CONSULTATION,
         "mark_error": VisitLifecycleState.ERROR,
     },
+    VisitLifecycleState.IN_OUTPATIENT_PROCEDURE: {
+        "finish_outpatient_procedure": VisitLifecycleState.RESULTS_READY,
+        "order_tests": VisitLifecycleState.WAITING_TEST,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
     VisitLifecycleState.WAITING_RETURN_CONSULTATION: {
         "results_ready": VisitLifecycleState.RESULTS_READY,
+        "order_outpatient_procedure": VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE,
         "mark_error": VisitLifecycleState.ERROR,
     },
     VisitLifecycleState.RESULTS_READY: {

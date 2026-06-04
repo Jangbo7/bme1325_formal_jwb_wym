@@ -6,10 +6,12 @@ from app.agents.surgery.policy import (
     select_surgery_policy_phase,
     validate_surgery_policy_snapshot,
 )
+from app.agents.surgery.patient_reply import build_patient_reply
 from app.agents.surgery.prompts import (
     build_consultation_system_prompt,
     build_consultation_user_prompt,
     build_final_message,
+    build_follow_up_llm_messages,
     build_follow_up_question,
     build_initial_message,
     build_transition_follow_up_question,
@@ -47,8 +49,10 @@ def build_surgery_runtime_config() -> DepartmentAgentConfig:
         complete_events=("complete", "plan_treatment", "approve"),
         build_initial_message=build_initial_message,
         build_follow_up_question=build_follow_up_question,
+        build_follow_up_llm_messages=build_follow_up_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
         build_final_message=build_final_message,
+        build_patient_reply=build_patient_reply,
         build_system_prompt=build_consultation_system_prompt,
         build_user_prompt=build_consultation_user_prompt,
         retrieve_rules=retrieve_relevant_surgery_rules,

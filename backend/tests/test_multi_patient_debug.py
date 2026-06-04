@@ -28,13 +28,21 @@ def create_test_client_without_llm(tmp_path, monkeypatch):
     monkeypatch.setenv("MOCK_API_KEY", "mock-key-001")
     monkeypatch.setenv("SIMULATOR_ENABLED", "false")
     monkeypatch.setenv("REDIS_MIRROR_ENABLED", "false")
+    monkeypatch.setenv("ACTIVE_LLM_PROVIDER", "current")
     monkeypatch.setenv("LLM_API_KEY", "")
+    monkeypatch.setenv("CURRENT_LLM_API_KEY", "")
+    monkeypatch.setenv("CURRENT_LLM_MODEL", "")
+    monkeypatch.setenv("CURRENT_LLM_ENDPOINT", "")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("DEEPSEEK_V3_API_KEY", "")
     monkeypatch.setenv("DEEPSEEK_R1_API_KEY", "")
     monkeypatch.setenv("GPT52_API_KEY", "")
     monkeypatch.setenv("QWEN_API_KEY", "")
     monkeypatch.setenv("QWEN_VL_API_KEY", "")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "")
+    monkeypatch.setenv("ALIYUN_LLM_API_KEY", "")
+    monkeypatch.setenv("ALIYUN_LLM_MODEL", "")
+    monkeypatch.setenv("ALIYUN_LLM_ENDPOINT", "")
     app = create_app()
     return TestClient(app)
 
@@ -135,9 +143,11 @@ def test_multi_patient_debug_legacy_mode_supports_configured_limit_and_departmen
     snapshot_resp = client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers())
     assert snapshot_resp.status_code == 200
     snapshot = get_data(snapshot_resp)
-    assert snapshot["total_spawned"] == 12
-    assert len(snapshot["patients"]) == 12
+    assert snapshot["total_spawned"] >= 12
+    assert snapshot["active_count"] <= 12
+    assert len(snapshot["patients"]) == snapshot["total_spawned"]
     assert all(item["mode"] == "legacy_template" for item in snapshot["patients"])
+    assert all(item["llm_mode"] == "offline" for item in snapshot["patients"])
     assert all(item["assigned_department_id"] for item in snapshot["patients"])
     assert all(item["assigned_department_name"] for item in snapshot["patients"])
     assert any((item["step_count"] or 0) > 0 for item in snapshot["patients"])
@@ -148,6 +158,123 @@ def test_multi_patient_debug_legacy_mode_supports_configured_limit_and_departmen
 
     stop_resp = post_json(client, "/api/v1/multi-patient-debug/stop")
     assert stop_resp.status_code == 200
+
+
+def test_multi_patient_debug_legacy_mode_forces_offline_even_when_global_llm_is_available(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    controller = client.app.state.container["multi_patient_debug_controller"]
+    triage_service = client.app.state.container["triage_service"]
+    internal_medicine_service = client.app.state.container["internal_medicine_service"]
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("LLM call should not happen in legacy offline mode")
+
+    triage_service.request_triage_from_llm = fail_if_called
+    triage_service.request_followup_from_llm = fail_if_called
+    internal_medicine_service.request_consultation_from_llm = fail_if_called
+    internal_medicine_service.request_follow_up_message_from_llm = fail_if_called
+
+    start_resp = post_json(
+        client,
+        "/api/v1/multi-patient-debug/start",
+        {
+            "mode": "legacy_template",
+            "spawn_interval_seconds": 0.0,
+            "step_interval_seconds": 0.1,
+            "max_active_patients": 2,
+        },
+    )
+    assert start_resp.status_code == 200
+
+    for _ in range(80):
+        controller.tick_once()
+        time.sleep(0.01)
+
+    snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
+    assert snapshot["total_spawned"] >= 2
+    assert snapshot["active_count"] <= 2
+    assert len(snapshot["patients"]) == snapshot["total_spawned"]
+    assert all(item["llm_mode"] == "offline" for item in snapshot["patients"])
+    assert any((item["step_count"] or 0) > 0 for item in snapshot["patients"])
+
+
+def test_multi_patient_debug_probabilistic_mode_zero_probability_forces_all_offline(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    controller = client.app.state.container["multi_patient_debug_controller"]
+
+    start_resp = post_json(
+        client,
+        "/api/v1/multi-patient-debug/start",
+        {
+            "mode": "legacy_probabilistic_llm",
+            "spawn_interval_seconds": 0.0,
+            "step_interval_seconds": 0.1,
+            "max_active_patients": 4,
+            "llm_probability": 0.0,
+        },
+    )
+    assert start_resp.status_code == 200
+
+    for _ in range(30):
+        controller.tick_once()
+        time.sleep(0.01)
+
+    snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
+    assert snapshot["llm_probability"] == 0.0
+    assert snapshot["total_spawned"] >= 4
+    assert snapshot["active_count"] <= 4
+    assert len(snapshot["patients"]) == snapshot["total_spawned"]
+    assert all(item["mode"] == "legacy_probabilistic_llm" for item in snapshot["patients"])
+    assert all(item["llm_mode"] == "offline" for item in snapshot["patients"])
+    assert all(item["llm_probability"] == 0.0 for item in snapshot["patients"])
+
+
+def test_multi_patient_debug_probabilistic_mode_one_probability_forces_all_online(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    controller = client.app.state.container["multi_patient_debug_controller"]
+
+    start_resp = post_json(
+        client,
+        "/api/v1/multi-patient-debug/start",
+        {
+            "mode": "legacy_probabilistic_llm",
+            "spawn_interval_seconds": 0.0,
+            "step_interval_seconds": 0.1,
+            "max_active_patients": 4,
+            "llm_probability": 1.0,
+        },
+    )
+    assert start_resp.status_code == 200
+
+    for _ in range(30):
+        controller.tick_once()
+        time.sleep(0.01)
+
+    snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
+    assert snapshot["llm_probability"] == 1.0
+    assert snapshot["total_spawned"] >= 4
+    assert snapshot["active_count"] <= 4
+    assert len(snapshot["patients"]) == snapshot["total_spawned"]
+    assert all(item["mode"] == "legacy_probabilistic_llm" for item in snapshot["patients"])
+    assert all(item["llm_mode"] == "online" for item in snapshot["patients"])
+    assert all(item["llm_probability"] == 1.0 for item in snapshot["patients"])
+
+
+def test_multi_patient_debug_rejects_invalid_llm_probability(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+
+    response = post_json(
+        client,
+        "/api/v1/multi-patient-debug/start",
+        {
+            "mode": "legacy_probabilistic_llm",
+            "spawn_interval_seconds": 0.0,
+            "step_interval_seconds": 0.1,
+            "max_active_patients": 1,
+            "llm_probability": 1.5,
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_multi_patient_debug_intelligent_mode_works_with_fake_agent(tmp_path, monkeypatch):
@@ -201,7 +328,14 @@ def test_multi_patient_debug_page_is_available(tmp_path, monkeypatch):
 def test_multi_patient_debug_department_mixed_mode_uses_multiple_agent_types(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     install_fake_patient_agent(client)
+    triage_service = client.app.state.container["triage_service"]
+    internal_medicine_service = client.app.state.container["internal_medicine_service"]
     controller = client.app.state.container["multi_patient_debug_controller"]
+
+    triage_service.request_triage_from_llm = lambda *args, **kwargs: None
+    triage_service.request_followup_from_llm = lambda *args, **kwargs: None
+    internal_medicine_service.request_consultation_from_llm = lambda *args, **kwargs: None
+    internal_medicine_service.request_follow_up_message_from_llm = lambda *args, **kwargs: None
 
     start_resp = post_json(
         client,

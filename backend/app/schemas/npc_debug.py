@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-CounterpartyType = Literal["triage_agent", "internal_medicine_agent", "system"]
+CounterpartyType = Literal["triage_agent", "internal_medicine_agent", "surgery_agent", "system"]
 DialogueDirection = Literal["inbound", "outbound"]
 
 

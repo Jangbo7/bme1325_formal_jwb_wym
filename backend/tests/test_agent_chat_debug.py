@@ -77,11 +77,24 @@ def test_internal_medicine_agent_debug_preload_and_message(tmp_path, monkeypatch
     assert preload["agent_type"] == "internal_medicine"
     assert preload["trace"]["extra"]["historical_records_template"] is not None
     assert "simulated_report" in preload["trace"]["merged_payload"]
+    assert preload["trace"]["merged_payload"]["previous_round_summary"]["impression"] == "possible gastritis"
+    assert preload["trace"]["merged_payload"]["diagnostic_session"]["window_label"] == "Lab Window 2"
+    assert preload["trace"]["parsed_result"]["message_type"] == "final"
+    assert preload["trace"]["structured_result"] == preload["trace"]["parsed_result"]["final_result"]
+    assert preload["trace"]["patient_reply"] == preload["latest_reply"]["content"]
+    assert preload["trace"]["patient_reply_source"] == "reply_builder"
+    assert preload["trace"]["reassessment_intent"] is None
+    assert preload["trace"]["reply_rendering_mode"] is None
+    assert "血常规" not in preload["latest_reply"]["content"]
+    assert "基础生化" not in preload["latest_reply"]["content"]
+    assert "初步问诊" not in preload["latest_reply"]["content"]
 
     message = get_data(post_json(client, "/api/v1/internal-medicine-agent-debug/message", {"message": "The pain is still there at night, and I want to know what the report means."}))
     assert message["transcript"]
     assert "rag_hits" in message["trace"]
     assert "parsed_result" in message["trace"]
+    assert message["trace"]["parsed_result"]["reassessment_intent"] in {"question_only", "question_with_minor_guidance", "result_update"}
+    assert message["trace"]["reply_rendering_mode"] in {"answer_only", "answer_plus_guidance", "updated_summary"}
 
 
 def test_unified_doctor_agent_debug_internal_medicine(tmp_path, monkeypatch):
@@ -90,6 +103,7 @@ def test_unified_doctor_agent_debug_internal_medicine(tmp_path, monkeypatch):
     page = client.get("/doctor-agent-debug")
     assert page.status_code == 200
     assert "Doctor Agent Debug" in page.text
+    assert 'presetSelect.addEventListener("change", loadSelectedPreset);' in page.text
 
     preload = get_data(
         post_json(
@@ -128,10 +142,10 @@ def test_doctor_debug_registry_contains_surgery_config(tmp_path, monkeypatch):
     assert surgery_config.agent_type == "surgery"
     assert surgery_config.department_id == "surgery"
     assert surgery_config.service_container_key == "surgery_service"
+    assert surgery_config.supports_round2 is True
 
     available_agents = client.app.state.container["doctor_agent_debug_controller"].list_available_agents()
     assert any(agent["agent_type"] == "internal_medicine" for agent in available_agents)
-    assert all(agent["agent_type"] != "surgery" for agent in available_agents)
 
 
 def test_patient_agent_chat_debug_preload_and_message(tmp_path, monkeypatch):

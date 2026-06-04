@@ -75,7 +75,7 @@ class InternalMedicineService(DepartmentAgentRuntime):
         queue_ticket = self.queue_repo.get_active_ticket_for_patient(patient_id, visit_id=visit_row["id"] if visit_row else None)
         session_refs = {
             "triage_session_id": visit_data.get("triage_session_id"),
-            "internal_medicine_session_id": session_id,
+            "internal_medicine_session_id": visit_data.get("internal_medicine_session_id") or session_id,
             "internal_medicine_round2_session_id": visit_data.get("internal_medicine_round2_session_id"),
         }
         return self.patient_repo.to_view(
@@ -358,6 +358,16 @@ class InternalMedicineService(DepartmentAgentRuntime):
                     "final_diagnosis": consultation_result.get("final_diagnosis"),
                     "plan": consultation_result.get("plan"),
                     "prescriptions": consultation_result.get("prescriptions", []),
+                    "prescription_plan": consultation_result.get("prescription_plan", []),
+                    "clinical_impression": consultation_result.get("clinical_impression"),
+                    "final_assessment_summary": consultation_result.get("final_assessment_summary"),
+                    "primary_disposition": consultation_result.get("primary_disposition"),
+                    "medication_recommendation": consultation_result.get("medication_recommendation"),
+                    "admission_recommendation": consultation_result.get("admission_recommendation"),
+                    "procedure_recommendation": consultation_result.get("procedure_recommendation"),
+                    "followup_recommendation": consultation_result.get("followup_recommendation"),
+                    "return_precautions": consultation_result.get("return_precautions", []),
+                    "patient_facing_plan": consultation_result.get("patient_facing_plan"),
                     "assistant_message": assistant_message,
                     "visit_state_after_consult": "waiting_payment",
                 },

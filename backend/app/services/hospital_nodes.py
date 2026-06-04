@@ -16,6 +16,16 @@ SYSTEM_NODES = [
         exit_conditions=["waiting_return_consultation", "results_ready"],
     ),
     HospitalNode(
+        node_id="outpatient_procedure",
+        node_type="system",
+        name="Outpatient Procedure",
+        supports_queue=False,
+        supports_consultation=False,
+        supported_actions=["start_outpatient_procedure", "finish_outpatient_procedure"],
+        entry_conditions=["waiting_outpatient_procedure"],
+        exit_conditions=["in_outpatient_procedure", "waiting_test", "results_ready"],
+    ),
+    HospitalNode(
         node_id="payment",
         node_type="system",
         name="Payment",
@@ -58,4 +68,3 @@ def build_department_nodes() -> list[HospitalNode]:
 
 def list_hospital_nodes() -> list[HospitalNode]:
     return [*build_department_nodes(), *SYSTEM_NODES]
-

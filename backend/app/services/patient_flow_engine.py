@@ -39,6 +39,11 @@ def _target_node_for_state(visit_state: str | None, assigned_department_id: str 
     }:
         return "testing"
     if visit_state in {
+        VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE.value,
+        VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
+    }:
+        return "outpatient_procedure"
+    if visit_state in {
         VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
         VisitLifecycleState.WAITING_PAYMENT.value,
         VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
@@ -119,6 +124,7 @@ class FlowDecisionEngine:
                     return FlowDecision(next_action="complete_visit", target_node="payment", reason=event, payload=planned.payload)
                 if event == "complete_visit":
                     return FlowDecision(next_action="complete_visit", target_node=target_node or "pharmacy", reason=event, payload=planned.payload)
+
             return FlowDecision(next_action="idle", target_node=target_node, reason=f"unsupported event {event}", guard_result="blocked", payload=planned.payload)
         return FlowDecision(next_action="error", target_node=target_node, reason=f"unsupported planned action {planned.action}", guard_result="blocked")
 
@@ -126,10 +132,10 @@ class FlowDecisionEngine:
 class FlowExecutor:
     """Execute already-decided action by delegating to existing runner primitives."""
 
-    def execute_legacy(self, *, runner, state, profile, planned: PlannedNpcAction, decision: FlowDecision) -> FlowExecutionResult:
+    def execute_legacy(self, *, runner, state, profile, planned: PlannedNpcAction, decision: FlowDecision, force_offline_llm: bool = False) -> FlowExecutionResult:
         if not self._guard_passed(decision, state, planned, runner, profile=profile):
             return FlowExecutionResult(ok=False, action=decision.next_action, target_node=decision.target_node, error=decision.reason)
-        runner.execute_planned_action(state, profile, planned)
+        runner.execute_planned_action(state, profile, planned, force_offline_llm=force_offline_llm)
         return FlowExecutionResult(ok=True, action=decision.next_action, target_node=decision.target_node)
 
     def execute_intelligent(self, *, runner, state, planned: PlannedNpcAction, decision: FlowDecision) -> FlowExecutionResult:

@@ -55,6 +55,16 @@ def test_visit_state_machine_blocks_waiting_test_shortcut_to_payment():
         pass
 
 
+def test_visit_state_machine_supports_outpatient_procedure_stage():
+    from app.domain.visit.state_machine import VisitStateMachine
+
+    machine = VisitStateMachine()
+    assert machine.transition(VisitLifecycleState.IN_CONSULTATION, "order_outpatient_procedure") == VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE
+    assert machine.transition(VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE, "start_outpatient_procedure") == VisitLifecycleState.IN_OUTPATIENT_PROCEDURE
+    assert machine.transition(VisitLifecycleState.IN_OUTPATIENT_PROCEDURE, "order_tests") == VisitLifecycleState.WAITING_TEST
+    assert machine.transition(VisitLifecycleState.IN_OUTPATIENT_PROCEDURE, "finish_outpatient_procedure") == VisitLifecycleState.RESULTS_READY
+
+
 def test_internal_medicine_state_machine_allows_reassessment_after_completion():
     from app.agents.internal_medicine.state_machine import InternalMedicineDialogueStateMachine
 

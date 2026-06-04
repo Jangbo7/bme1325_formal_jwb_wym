@@ -89,7 +89,7 @@ def department_runtime_debug_page():
 <body>
   <main>
     <h1>Department Runtime Debug</h1>
-    <div class="muted">Department-centric runtime view built on top of the existing multi patient auto-runner. No scene integration in this page.</div>
+    <div class="muted">Department-centric runtime view built on top of the existing multi patient auto-runner, including legacy offline/probabilistic LLM controls. No scene integration in this page.</div>
     <div class="toolbar">
       <div>
         <label>Mode</label><br />
@@ -97,6 +97,7 @@ def department_runtime_debug_page():
           <option value="intelligent_agent">intelligent_agent</option>
           <option value="department_mixed">department_mixed</option>
           <option value="legacy_template">legacy_template</option>
+          <option value="legacy_probabilistic_llm">legacy_probabilistic_llm</option>
         </select>
       </div>
       <div>
@@ -110,6 +111,10 @@ def department_runtime_debug_page():
       <div>
         <label>Max Active Patients</label><br />
         <input id="maxPatients" type="number" min="1" step="1" value="20" />
+      </div>
+      <div>
+        <label>LLM Probability</label><br />
+        <input id="llmProbability" type="number" min="0" max="1" step="0.1" value="0" />
       </div>
       <button id="startBtn">Start</button>
       <button id="stopBtn" class="secondary">Stop</button>
@@ -174,6 +179,7 @@ def department_runtime_debug_page():
           <div class="row">visit_state: ${patient.visit_state || "-"}</div>
           <div class="row">lifecycle: ${patient.patient_lifecycle_state || "-"}</div>
           <div class="row">queue_kind: ${patient.queue_kind || "-"}</div>
+          <div class="row">llm: ${patient.llm_mode || "-"}${patient.llm_probability != null ? ` (p=${patient.llm_probability})` : ""}</div>
           <div class="row">node: ${patient.current_node_id || "-"}</div>
           <div class="row">last_action: ${patient.last_action || "-"} | finished: ${patient.finished}</div>
           <details>
@@ -195,6 +201,7 @@ def department_runtime_debug_page():
         <div class="stat"><strong>mode</strong><div>${snapshot.mode}</div></div>
         <div class="stat"><strong>active_count</strong><div>${snapshot.active_count}</div></div>
         <div class="stat"><strong>spawned</strong><div>${snapshot.total_spawned}</div></div>
+        <div class="stat"><strong>llm probability</strong><div>${snapshot.llm_probability ?? "-"}</div></div>
         <div class="stat"><strong>dept with patients</strong><div>${departmentsWithPatients}</div></div>
         <div class="stat"><strong>finished patients</strong><div>${finishedPatients}</div></div>
         <div class="stat"><strong>dispatch</strong><div>${snapshot.dispatch_count}</div></div>
@@ -252,6 +259,7 @@ def department_runtime_debug_page():
           spawn_interval_seconds: Number(document.getElementById("spawnInterval").value),
           step_interval_seconds: Number(document.getElementById("stepInterval").value),
           max_active_patients: maxRaw ? Number(maxRaw) : null,
+          llm_probability: document.getElementById("llmProbability").value.trim() === "" ? null : Number(document.getElementById("llmProbability").value),
         });
         statusEl.textContent = "Started.";
         render(snapshot);
@@ -300,6 +308,7 @@ def start_department_runtime_debug(body: MultiPatientDebugStartRequest, request:
             spawn_interval_seconds=body.spawn_interval_seconds,
             step_interval_seconds=body.step_interval_seconds,
             max_active_patients=body.max_active_patients,
+            llm_probability=body.llm_probability,
         )
     except RuntimeError as exc:
         detail = str(exc)

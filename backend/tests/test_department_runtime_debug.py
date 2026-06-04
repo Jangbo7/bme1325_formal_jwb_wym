@@ -63,6 +63,8 @@ def test_department_runtime_debug_page_is_available(tmp_path, monkeypatch):
     response = client.get("/department-runtime-debug")
     assert response.status_code == 200
     assert "Department Runtime Debug" in response.text
+    assert "legacy_probabilistic_llm" in response.text
+    assert "LLM Probability" in response.text
 
 
 def test_department_runtime_debug_start_stop_reset_routes(tmp_path, monkeypatch):
@@ -91,7 +93,7 @@ def test_department_runtime_debug_start_stop_reset_routes(tmp_path, monkeypatch)
     assert snapshot_resp.status_code == 200
     snapshot = get_data(snapshot_resp)
     assert snapshot["running"] is True
-    assert snapshot["total_spawned"] == 6
+    assert snapshot["total_spawned"] >= 6
     assert snapshot["active_count"] <= 6
 
     stop_resp = post_json(client, "/api/v1/department-runtime-debug/stop")

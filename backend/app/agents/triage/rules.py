@@ -2,6 +2,8 @@ import json
 import re
 from pathlib import Path
 
+from app.agents.clinical_policy import ClinicalPolicyRuntimeContext
+
 
 RULE_STORE_PATH = Path(__file__).resolve().parents[3] / "rag" / "rule_store.json"
 KNOWN_SYMPTOM_TERMS = {
@@ -36,6 +38,25 @@ STOP_SYMPTOM_PHRASES = (
     "pain score",
 )
 MAX_FOLLOWUP_ATTEMPTS_PER_FIELD = 2
+DEFAULT_TRIAGE_OUTPATIENT_DEPARTMENTS = ("Internal Medicine", "Surgery")
+DEFAULT_TRIAGE_SURGERY_KEYWORDS = (
+    "trauma",
+    "wound",
+    "cut",
+    "laceration",
+    "abrasion",
+    "bleeding",
+    "postoperative",
+    "post-op",
+    "dressing change",
+    "suture",
+    "after surgery",
+    "injury",
+    "sprain",
+    "fracture",
+    "dislocation",
+    "bite",
+)
 
 
 def _chinese_numeral_to_int(token: str) -> int | None:
@@ -143,27 +164,56 @@ def merge_unique(old_values: list, new_values: list) -> list:
     return merged
 
 
-def build_missing_fields(shared_memory: dict) -> list[str]:
+def _policy_required_fields(policy_runtime_context: ClinicalPolicyRuntimeContext | None) -> list[str]:
+    if policy_runtime_context is None or policy_runtime_context.primary_card is None:
+        return []
+    required_fields = []
+    for target in policy_runtime_context.primary_card.collection_targets:
+        if not bool(target.get("required", False)):
+            continue
+        if target.get("runtime_supported", True) is False:
+            continue
+        field_name = str(target.get("field") or "").strip()
+        if field_name:
+            required_fields.append(field_name)
+    return required_fields
+
+
+def build_missing_fields(shared_memory: dict, *, policy_runtime_context: ClinicalPolicyRuntimeContext | None = None) -> list[str]:
     missing = []
     clinical = shared_memory["clinical_memory"]
     profile = shared_memory["profile"]
-    if not clinical.get("chief_complaint"):
-        missing.append("chief_complaint")
-    if not clinical.get("symptoms"):
-        missing.append("symptoms")
-    if not clinical.get("onset_time"):
-        missing.append("onset_time")
-    if "temp_c" not in (clinical.get("vitals") or {}):
-        missing.append("temp_c")
-    if "pain_score" not in (clinical.get("vitals") or {}):
-        missing.append("pain_score")
-    if profile.get("allergy_status") != "known":
-        missing.append("allergies")
+    required_fields = _policy_required_fields(policy_runtime_context) or [
+        "chief_complaint",
+        "symptoms",
+        "onset_time",
+        "temp_c",
+        "pain_score",
+        "allergies",
+    ]
+    for field_name in required_fields:
+        if field_name == "chief_complaint" and not clinical.get("chief_complaint"):
+            missing.append(field_name)
+        elif field_name == "symptoms" and not clinical.get("symptoms"):
+            missing.append(field_name)
+        elif field_name == "onset_time" and not clinical.get("onset_time"):
+            missing.append(field_name)
+        elif field_name == "temp_c" and "temp_c" not in (clinical.get("vitals") or {}):
+            missing.append(field_name)
+        elif field_name == "pain_score" and "pain_score" not in (clinical.get("vitals") or {}):
+            missing.append(field_name)
+        elif field_name == "allergies" and profile.get("allergy_status") != "known":
+            missing.append(field_name)
     return missing
 
 
-def prioritize_missing_fields(shared_memory: dict, private_memory: dict | None = None) -> list[str]:
-    missing = build_missing_fields(shared_memory)
+def prioritize_missing_fields(
+    shared_memory: dict,
+    private_memory: dict | None = None,
+    *,
+    policy_runtime_context: ClinicalPolicyRuntimeContext | None = None,
+) -> list[str]:
+    missing = build_missing_fields(shared_memory, policy_runtime_context=policy_runtime_context)
     if not missing:
         return []
     clinical = shared_memory["clinical_memory"]
@@ -193,6 +243,72 @@ def prioritize_missing_fields(shared_memory: dict, private_memory: dict | None =
         return (same_as_last, asked_count, preferred_order.get(field, 999), field)
 
     return sorted(missing, key=sort_key)
+
+
+def _outcome_policy(policy_runtime_context: ClinicalPolicyRuntimeContext | None) -> dict:
+    if policy_runtime_context is None or policy_runtime_context.primary_card is None:
+        return {}
+    return dict(policy_runtime_context.primary_card.outcome_policy or {})
+
+
+def _allowed_outpatient_departments(policy_runtime_context: ClinicalPolicyRuntimeContext | None) -> tuple[str, ...]:
+    configured = _outcome_policy(policy_runtime_context).get("allowed_departments") or []
+    normalized = tuple(str(item).strip() for item in configured if str(item).strip() and str(item).strip().lower() != "emergency")
+    return normalized or DEFAULT_TRIAGE_OUTPATIENT_DEPARTMENTS
+
+
+def _surgery_keywords(policy_runtime_context: ClinicalPolicyRuntimeContext | None) -> tuple[str, ...]:
+    configured = _outcome_policy(policy_runtime_context).get("surgery_keywords") or []
+    normalized = tuple(str(item).strip().lower() for item in configured if str(item).strip())
+    return normalized or DEFAULT_TRIAGE_SURGERY_KEYWORDS
+
+
+def _preferred_department_names(policy_runtime_context: ClinicalPolicyRuntimeContext | None) -> tuple[str, str, str]:
+    policy = _outcome_policy(policy_runtime_context)
+    outpatient = _allowed_outpatient_departments(policy_runtime_context)
+    default_department = str(policy.get("default_department") or outpatient[0]).strip() or DEFAULT_TRIAGE_OUTPATIENT_DEPARTMENTS[0]
+    surgery_department = str(policy.get("surgery_department") or (outpatient[1] if len(outpatient) > 1 else "Surgery")).strip() or "Surgery"
+    emergency_department = str(policy.get("emergency_department") or "Emergency").strip() or "Emergency"
+    return default_department, surgery_department, emergency_department
+
+
+def _matches_surgery_pattern(payload: dict, policy_runtime_context: ClinicalPolicyRuntimeContext | None = None) -> bool:
+    text = " ".join(
+        str(part or "")
+        for part in [
+            payload.get("chief_complaint"),
+            payload.get("symptoms"),
+            payload.get("message"),
+        ]
+    ).lower()
+    return any(keyword in text for keyword in _surgery_keywords(policy_runtime_context))
+
+
+def _normalize_department_choice(
+    department: str | None,
+    fallback_result: dict,
+    *,
+    policy_runtime_context: ClinicalPolicyRuntimeContext | None = None,
+    payload: dict | None = None,
+    triage_level: int | None = None,
+    priority: str | None = None,
+) -> str:
+    default_department, surgery_department, emergency_department = _preferred_department_names(policy_runtime_context)
+    normalized = (department or "").strip().lower()
+    fallback_department = str(fallback_result.get("department") or default_department).strip()
+    if (triage_level is not None and triage_level <= 3) or str(priority or "").upper() == "H":
+        return emergency_department
+    if "emergency" in normalized:
+        return emergency_department
+    if "surgery" in normalized:
+        return surgery_department
+    if "internal" in normalized or "general medicine" in normalized or "fever" in normalized:
+        return default_department
+    if _matches_surgery_pattern(payload or {}, policy_runtime_context):
+        return surgery_department
+    if "surgery" in fallback_department.lower():
+        return surgery_department
+    return default_department
 
 
 def score_rule(rule: dict, payload: dict) -> int:
@@ -234,26 +350,26 @@ def retrieve_relevant_rules(payload: dict, top_k: int = 3) -> list[dict]:
     return []
 
 
-def rule_based_triage(payload: dict) -> dict:
+def rule_based_triage(payload: dict, *, policy_runtime_context: ClinicalPolicyRuntimeContext | None = None) -> dict:
     vitals = payload.get("vitals") or {}
     hr = _safe_int(vitals.get("heart_rate"), 90)
     pain = _safe_int(vitals.get("pain_score"), 3)
     temp = _safe_float(vitals.get("temp_c"), 36.8)
     symptoms = (payload.get("symptoms") or "").lower()
+    default_department, surgery_department, emergency_department = _preferred_department_names(policy_runtime_context)
     level = 4
     priority = "L"
-    dept = "General Medicine"
+    dept = surgery_department if _matches_surgery_pattern(payload, policy_runtime_context) else default_department
     note = "Low to medium risk. Continue standard consultation process."
     if hr >= 120 or pain >= 8 or any(term in symptoms for term in ("chest", "breath", "faint", "severe", "\u80f8\u75db", "\u547c\u5438\u56f0\u96be")):
         level = 2
         priority = "H"
-        dept = "Emergency"
+        dept = emergency_department
         note = "High risk detected. Priority handling is recommended."
     elif temp >= 38.5:
         level = 3
         priority = "M"
-        dept = "Fever Clinic"
-        note = "Fever symptoms detected. Route to fever clinic."
+        note = "Urgent symptoms detected. Priority handling is recommended."
     return {
         "triage_level": level,
         "priority": priority,
@@ -262,7 +378,13 @@ def rule_based_triage(payload: dict) -> dict:
     }
 
 
-def validate_triage_result(result: dict | None, fallback_result: dict) -> dict:
+def validate_triage_result(
+    result: dict | None,
+    fallback_result: dict,
+    *,
+    policy_runtime_context: ClinicalPolicyRuntimeContext | None = None,
+    payload: dict | None = None,
+) -> dict:
     if not isinstance(result, dict):
         return fallback_result
     triage_level = result.get("triage_level")
@@ -275,6 +397,14 @@ def validate_triage_result(result: dict | None, fallback_result: dict) -> dict:
         priority = fallback_result["priority"]
     if not isinstance(department, str) or not department.strip():
         department = fallback_result["department"]
+    department = _normalize_department_choice(
+        department,
+        fallback_result,
+        policy_runtime_context=policy_runtime_context,
+        payload=payload,
+        triage_level=triage_level,
+        priority=priority,
+    )
     if not isinstance(note, str) or not note.strip():
         note = fallback_result["note"]
     return {

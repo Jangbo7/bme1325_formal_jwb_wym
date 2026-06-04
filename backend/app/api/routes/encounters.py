@@ -9,7 +9,7 @@ from app.events.types import ENCOUNTER_OPENED, ENCOUNTER_TRANSFERRED, PATIENT_ST
 from app.schemas.common import QueueTicketKind, QueueTicketStatus
 from app.schemas.encounter import CreateEncounterRequest, EncounterView, TransferCommand
 from app.schemas.common import PatientLifecycleState
-from app.schemas.orchestration import EncounterEventRequest, TransitionDebugRequest
+from app.schemas.orchestration import EncounterEventRequest, TransitionDebugRequest, TransitionDebugResult
 from app.services.department_assignment import resolve_assigned_department_for_visit
 
 
@@ -48,6 +48,21 @@ def _to_encounter_view(visit_repo, visit_row: dict) -> EncounterView:
         data=visit_view.data,
         created_at=visit_view.created_at,
         updated_at=visit_view.updated_at,
+    )
+
+
+def _build_transition_result(orchestration, before_row: dict, after_row: dict, event: str) -> TransitionDebugResult:
+    from_state = orchestration._resolve_standard_state(before_row)  # noqa: SLF001
+    to_state = orchestration._resolve_standard_state(after_row)  # noqa: SLF001
+    return TransitionDebugResult(
+        encounter_id=after_row["id"],
+        from_state=from_state,
+        event=event,
+        to_state=to_state,
+        internal_from_state=before_row["state"],
+        internal_to_state=after_row["state"],
+        allowed_next=orchestration.allowed_next(to_state),
+        dry_run=False,
     )
 
 
@@ -97,22 +112,57 @@ def trigger_encounter_event(encounter_id: str, body: EncounterEventRequest, requ
     visit_repo = container["visit_repo"]
     patient_repo = container["patient_repo"]
     queue_repo = container["queue_repo"]
+    outpatient_procedure_service = container.get("outpatient_procedure_service")
     patient_state_machine = container["triage_service"].patient_state_machine
     bus = container["event_bus"]
     visit_row = visit_repo.get(encounter_id)
     if not visit_row:
         raise HTTPException(status_code=404, detail="ENCOUNTER_NOT_FOUND")
-    try:
-        transition = orchestration.transition(
-            encounter_id,
-            body.event,
-            context=body.context,
+    special_handled = False
+    transition = None
+    updated = None
+    visit_data = _decode_data(visit_row)
+    requirements = visit_data.get("pre_round2_requirements") if isinstance(visit_data.get("pre_round2_requirements"), dict) else {}
+    if outpatient_procedure_service is not None and body.event in {"start_outpatient_procedure", "finish_outpatient_procedure"}:
+        if body.event == "start_outpatient_procedure":
+            updated = outpatient_procedure_service.start_outpatient_procedure(
+                visit_row,
+                active_agent_type=visit_row.get("active_agent_type"),
+            )
+            transition = _build_transition_result(orchestration, visit_row, updated, "start_outpatient_procedure")
+        else:
+            updated = outpatient_procedure_service.finish_outpatient_procedure(
+                visit_row,
+                active_agent_type=visit_row.get("active_agent_type"),
+            )
+            effective_event = "order_tests" if updated.get("state") == "waiting_test" else "finish_outpatient_procedure"
+            transition = _build_transition_result(orchestration, visit_row, updated, effective_event)
+        special_handled = True
+    elif (
+        outpatient_procedure_service is not None
+        and body.event == "results_ready"
+        and requirements.get("outpatient_procedure_required")
+    ):
+        updated = outpatient_procedure_service.mark_tests_completed(
+            visit_row,
+            active_agent_type=visit_row.get("active_agent_type"),
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    updated = visit_repo.get(encounter_id)
-    if not updated:
-        raise HTTPException(status_code=404, detail="ENCOUNTER_NOT_FOUND")
+        effective_event = "order_outpatient_procedure" if updated.get("state") == "waiting_outpatient_procedure" else "results_ready"
+        transition = _build_transition_result(orchestration, visit_row, updated, effective_event)
+        special_handled = True
+
+    if not special_handled:
+        try:
+            transition = orchestration.transition(
+                encounter_id,
+                body.event,
+                context=body.context,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        updated = visit_repo.get(encounter_id)
+        if not updated:
+            raise HTTPException(status_code=404, detail="ENCOUNTER_NOT_FOUND")
     patient_row = patient_repo.get(updated["patient_id"])
     assigned_department = resolve_assigned_department_for_visit(updated, patient_row)
     updated = visit_repo.update_visit(
