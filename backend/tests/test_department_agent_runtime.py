@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -187,6 +188,16 @@ class DummyQueueRepo:
         return None
 
 
+class DummyVisitRepo:
+    def __init__(self, row: dict | None = None):
+        self.row = row
+
+    def get(self, visit_id: str):
+        if not self.row or self.row.get("id") != visit_id:
+            return None
+        return self.row
+
+
 class DummyBus:
     def __init__(self):
         self.events = []
@@ -245,9 +256,23 @@ class FakeDepartmentService(DepartmentAgentRuntime):
         private_memory.setdefault("latest_summary", {})
         private_memory.setdefault(self.config.progress_memory_key, {})
         private_memory.setdefault("final_result", {})
+        private_memory.setdefault("consultation_round", int(payload.get("_consultation_round") or payload.get("consultation_round") or 1))
 
     def after_persist_result(self, **kwargs) -> None:
         self.counters["after_persist"] += 1
+
+
+class FakeDepartmentServiceWithVisitContext(FakeDepartmentService):
+    def __init__(self, *, counters: dict, visit_row: dict):
+        super().__init__(counters=counters)
+        self.visit_repo = DummyVisitRepo(visit_row)
+
+    def load_historical_records_template(self, *, patient_id: str, visit_id: str) -> dict:
+        return {
+            "current_visit": {"summary": {"visit_id": visit_id, "patient_id": patient_id}},
+            "previous_visits": [],
+            "clinician_note": "round2 history loaded",
+        }
 
 
 def build_fake_config(counters: dict) -> DepartmentAgentConfig:
@@ -320,11 +345,13 @@ def build_fake_config(counters: dict) -> DepartmentAgentConfig:
     def validate_result(llm_result: dict | None, fallback: dict, payload: dict):
         counters["validate_result"] += 1
         result = dict(fallback)
+        if llm_result:
+            result.update(llm_result)
         result["complete"] = True
         result["tests_suggested"] = []
-        result["medication_or_action"] = ["rest"]
+        result["medication_or_action"] = list(result.get("medication_or_action") or ["rest"])
         result["red_flags"] = []
-        result["patient_plan"] = "follow plan"
+        result["patient_plan"] = result.get("patient_plan") or "follow plan"
         result["source"] = "fallback-validated" if llm_result is None else "llm"
         return result
 
@@ -350,6 +377,10 @@ def build_fake_config(counters: dict) -> DepartmentAgentConfig:
     def build_final_message(result: dict, *, message_type: str = "final"):
         counters["build_final_message"] += 1
         return f"{message_type}:{result['source']}"
+
+    def build_patient_reply(result: dict, *, message_type: str = "final", reply_style: str = "", **kwargs):
+        counters["build_patient_reply"] += 1
+        return f"reply:{reply_style}:{message_type}:{result['source']}"
 
     def build_system_prompt():
         return "system prompt"
@@ -379,6 +410,7 @@ def build_fake_config(counters: dict) -> DepartmentAgentConfig:
         build_follow_up_llm_messages=build_follow_up_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
         build_final_message=build_final_message,
+        build_patient_reply=build_patient_reply,
         build_system_prompt=build_system_prompt,
         build_user_prompt=build_user_prompt,
         retrieve_rules=retrieve_rules,
@@ -405,6 +437,7 @@ def test_department_agent_runtime_create_session_enters_followup():
         "build_follow_up_llm_messages": 0,
         "build_transition_follow_up_question": 0,
         "build_final_message": 0,
+        "build_patient_reply": 0,
         "build_user_prompt": 0,
         "after_persist": 0,
     }
@@ -438,6 +471,7 @@ def test_department_agent_runtime_continue_session_uses_fallback_and_hooks():
         "build_follow_up_llm_messages": 0,
         "build_transition_follow_up_question": 0,
         "build_final_message": 0,
+        "build_patient_reply": 0,
         "build_user_prompt": 0,
         "after_persist": 0,
     }
@@ -464,9 +498,11 @@ def test_department_agent_runtime_continue_session_uses_fallback_and_hooks():
     assert response["dialogue"]["status"] == FakeDialogueState.COMPLETED.value
     assert response["dialogue"]["message_type"] == "final"
     assert response["dialogue"]["final_result"]["source"] == "fallback-validated"
-    assert response["dialogue"]["assistant_message"] == "final:fallback-validated"
+    assert response["dialogue"]["assistant_message"] == "reply:round1_conclusion:final:fallback-validated"
     assert counters["validate_result"] == 1
-    assert counters["build_final_message"] == 1
+    assert counters["build_patient_reply"] == 1
+    assert response["dialogue"]["patient_reply_source"] == "reply_builder"
+    assert response["dialogue"]["response_source"] == "fallback"
     assert counters["after_persist"] == 2
     session_memory = service.memory_repo.get_agent_session_memory("fake-session-2", "patient-2", agent_type="fake_department")
     assert session_memory["latest_extraction"]["onset_time"] == "yesterday"
@@ -483,6 +519,7 @@ def test_department_agent_runtime_continue_session_followup_prefers_llm_when_ava
         "build_follow_up_llm_messages": 0,
         "build_transition_follow_up_question": 0,
         "build_final_message": 0,
+        "build_patient_reply": 0,
         "build_user_prompt": 0,
         "after_persist": 0,
     }
@@ -528,6 +565,7 @@ def test_department_agent_runtime_continue_session_followup_falls_back_when_llm_
         "build_follow_up_llm_messages": 0,
         "build_transition_follow_up_question": 0,
         "build_final_message": 0,
+        "build_patient_reply": 0,
         "build_user_prompt": 0,
         "after_persist": 0,
     }
@@ -555,3 +593,258 @@ def test_department_agent_runtime_continue_session_followup_falls_back_when_llm_
     assert response["dialogue"]["message_type"] == "followup"
     assert response["dialogue"]["assistant_message"] == "please provide onset_time"
     assert counters["build_follow_up_question"] == 1
+
+
+def test_department_agent_runtime_round2_auto_loads_history_and_previous_summary():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    visit_row = {
+        "id": "visit-round2",
+        "data_json": json.dumps(
+            {
+                "fake_round1_summary": {
+                    "assistant_message": "round1 summary",
+                    "next_step_decision": "test_first",
+                },
+                "simulated_report": {"report_text": "lab ready"},
+                "diagnostic_session": {"window_label": "Room 3"},
+            }
+        ),
+    }
+    service = FakeDepartmentServiceWithVisitContext(counters=counters, visit_row=visit_row)
+    service.patient_repo.update_patient("patient-round2", visit_id="visit-round2")
+    service.session_repo.create_or_update(
+        "fake-session-round2",
+        "patient-round2",
+        FakeDialogueState.COLLECTING.value,
+        agent_type=service.config.agent_type,
+        visit_id="visit-round2",
+    )
+    service.memory_repo.private[("fake-session-round2", "patient-round2", service.config.agent_type)] = {
+        "agent_type": service.config.agent_type,
+        "consultation_round": 2,
+    }
+
+    memory = service.prepare_context(
+        {
+            "patient_id": "patient-round2",
+            "visit_id": "visit-round2",
+            "name": "Patient Round2",
+        },
+        "fake-session-round2",
+        FakeDialogueState.COLLECTING,
+    )
+    merged = service.build_merged_payload(
+        {
+            "patient_id": "patient-round2",
+            "visit_id": "visit-round2",
+            "name": "Patient Round2",
+            "message": "back for review",
+        },
+        memory.shared_memory,
+        memory.private_memory,
+    )
+
+    assert memory.private_memory["historical_records_template"]["clinician_note"] == "round2 history loaded"
+    assert merged["consultation_round"] == 2
+    assert merged["previous_round_summary"]["assistant_message"] == "round1 summary"
+    assert merged["simulated_report"]["report_text"] == "lab ready"
+    assert merged["diagnostic_session"]["window_label"] == "Room 3"
+
+
+def test_department_agent_runtime_round2_create_session_can_complete_without_forced_followup():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(counters=counters, llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"})
+    service.request_consultation_from_llm = lambda *args, **kwargs: {
+        "department": "Fake Department",
+        "priority": "M",
+        "diagnosis_level": 1,
+        "note": "round2 final",
+        "patient_plan": "final plan",
+    }
+
+    response = service.create_session(
+        {
+            "patient_id": "patient-round2-create",
+            "session_id": "fake-session-round2-create",
+            "visit_id": "visit-round2-create",
+            "name": "Patient Round2 Create",
+            "consultation_round": 2,
+            "chief_complaint": "known issue",
+            "onset_time": "yesterday",
+            "allergies": [],
+        }
+    )
+
+    assert response["dialogue"]["status"] == FakeDialogueState.COMPLETED.value
+    assert response["dialogue"]["message_type"] == "final"
+    assert counters["build_initial_message"] == 0
+    assert counters["build_patient_reply"] == 1
+
+
+def test_department_agent_runtime_completed_session_tracks_reassessment_reason_and_changes():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(counters=counters, llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"})
+    llm_results = iter(
+        [
+            {
+                "department": "Fake Department",
+                "priority": "M",
+                "diagnosis_level": 1,
+                "note": "round1 final",
+                "patient_plan": "final plan",
+            },
+            {
+                "department": "Emergency",
+                "priority": "H",
+                "diagnosis_level": 3,
+                "note": "updated for safety",
+                "patient_plan": "urgent reassessment",
+            },
+        ]
+    )
+    service.request_consultation_from_llm = lambda *args, **kwargs: next(llm_results)
+
+    service.create_session(
+        {
+            "patient_id": "patient-reassess",
+            "session_id": "fake-session-reassess",
+            "visit_id": "visit-reassess",
+            "name": "Patient Reassess",
+            "chief_complaint": "known issue",
+            "onset_time": "yesterday",
+            "allergies": [],
+        }
+    )
+    first = service.continue_session(
+        "fake-session-reassess",
+        {
+            "patient_id": "patient-reassess",
+            "visit_id": "visit-reassess",
+            "name": "Patient Reassess",
+            "message": "I still have cough.",
+        },
+    )
+    second = service.continue_session(
+        "fake-session-reassess",
+        {
+            "patient_id": "patient-reassess",
+            "visit_id": "visit-reassess",
+            "name": "Patient Reassess",
+            "message": "Now I have chest pain and it feels worse.",
+        },
+    )
+
+    assert first["dialogue"]["message_type"] == "final"
+    assert second["dialogue"]["message_type"] == "final_update"
+    assert second["dialogue"]["update_reason"] == "safety_flag"
+    assert "priority" in second["dialogue"]["result_changed_fields"]
+    assert "department" in second["dialogue"]["result_changed_fields"]
+    assert second["dialogue"]["reassessment_intent"] == "result_update"
+    assert second["dialogue"]["reply_rendering_mode"] == "updated_summary"
+    assert second["dialogue"]["assistant_message"].startswith("reply:round1_reassessment:final_update:")
+
+
+def test_department_agent_runtime_completed_session_question_only_reassessment_keeps_direct_answer_mode():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(counters=counters, llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"})
+    llm_results = iter(
+        [
+            {
+                "department": "Fake Department",
+                "priority": "M",
+                "diagnosis_level": 1,
+                "note": "round1 final",
+                "patient_plan": "final plan",
+            },
+            {
+                "department": "Fake Department",
+                "priority": "M",
+                "diagnosis_level": 1,
+                "note": "round1 final",
+                "patient_plan": "final plan",
+            },
+        ]
+    )
+    service.request_consultation_from_llm = lambda *args, **kwargs: next(llm_results)
+
+    service.create_session(
+        {
+            "patient_id": "patient-question-only",
+            "session_id": "fake-session-question-only",
+            "visit_id": "visit-question-only",
+            "name": "Patient Question Only",
+            "chief_complaint": "known issue",
+            "onset_time": "yesterday",
+            "allergies": [],
+        }
+    )
+    service.continue_session(
+        "fake-session-question-only",
+        {
+            "patient_id": "patient-question-only",
+            "visit_id": "visit-question-only",
+            "name": "Patient Question Only",
+            "message": "I still have cough.",
+        },
+    )
+    second = service.continue_session(
+        "fake-session-question-only",
+        {
+            "patient_id": "patient-question-only",
+            "visit_id": "visit-question-only",
+            "name": "Patient Question Only",
+            "message": "What does the current plan mean?",
+        },
+    )
+
+    assert second["dialogue"]["message_type"] == "final_no_change"
+    assert second["dialogue"]["reassessment_intent"] == "question_only"
+    assert second["dialogue"]["reply_rendering_mode"] == "answer_only"

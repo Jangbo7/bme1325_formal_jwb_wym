@@ -5,6 +5,14 @@ from urllib import request as urlrequest
 
 from app.agents.clinical_policy import ClinicalPolicyRuntime, ClinicalPolicyValidatorResult
 from app.agents.department_runtime.config import DepartmentAgentConfig
+from app.agents.department_runtime.replies import (
+    infer_reassessment_intent,
+    infer_reply_rendering_mode,
+    default_patient_reply_from_result,
+    infer_result_changed_fields,
+    infer_update_reason,
+    select_patient_reply_style,
+)
 from app.events.types import PATIENT_STATE_CHANGED
 
 
@@ -217,7 +225,10 @@ class DepartmentAgentRuntime:
         self.configure_private_memory_defaults(private_memory, payload)
         private_memory["force_offline_llm"] = bool(payload.get("_force_offline_llm") or private_memory.get("force_offline_llm"))
         private_memory["dialogue_state"] = dialogue_state.value
-        if payload.get("debug_read_historical_records"):
+        consultation_round = self._normalize_consultation_round(
+            private_memory.get("consultation_round") or payload.get("_consultation_round") or payload.get("consultation_round")
+        )
+        if payload.get("debug_read_historical_records") or consultation_round >= 2:
             template = self.load_historical_records_template(
                 patient_id=patient_id,
                 visit_id=str(payload.get("visit_id") or ""),
@@ -261,6 +272,9 @@ class DepartmentAgentRuntime:
     def build_merged_payload(self, payload: dict, shared_memory: dict, private_memory: dict | None = None) -> dict:
         clinical = shared_memory["clinical_memory"]
         merged = {key: value for key, value in dict(payload).items() if not str(key).startswith("_")}
+        merged["consultation_round"] = self._normalize_consultation_round(
+            (private_memory or {}).get("consultation_round") or payload.get("consultation_round") or payload.get("_consultation_round")
+        )
         merged["symptoms"] = payload.get("symptoms") or ", ".join(clinical.get("symptoms") or [])
         merged["chief_complaint"] = payload.get("chief_complaint") or clinical.get("chief_complaint")
         merged["vitals"] = self.config.merge_vitals(clinical.get("vitals") or {}, payload.get("vitals") or {})
@@ -278,6 +292,10 @@ class DepartmentAgentRuntime:
                 merged["simulated_report"] = simulated_report
             if isinstance(diagnostic_session, dict):
                 merged["diagnostic_session"] = diagnostic_session
+            if merged["consultation_round"] >= 2:
+                previous_round_summary = self._extract_previous_round_summary(visit_data)
+                if isinstance(previous_round_summary, dict):
+                    merged["previous_round_summary"] = previous_round_summary
         if private_memory and isinstance(private_memory.get("historical_records_template"), dict):
             merged["historical_records_template"] = private_memory.get("historical_records_template")
         self.extend_merged_payload(merged, payload, shared_memory, private_memory or {})
@@ -294,6 +312,7 @@ class DepartmentAgentRuntime:
         post_final_reassessment: bool = False,
         policy_runtime_context=None,
     ) -> list[dict]:
+        consultation_round = self._normalize_consultation_round(payload.get("consultation_round"))
         policy_prompt_context = policy_runtime_context.prompt_policy_context if policy_runtime_context else ""
         if policy_prompt_context and self.config.policy_prompt_adapter is not None:
             policy_prompt_context = self._call_with_supported_kwargs(
@@ -311,6 +330,7 @@ class DepartmentAgentRuntime:
                     self.config.build_system_prompt,
                     policy_prompt_context=policy_prompt_context,
                     policy_runtime_context=policy_runtime_context,
+                    consultation_round=consultation_round,
                 ),
             },
             {
@@ -320,11 +340,13 @@ class DepartmentAgentRuntime:
                     shared_memory,
                     payload.get("message", ""),
                     missing_fields,
+                    payload=payload,
                     historical_records_template=historical_records_template,
                     previous_final_result=previous_final_result,
                     post_final_reassessment=post_final_reassessment,
                     policy_prompt_context=policy_prompt_context,
                     policy_runtime_context=policy_runtime_context,
+                    consultation_round=consultation_round,
                 ),
             },
         ]
@@ -470,8 +492,100 @@ class DepartmentAgentRuntime:
             pass
         return parsed_text or None
 
+    def _build_patient_reply(
+        self,
+        final_result: dict,
+        *,
+        message_type: str,
+        consultation_round: int,
+        complete: bool,
+        progress_completed: bool,
+        previous_final_result: dict | None = None,
+        changed_fields: list[str] | None = None,
+        update_reason: str | None = None,
+        reassessment_intent: str | None = None,
+        reply_rendering_mode: str | None = None,
+        payload: dict | None = None,
+        memory=None,
+    ) -> tuple[str, str, str]:
+        style = self._call_with_supported_kwargs(
+            self.config.patient_reply_style_selector or select_patient_reply_style,
+            consultation_round=consultation_round,
+            message_type=message_type,
+            complete=complete,
+            progress_completed=progress_completed,
+            final_result=final_result,
+            previous_final_result=previous_final_result or {},
+            changed_fields=changed_fields or [],
+            update_reason=update_reason,
+            payload=payload or {},
+            memory=memory,
+        )
+        if self.config.build_patient_reply is not None:
+            reply = self._call_with_supported_kwargs(
+                self.config.build_patient_reply,
+                final_result,
+                message_type=message_type,
+                consultation_round=consultation_round,
+                reply_style=style,
+                previous_final_result=previous_final_result or {},
+                changed_fields=changed_fields or [],
+                update_reason=update_reason,
+                reassessment_intent=reassessment_intent,
+                reply_rendering_mode=reply_rendering_mode,
+                payload=payload or {},
+                memory=memory,
+            )
+            if isinstance(reply, str) and reply.strip():
+                return reply.strip(), style, "reply_builder"
+        if self.config.build_final_message is not None:
+            return self.config.build_final_message(final_result, message_type=message_type), style, "fallback_formatter"
+        return default_patient_reply_from_result(final_result, message_type=message_type), style, "fallback_formatter"
+
+    def _request_consultation_with_diagnostics(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        historical_records_template: dict | None = None,
+        previous_final_result: dict | None = None,
+        post_final_reassessment: bool = False,
+        policy_runtime_context=None,
+    ) -> tuple[dict | None, dict]:
+        diagnostics = {
+            "llm_attempted": False,
+            "llm_succeeded": False,
+            "llm_error": None,
+            "response_source": "fallback",
+        }
+        if payload.get("_force_offline_llm") or not self.llm_settings.get("api_key"):
+            diagnostics["llm_error"] = "llm_unavailable"
+            return None, diagnostics
+        diagnostics["llm_attempted"] = True
+        try:
+            result = self.request_consultation_from_llm(
+                payload,
+                shared_memory,
+                missing_fields,
+                historical_records_template=historical_records_template,
+                previous_final_result=previous_final_result,
+                post_final_reassessment=post_final_reassessment,
+                policy_runtime_context=policy_runtime_context,
+            )
+        except Exception as exc:
+            diagnostics["llm_error"] = str(exc)
+            return None, diagnostics
+        if result is not None:
+            diagnostics["llm_succeeded"] = True
+            diagnostics["response_source"] = "llm_then_validated"
+        else:
+            diagnostics["llm_error"] = "empty_or_unparseable_response"
+        return result, diagnostics
+
     def evaluate(self, merged_payload: dict, memory, mode: str) -> tuple[dict, list[dict], list[str], dict, bool]:
         progress = memory.consultation_progress
+        consultation_round = self._normalize_consultation_round(memory.private_memory.get("consultation_round"))
         force_offline_llm = bool(memory.private_memory.get("force_offline_llm"))
         previous_final_result = memory.private_memory.get("final_result") if isinstance(memory.private_memory.get("final_result"), dict) else {}
         is_post_final_reassessment = mode == "continue_session" and progress.completed
@@ -492,11 +606,12 @@ class DepartmentAgentRuntime:
         evidence = [{"id": rule.get("id"), "title": rule.get("title"), "source": rule.get("source")} for rule in rules]
         fallback = self.config.fallback_result(merged_payload)
 
-        if mode == "create_session":
+        if mode == "create_session" and consultation_round == 1:
             assistant_message = self._call_with_supported_kwargs(
                 self.config.build_initial_message,
                 memory.shared_memory,
                 progress,
+                consultation_round=consultation_round,
                 policy_runtime_context=policy_runtime_context,
             )
             historical_note = str(memory.private_memory.get("historical_records_note") or "").strip()
@@ -525,18 +640,15 @@ class DepartmentAgentRuntime:
             )
 
         if is_post_final_reassessment:
-            try:
-                llm_result = self.request_consultation_from_llm(
-                    {**merged_payload, "_force_offline_llm": force_offline_llm},
-                    memory.shared_memory,
-                    missing_fields,
-                    historical_records_template=merged_payload.get("historical_records_template"),
-                    previous_final_result=previous_final_result,
-                    post_final_reassessment=True,
-                    policy_runtime_context=policy_runtime_context,
-                )
-            except Exception:
-                llm_result = None
+            llm_result, llm_diagnostics = self._request_consultation_with_diagnostics(
+                {**merged_payload, "_force_offline_llm": force_offline_llm},
+                memory.shared_memory,
+                missing_fields,
+                historical_records_template=merged_payload.get("historical_records_template"),
+                previous_final_result=previous_final_result,
+                post_final_reassessment=True,
+                policy_runtime_context=policy_runtime_context,
+            )
             final_result = self._call_with_supported_kwargs(
                 self.config.validate_result,
                 llm_result,
@@ -549,7 +661,41 @@ class DepartmentAgentRuntime:
             )
             changed = self.config.final_result_changed(previous_final_result, final_result) if self.config.final_result_changed else final_result != previous_final_result
             message_type = "final_update" if changed else "final_no_change"
-            assistant_message = self.config.build_final_message(final_result, message_type=message_type)
+            changed_fields = infer_result_changed_fields(previous_final_result, final_result) if changed else []
+            update_reason = self._call_with_supported_kwargs(
+                self.config.result_update_reason_inferer or infer_update_reason,
+                merged_payload.get("message", ""),
+                changed_fields,
+                consultation_round=consultation_round,
+                message_type=message_type,
+                final_result=final_result,
+                previous_final_result=previous_final_result,
+            )
+            reassessment_intent = self._call_with_supported_kwargs(
+                self.config.reassessment_intent_inferer or infer_reassessment_intent,
+                merged_payload.get("message", ""),
+                changed_fields,
+                consultation_round=consultation_round,
+                message_type=message_type,
+                update_reason=update_reason,
+                final_result=final_result,
+                previous_final_result=previous_final_result,
+            )
+            reply_rendering_mode = infer_reply_rendering_mode(reassessment_intent, message_type=message_type)
+            assistant_message, reply_style, patient_reply_source = self._build_patient_reply(
+                final_result,
+                message_type=message_type,
+                consultation_round=consultation_round,
+                complete=True,
+                progress_completed=progress.completed,
+                previous_final_result=previous_final_result,
+                changed_fields=changed_fields,
+                update_reason=update_reason,
+                reassessment_intent=reassessment_intent,
+                reply_rendering_mode=reply_rendering_mode,
+                payload=merged_payload,
+                memory=memory,
+            )
             progress.last_question_focus = None
             progress.last_question_text = assistant_message
             final_result, validated_missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
@@ -557,13 +703,25 @@ class DepartmentAgentRuntime:
                 memory=memory,
                 consultation_result=final_result,
                 missing_fields=[],
-                assistant_payload={"assistant_message": assistant_message, "message_type": message_type},
+                assistant_payload={
+                    "assistant_message": assistant_message,
+                    "message_type": message_type,
+                    "patient_reply_style": reply_style,
+                    "patient_reply_source": patient_reply_source,
+                    "update_reason": update_reason,
+                    "result_changed_fields": changed_fields,
+                    "reassessment_intent": reassessment_intent,
+                    "reply_rendering_mode": reply_rendering_mode,
+                    "llm_diagnostics": llm_diagnostics,
+                },
                 complete=True,
                 policy_runtime_context=policy_runtime_context,
             )
             return final_result, evidence, validated_missing_fields, assistant_payload, complete
 
-        if missing_fields or progress.patient_reply_count < self.config.min_patient_reply_count_before_complete:
+        minimum_reply_count_before_complete = self.config.min_patient_reply_count_before_complete if consultation_round == 1 else 0
+
+        if missing_fields or progress.patient_reply_count < minimum_reply_count_before_complete:
             progress.followup_count += 1
             question_focus = missing_fields[0] if missing_fields else None
             llm_followup_message = None
@@ -614,16 +772,13 @@ class DepartmentAgentRuntime:
             )
             return consultation_result, evidence, validated_missing_fields, assistant_payload, complete
 
-        try:
-            llm_result = self.request_consultation_from_llm(
-                {**merged_payload, "_force_offline_llm": force_offline_llm},
-                memory.shared_memory,
-                missing_fields,
-                historical_records_template=merged_payload.get("historical_records_template"),
-                policy_runtime_context=policy_runtime_context,
-            )
-        except Exception:
-            llm_result = None
+        llm_result, llm_diagnostics = self._request_consultation_with_diagnostics(
+            {**merged_payload, "_force_offline_llm": force_offline_llm},
+            memory.shared_memory,
+            missing_fields,
+            historical_records_template=merged_payload.get("historical_records_template"),
+            policy_runtime_context=policy_runtime_context,
+        )
         final_result = self._call_with_supported_kwargs(
             self.config.validate_result,
             llm_result,
@@ -634,7 +789,24 @@ class DepartmentAgentRuntime:
             mode=mode,
             complete=True,
         )
-        assistant_message = self.config.build_final_message(final_result, message_type="final")
+        changed_fields: list[str] = []
+        update_reason = None
+        reassessment_intent = None
+        reply_rendering_mode = None
+        assistant_message, reply_style, patient_reply_source = self._build_patient_reply(
+            final_result,
+            message_type="final",
+            consultation_round=consultation_round,
+            complete=True,
+            progress_completed=progress.completed,
+            previous_final_result=previous_final_result,
+            changed_fields=changed_fields,
+            update_reason=update_reason,
+            reassessment_intent=reassessment_intent,
+            reply_rendering_mode=reply_rendering_mode,
+            payload=merged_payload,
+            memory=memory,
+        )
         progress.last_question_focus = None
         progress.last_question_text = assistant_message
         final_result, validated_missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
@@ -642,7 +814,17 @@ class DepartmentAgentRuntime:
             memory=memory,
             consultation_result=final_result,
             missing_fields=[],
-            assistant_payload={"assistant_message": assistant_message, "message_type": "final"},
+            assistant_payload={
+                "assistant_message": assistant_message,
+                "message_type": "final",
+                "patient_reply_style": reply_style,
+                "patient_reply_source": patient_reply_source,
+                "update_reason": update_reason,
+                "result_changed_fields": changed_fields,
+                "reassessment_intent": reassessment_intent,
+                "reply_rendering_mode": reply_rendering_mode,
+                "llm_diagnostics": llm_diagnostics,
+            },
             complete=True,
             policy_runtime_context=policy_runtime_context,
         )
@@ -678,6 +860,13 @@ class DepartmentAgentRuntime:
         private_memory["evidence"] = evidence
         private_memory["message_type"] = message_type
         private_memory["final_result"] = consultation_result if complete else private_memory.get("final_result", {})
+        private_memory["patient_reply_style"] = assistant_payload.get("patient_reply_style")
+        private_memory["patient_reply_source"] = assistant_payload.get("patient_reply_source")
+        private_memory["update_reason"] = assistant_payload.get("update_reason")
+        private_memory["result_changed_fields"] = list(assistant_payload.get("result_changed_fields") or [])
+        private_memory["reassessment_intent"] = assistant_payload.get("reassessment_intent")
+        private_memory["reply_rendering_mode"] = assistant_payload.get("reply_rendering_mode")
+        private_memory["llm_diagnostics"] = dict(assistant_payload.get("llm_diagnostics") or {})
         private_memory[self.config.progress_memory_key] = progress.to_dict()
         private_memory["latest_summary"] = {
             "department": consultation_result.get("department"),
@@ -685,6 +874,9 @@ class DepartmentAgentRuntime:
             "complete": complete,
             "message_type": message_type,
             "red_flags": consultation_result.get("red_flags", []),
+            "update_reason": assistant_payload.get("update_reason"),
+            "result_changed_fields": list(assistant_payload.get("result_changed_fields") or []),
+            "reassessment_intent": assistant_payload.get("reassessment_intent"),
         }
 
         self.memory_repo.save_shared_memory(patient_id, shared)
@@ -759,6 +951,13 @@ class DepartmentAgentRuntime:
             "question_focus": progress.last_question_focus,
             "asked_fields_history": progress.asked_fields_history,
             "final_result": private_memory.get("final_result", {}),
+            "update_reason": private_memory.get("update_reason"),
+            "result_changed_fields": private_memory.get("result_changed_fields", []),
+            "reassessment_intent": private_memory.get("reassessment_intent"),
+            "reply_rendering_mode": private_memory.get("reply_rendering_mode"),
+            "patient_reply_source": private_memory.get("patient_reply_source"),
+            "patient_reply_style": private_memory.get("patient_reply_style"),
+            "response_source": (private_memory.get("llm_diagnostics") or {}).get("response_source"),
         }
         dialogue.update(self.extend_dialogue_payload(private_memory, progress))
         visit_state = None
@@ -940,3 +1139,17 @@ class DepartmentAgentRuntime:
             complete = bool(fallback.get("complete", complete))
             memory.private_memory["latest_policy"]["fallback_reason"] = validation.fallback_reason
         return consultation_result, missing_fields, assistant_payload, complete
+
+    @staticmethod
+    def _normalize_consultation_round(value) -> int:
+        try:
+            return max(1, int(value or 1))
+        except Exception:
+            return 1
+
+    @staticmethod
+    def _extract_previous_round_summary(visit_data: dict) -> dict | None:
+        for key, value in (visit_data or {}).items():
+            if key.endswith("_round1_summary") and isinstance(value, dict):
+                return value
+        return None

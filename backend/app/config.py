@@ -10,6 +10,11 @@ DEFAULT_LLM_ENDPOINT = "https://genaiapi.shanghaitech.edu.cn/api/v1/start"
 DEFAULT_LLM_MODEL = "deepseek-v3:671b"
 DEFAULT_ALIYUN_LLM_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 DEFAULT_ALIYUN_LLM_MODEL = "deepseek-v4-flash"
+# DeepSeek 官方 API（OpenAI 兼容）
+# 官网: https://platform.deepseek.com
+# 在 platform.deepseek.com → API Keys 获取 key
+DEFAULT_DEEPSEEK_LLM_ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
+DEFAULT_DEEPSEEK_LLM_MODEL = "deepseek-chat"
 DEFAULT_DATABASE_URL = "sqlite:///backend/data/app.db"
 DEFAULT_RESET_ON_SERVER_START = True
 DEFAULT_SIMULATOR_ENABLED = True
@@ -44,6 +49,8 @@ MODEL_API_KEY_ENV_MAP = {
     "GPT-5.2": "GPT52_API_KEY",
     "deepseek-v3:671b": "DEEPSEEK_V3_API_KEY",
     "deepseek-r1:671b": "DEEPSEEK_R1_API_KEY",
+    "deepseek-chat": "DEEPSEEK_API_KEY",
+    "deepseek-reasoner": "DEEPSEEK_API_KEY",
     "qwen-instruct": "QWEN_API_KEY",
     "qwen2.5-vl-instruct": "QWEN_VL_API_KEY",
 }
@@ -122,7 +129,7 @@ def _resolve_legacy_model_api_key(model_name: str) -> str:
 
 def _resolve_active_llm_provider() -> str:
     provider = os.getenv("ACTIVE_LLM_PROVIDER", "").strip().lower() or DEFAULT_ACTIVE_LLM_PROVIDER
-    if provider in {"current", "aliyun_dashscope"}:
+    if provider in {"current", "aliyun_dashscope", "deepseek_official"}:
         return provider
     return DEFAULT_ACTIVE_LLM_PROVIDER
 
@@ -144,6 +151,19 @@ def _resolve_aliyun_llm_profile() -> tuple[str, str, str]:
     return endpoint, model_name, api_key
 
 
+def _resolve_deepseek_llm_profile() -> tuple[str, str, str]:
+    """DeepSeek 官方 API（OpenAI 兼容接口）
+
+    endpoint: https://api.deepseek.com/v1/chat/completions
+    model: deepseek-chat (V3) 或 deepseek-reasoner (R1)
+    api_key: 从 https://platform.deepseek.com/api_keys 获取
+    """
+    endpoint = os.getenv("DEEPSEEK_LLM_ENDPOINT", "").strip() or DEFAULT_DEEPSEEK_LLM_ENDPOINT
+    model_name = os.getenv("DEEPSEEK_LLM_MODEL", "").strip() or DEFAULT_DEEPSEEK_LLM_MODEL
+    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    return endpoint, model_name, api_key
+
+
 def get_settings() -> dict:
     base_dir = Path(__file__).resolve().parent.parent
     _load_dotenv(base_dir / ".env")
@@ -151,6 +171,8 @@ def get_settings() -> dict:
     active_llm_provider = _resolve_active_llm_provider()
     if active_llm_provider == "aliyun_dashscope":
         llm_endpoint, llm_model, llm_api_key = _resolve_aliyun_llm_profile()
+    elif active_llm_provider == "deepseek_official":
+        llm_endpoint, llm_model, llm_api_key = _resolve_deepseek_llm_profile()
     else:
         llm_endpoint, llm_model, llm_api_key = _resolve_current_llm_profile()
 

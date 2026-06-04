@@ -544,6 +544,7 @@ class InternalMedicineAgentDebugController(_BaseAgentDebugController):
             post_final_reassessment=bool((response.get("dialogue") or {}).get("message_type") in {"final_update", "final_no_change"}),
         )
         dialogue = response.get("dialogue") or {}
+        llm_diagnostics = dict(private_memory.get("llm_diagnostics") or {})
         return {
             "merged_payload": merged_payload,
             "system_prompt": messages[0].get("content") if len(messages) > 1 else None,
@@ -560,8 +561,23 @@ class InternalMedicineAgentDebugController(_BaseAgentDebugController):
                 "missing_fields": list(dialogue.get("missing_fields") or []),
                 "question_focus": dialogue.get("question_focus"),
                 "message_type": dialogue.get("message_type"),
+                "update_reason": dialogue.get("update_reason"),
+                "result_changed_fields": list(dialogue.get("result_changed_fields") or []),
+                "reassessment_intent": dialogue.get("reassessment_intent"),
+                "reply_rendering_mode": dialogue.get("reply_rendering_mode"),
             },
-            "fallback_reason": None if self.internal_medicine_service.llm_settings.get("api_key") else "llm_unavailable",
+            "fallback_reason": llm_diagnostics.get("llm_error") or (None if self.internal_medicine_service.llm_settings.get("api_key") else "llm_unavailable"),
+            "llm_attempted": bool(llm_diagnostics.get("llm_attempted")),
+            "llm_succeeded": bool(llm_diagnostics.get("llm_succeeded")),
+            "llm_error": llm_diagnostics.get("llm_error"),
+            "response_source": llm_diagnostics.get("response_source"),
+            "patient_reply_source": dialogue.get("patient_reply_source"),
+            "structured_result": dialogue.get("final_result") or {},
+            "patient_reply": dialogue.get("assistant_message"),
+            "update_reason": dialogue.get("update_reason"),
+            "result_changed_fields": list(dialogue.get("result_changed_fields") or []),
+            "reassessment_intent": dialogue.get("reassessment_intent"),
+            "reply_rendering_mode": dialogue.get("reply_rendering_mode"),
             "memory_delta": {
                 "shared_memory": _deep_diff(before_memory, after_memory),
             },

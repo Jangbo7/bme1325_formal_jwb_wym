@@ -22,6 +22,7 @@ class DepartmentAgentConfig:
     build_follow_up_llm_messages: Callable[..., list[dict]] | None = None
     build_transition_follow_up_question: Callable[[dict], str] | None = None
     build_final_message: Callable[..., str] | None = None
+    build_patient_reply: Callable[..., str] | None = None
     build_system_prompt: Callable[[], str] | None = None
     build_user_prompt: Callable[..., str] | None = None
     retrieve_rules: Callable[[dict, int], list[dict]] | None = None
@@ -35,6 +36,9 @@ class DepartmentAgentConfig:
     build_missing_fields: Callable[[dict], list[str]] | None = None
     prioritize_missing_fields: Callable[..., list[str]] | None = None
     final_result_changed: Callable[[dict | None, dict | None], bool] | None = None
+    patient_reply_style_selector: Callable[..., str] | None = None
+    reassessment_intent_inferer: Callable[..., str] | None = None
+    result_update_reason_inferer: Callable[..., str] | None = None
     policy_agent_scope: str | None = None
     policy_department_scope: str | None = None
     policy_registry_loader: Callable[[], Any] | None = None

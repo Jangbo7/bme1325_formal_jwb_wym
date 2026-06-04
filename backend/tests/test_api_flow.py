@@ -427,7 +427,8 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
     )
     assert doctor_round2_create_resp.status_code == 200
     doctor_round2_create_data = get_data(doctor_round2_create_resp)
-    assert doctor_round2_create_data["visit_state"] == "in_second_consultation"
+    assert doctor_round2_create_data["visit_state"] == "waiting_payment"
+    assert doctor_round2_create_data["dialogue"]["status"] == "completed"
     assert doctor_round2_create_data["session_id"] != doctor_create_data["session_id"]
 
     doctor_round2_message_1_resp = client.post(
@@ -441,7 +442,8 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
         },
     )
     assert doctor_round2_message_1_resp.status_code == 200
-    assert get_data(doctor_round2_message_1_resp)["visit_state"] == "in_second_consultation"
+    assert get_data(doctor_round2_message_1_resp)["visit_state"] == "waiting_payment"
+    assert get_data(doctor_round2_message_1_resp)["dialogue"]["status"] == "completed"
 
     doctor_round2_message_2_resp = client.post(
         f"/api/v1/internal-medicine-sessions/{doctor_round2_create_data['session_id']}/messages",

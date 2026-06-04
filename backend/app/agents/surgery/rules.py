@@ -1,8 +1,11 @@
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 from app.agents.clinical_policy import ClinicalPolicyRuntimeContext
+from app.agents.department_runtime.conclusions import normalize_round2_conclusion
+from app.agents.department_runtime.replies import normalize_prescription_plan
 from app.agents.internal_medicine.rules import merge_unique, merge_vitals, split_symptoms
 
 
@@ -482,8 +485,299 @@ def _normalize_final_result(result: dict, payload: dict) -> dict:
         normalized["medication_or_action"] = _build_medication_or_action(normalized)
     normalized["patient_plan"] = str(normalized.get("patient_plan") or _build_patient_plan(normalized))
     normalized["assistant_message"] = str(normalized.get("assistant_message") or "").strip()
+    normalized["prescription_plan"] = normalize_prescription_plan(normalized.get("prescription_plan"))
     normalized["icu_escalation"] = False
     return normalized
+
+
+def _extract_round2_report(payload: dict) -> dict[str, Any]:
+    report = payload.get("simulated_report")
+    if isinstance(report, dict):
+        return report
+    diagnostic_session = payload.get("diagnostic_session")
+    if isinstance(diagnostic_session, dict) and isinstance(diagnostic_session.get("report"), dict):
+        return diagnostic_session.get("report") or {}
+    return {}
+
+
+def _round2_report_summary_text(report: dict[str, Any]) -> str:
+    if not isinstance(report, dict):
+        return ""
+    pieces: list[str] = []
+    report_text = str(report.get("report_text") or "").strip()
+    if report_text:
+        pieces.append(report_text)
+    summary = report.get("report_summary")
+    if isinstance(summary, dict):
+        for key, value in summary.items():
+            value_text = str(value or "").strip()
+            if value_text:
+                pieces.append(f"{key} {value_text}")
+    return " ".join(pieces).lower()
+
+
+def _round2_base_result(
+    *,
+    clinical_impression: str,
+    final_assessment_summary: str,
+    patient_facing_plan: str,
+    primary_disposition: str,
+    priority: str = "M",
+    department: str = "Surgery",
+    diagnosis_level: int = 2,
+    next_step_decision: str = "treat_and_discharge",
+    admission_recommendation: dict | None = None,
+    procedure_recommendation: dict | None = None,
+    followup_recommendation: dict | None = None,
+    return_precautions: list[str] | None = None,
+    medication_recommendation: dict | None = None,
+    prescription_plan: list[dict] | None = None,
+    recommended_department: str | None = None,
+    recommended_department_reason: str | None = None,
+    note: str | None = None,
+) -> dict:
+    return {
+        "department": department,
+        "priority": priority,
+        "diagnosis_level": diagnosis_level,
+        "note": note or clinical_impression,
+        "clinical_impression": clinical_impression,
+        "final_assessment_summary": final_assessment_summary,
+        "patient_facing_plan": patient_facing_plan,
+        "patient_plan": patient_facing_plan,
+        "disposition_advice": patient_facing_plan,
+        "primary_disposition": primary_disposition,
+        "next_step_decision": next_step_decision,
+        "test_required": False,
+        "test_category": "none",
+        "test_items": [],
+        "tests_suggested": [],
+        "test_reason": "",
+        "needs_tests": False,
+        "needs_medication": bool((medication_recommendation or {}).get("recommended")) or bool(prescription_plan),
+        "needs_second_consultation": False,
+        "needs_second_internal_medicine_consultation": False,
+        "admission_recommendation": admission_recommendation or {
+            "recommended": False,
+            "reason": "",
+        },
+        "procedure_recommendation": procedure_recommendation or {
+            "surgery_evaluation_recommended": False,
+            "urgency": "none",
+            "reason": "",
+        },
+        "followup_recommendation": followup_recommendation or {
+            "observation_required": False,
+            "observation_setting": "none",
+            "revisit_required": False,
+            "revisit_window": "",
+            "revisit_conditions": [],
+        },
+        "return_precautions": list(return_precautions or []),
+        "medication_recommendation": medication_recommendation or {
+            "recommended": False,
+            "intent": "",
+            "summary": "",
+        },
+        "prescription_plan": list(prescription_plan or []),
+        "recommended_department": recommended_department,
+        "recommended_department_reason": recommended_department_reason,
+        "red_flags": [],
+        "medication_or_action": [],
+    }
+
+
+def _build_round2_surgery_result(payload: dict) -> dict | None:
+    report = _extract_round2_report(payload)
+    if not report:
+        return None
+
+    report_text = _round2_report_summary_text(report)
+    combined_text = " ".join(
+        part for part in [
+            str(payload.get("chief_complaint") or ""),
+            str(payload.get("symptoms") or ""),
+            str(payload.get("message") or ""),
+            report_text,
+        ] if part
+    ).lower()
+    red_flags = _detect_surgery_red_flags(payload)
+
+    if red_flags:
+        return _round2_base_result(
+            clinical_impression="结合目前症状变化和这次检查结果，提示外科风险已经升高，不能按普通门诊复查处理。",
+            final_assessment_summary="当前更需要尽快回到高优先级外科评估，必要时转急诊处理，而不是继续居家观察。",
+            patient_facing_plan="建议立即回诊或直接前往急诊，由外科团队尽快重新评估当前风险和下一步处理。",
+            primary_disposition="emergency_escalation",
+            priority="H",
+            department="Emergency",
+            diagnosis_level=3,
+            next_step_decision="urgent_escalation",
+            followup_recommendation={
+                "observation_required": False,
+                "observation_setting": "none",
+                "revisit_required": False,
+                "revisit_window": "",
+                "revisit_conditions": [],
+            },
+            return_precautions=red_flags,
+        )
+
+    if any(token in combined_text for token in ("postoperative", "post-op", "wound", "dressing", "suture", "伤口", "术后", "换药")):
+        stable_wound = any(
+            token in combined_text
+            for token in ("normal healing", "healing well", "no abscess", "clean wound", "granulation", "no retained foreign body", "stable", "恢复良好", "未见脓肿", "伤口清洁")
+        )
+        if stable_wound:
+            return _round2_base_result(
+                clinical_impression="这次复查结果更支持伤口恢复总体平稳，目前没有明确提示需要紧急外科升级处理。",
+                final_assessment_summary="当前更适合继续门诊换药和观察恢复情况，不需要重复基础检查。",
+                patient_facing_plan="建议继续按门诊伤口护理和换药方案处理，并在短期内复诊观察恢复情况。",
+                primary_disposition="observe_then_revisit",
+                priority="L",
+                diagnosis_level=1,
+                followup_recommendation={
+                    "observation_required": True,
+                    "observation_setting": "outpatient_home",
+                    "revisit_required": True,
+                    "revisit_window": "48-72小时",
+                    "revisit_conditions": ["伤口红肿加重", "渗液增多", "发热", "疼痛明显加重"],
+                },
+                return_precautions=["伤口红肿加重", "脓性分泌物增多", "发热", "疼痛明显加重"],
+                medication_recommendation={
+                    "recommended": True,
+                    "intent": "wound_care_support",
+                    "summary": "是否需要局部处理或辅助用药，建议由外科医生结合伤口情况当面确认。",
+                },
+            )
+
+        return _round2_base_result(
+            clinical_impression="这次复查更像术后伤口问题仍需持续外科处理，当前不能只按普通恢复期观察。",
+            final_assessment_summary="建议继续由外科门诊密切复查；如果伤口表现继续恶化，需要尽快升级处理。",
+            patient_facing_plan="建议尽快回外科门诊复查伤口，必要时根据现场情况决定是否进一步清创、引流或住院。",
+            primary_disposition="outpatient_management",
+            diagnosis_level=2,
+            procedure_recommendation={
+                "surgery_evaluation_recommended": True,
+                "urgency": "expedited",
+                "reason": "若伤口局部情况持续不理想，需要外科医生尽快评估是否要进一步处置。",
+            },
+            followup_recommendation={
+                "observation_required": False,
+                "observation_setting": "none",
+                "revisit_required": True,
+                "revisit_window": "24-48小时",
+                "revisit_conditions": ["渗液增加", "脓性分泌物", "发热", "伤口裂开"],
+            },
+            return_precautions=["渗液增加", "脓性分泌物", "发热", "伤口裂开"],
+            medication_recommendation={
+                "recommended": True,
+                "intent": "postoperative_care",
+                "summary": "是否需要抗感染或局部处理，应由外科医生结合伤口表现和既往处理方案确认。",
+            },
+        )
+
+    if any(token in combined_text for token in ("fracture", "sprain", "ankle", "x-ray", "ultrasound", "foreign body", "injury", "trauma", "骨折", "扭伤", "异物", "外伤")):
+        if any(token in combined_text for token in ("fracture", "dislocation", "retained foreign body", "suspicious collection", "骨折", "脱位", "异物残留")):
+            return _round2_base_result(
+                clinical_impression="这次复查结果提示局部损伤问题还需要进一步专科处理，已经不适合只按普通外科随访观察。",
+                final_assessment_summary="当前重点是尽快完成针对性的专科评估，而不是重复基础检查。",
+                patient_facing_plan="建议尽快按结果转入更合适的专科或由外科进一步评估是否需要处理创口/异物/固定。",
+                primary_disposition="specialty_referral",
+                diagnosis_level=2,
+                recommended_department="Orthopedics",
+                recommended_department_reason="影像或局部结果提示后续更适合由骨科/创伤方向进一步处理。",
+                procedure_recommendation={
+                    "surgery_evaluation_recommended": True,
+                    "urgency": "expedited",
+                    "reason": "局部损伤结果提示仍需尽快判断是否存在需要进一步外科处置的情况。",
+                },
+                followup_recommendation={
+                    "observation_required": False,
+                    "observation_setting": "none",
+                    "revisit_required": True,
+                    "revisit_window": "48-72小时",
+                    "revisit_conditions": ["疼痛加重", "活动受限加重", "麻木", "肿胀明显增加"],
+                },
+                return_precautions=["疼痛加重", "活动受限加重", "麻木", "肿胀明显增加"],
+            )
+
+        return _round2_base_result(
+            clinical_impression="这次复查结果没有提示需要急诊升级的局部损伤问题，目前更适合继续门诊处理和恢复期观察。",
+            final_assessment_summary="当前不需要重复基础检查，重点是继续局部护理、观察症状变化，并按时复查。",
+            patient_facing_plan="建议继续门诊随访和局部护理；如果症状加重，再提前回诊评估。",
+            primary_disposition="outpatient_management",
+            priority="L",
+            diagnosis_level=1,
+            followup_recommendation={
+                "observation_required": True,
+                "observation_setting": "outpatient_home",
+                "revisit_required": True,
+                "revisit_window": "3-5天",
+                "revisit_conditions": ["疼痛加重", "肿胀明显增加", "活动受限", "麻木"],
+            },
+            return_precautions=["疼痛加重", "肿胀明显增加", "活动受限", "麻木"],
+        )
+
+    if any(token in combined_text for token in ("abdominal", "append", "gall", "vomiting", "appendix", "腹痛", "呕吐", "胆")):
+        if any(token in combined_text for token in ("appendicitis", "obstruction", "perforation", "collection", "free fluid", "appendix", "阑尾", "梗阻", "穿孔", "积液")):
+            return _round2_base_result(
+                clinical_impression="这次检查结果和症状变化更提示仍存在外科腹部问题，需要进一步住院或加快外科评估。",
+                final_assessment_summary="当前不适合继续按普通门诊随访，建议尽快由外科团队决定是否需要住院观察和手术评估。",
+                patient_facing_plan="建议今天尽快回外科评估住院处理，并由外科团队根据检查结果决定是否需要手术方案。",
+                primary_disposition="inpatient_admission_recommended",
+                diagnosis_level=3,
+                admission_recommendation={
+                    "recommended": True,
+                    "reason": "腹部症状结合检查结果，当前更需要住院观察和进一步外科处理。",
+                },
+                procedure_recommendation={
+                    "surgery_evaluation_recommended": True,
+                    "urgency": "expedited",
+                    "reason": "检查结果提示可能存在需要尽快做外科决策的腹部问题。",
+                },
+                followup_recommendation={
+                    "observation_required": False,
+                    "observation_setting": "none",
+                    "revisit_required": False,
+                    "revisit_window": "",
+                    "revisit_conditions": [],
+                },
+                return_precautions=["腹痛明显加重", "持续呕吐", "发热", "不能排气排便"],
+            )
+
+        return _round2_base_result(
+            clinical_impression="这次检查结果暂时没有提示必须急诊升级的腹部外科问题，但仍建议继续门诊复查症状变化。",
+            final_assessment_summary="当前更适合短期观察后复诊，不建议重复基础检查。",
+            patient_facing_plan="建议按门诊方案继续观察，并在短期内复诊复核症状变化。",
+            primary_disposition="observe_then_revisit",
+            diagnosis_level=2,
+            followup_recommendation={
+                "observation_required": True,
+                "observation_setting": "outpatient_home",
+                "revisit_required": True,
+                "revisit_window": "24-48小时",
+                "revisit_conditions": ["腹痛加重", "持续呕吐", "发热", "黑便"],
+            },
+            return_precautions=["腹痛加重", "持续呕吐", "发热", "黑便"],
+        )
+
+    return _round2_base_result(
+        clinical_impression="这次复查结果暂时没有提示需要急诊升级的外科问题，当前更适合继续门诊处理。",
+        final_assessment_summary="现阶段不需要重复基础检查，重点是结合这次结果继续外科门诊随访。",
+        patient_facing_plan="建议按当前外科门诊方案继续处理，并根据症状变化安排后续复诊。",
+        primary_disposition="outpatient_management",
+        priority="L",
+        diagnosis_level=1,
+        followup_recommendation={
+            "observation_required": True,
+            "observation_setting": "outpatient_home",
+            "revisit_required": True,
+            "revisit_window": "3-7天",
+            "revisit_conditions": ["症状持续加重", "出现新的出血", "发热"],
+        },
+        return_precautions=["症状持续加重", "出现新的出血", "发热"],
+    )
 
 
 def _apply_round1_outcome_policy(
@@ -585,6 +879,15 @@ def _apply_round1_outcome_policy(
 
 
 def rule_based_surgery(payload: dict) -> dict:
+    consultation_round = 1
+    try:
+        consultation_round = int(payload.get("consultation_round") or 1)
+    except Exception:
+        consultation_round = 1
+    if consultation_round >= 2:
+        round2_result = _build_round2_surgery_result(payload)
+        if round2_result is not None:
+            return round2_result
     rules = retrieve_relevant_surgery_rules(payload, top_k=1)
     if rules:
         result = dict(rules[0]["result"])
@@ -616,6 +919,13 @@ def final_result_changed(previous: dict | None, current: dict | None) -> bool:
         "needs_second_consultation",
         "needs_second_internal_medicine_consultation",
         "recommended_department",
+        "primary_disposition",
+        "medication_recommendation",
+        "admission_recommendation",
+        "procedure_recommendation",
+        "followup_recommendation",
+        "return_precautions",
+        "prescription_plan",
     }
     comparable_previous = {key: previous.get(key) for key in significant_keys}
     comparable_current = {key: current.get(key) for key in significant_keys}
@@ -655,6 +965,15 @@ def validate_surgery_result(
                     "needs_second_internal_medicine_consultation": llm_result.get("needs_second_internal_medicine_consultation"),
                     "next_step_reason": llm_result.get("next_step_reason"),
                     "clinical_impression": llm_result.get("clinical_impression"),
+                    "final_assessment_summary": llm_result.get("final_assessment_summary"),
+                    "primary_disposition": llm_result.get("primary_disposition"),
+                    "medication_recommendation": llm_result.get("medication_recommendation"),
+                    "prescription_plan": llm_result.get("prescription_plan"),
+                    "admission_recommendation": llm_result.get("admission_recommendation"),
+                    "procedure_recommendation": llm_result.get("procedure_recommendation"),
+                    "followup_recommendation": llm_result.get("followup_recommendation"),
+                    "return_precautions": llm_result.get("return_precautions"),
+                    "patient_facing_plan": llm_result.get("patient_facing_plan"),
                     "needs_tests": llm_result.get("needs_tests"),
                     "needs_medication": llm_result.get("needs_medication"),
                     "recommended_department": llm_result.get("recommended_department"),
@@ -687,4 +1006,6 @@ def validate_surgery_result(
             memory=memory,
             policy_runtime_context=policy_runtime_context,
         )
+    else:
+        normalized = normalize_round2_conclusion(normalized, consultation_round=consultation_round or 2)
     return _normalize_final_result(normalized, payload)

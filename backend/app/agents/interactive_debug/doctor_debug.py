@@ -310,8 +310,44 @@ def _internal_medicine_preload_adapter(
     payload: dict,
 ) -> dict[str, Any]:
     plan = _default_doctor_preload_adapter(controller, config, payload)
-    if payload.get("simulated_report"):
-        plan["visit_data"] = {"simulated_report": deepcopy(payload["simulated_report"])}
+    visit_data: dict[str, Any] = {}
+    simulated_report = payload.get("simulated_report")
+    if simulated_report:
+        visit_data["simulated_report"] = deepcopy(simulated_report)
+        visit_data["diagnostic_session"] = {
+            "id": f"diag-session-debug-{payload.get('preset_id') or 'internal-medicine'}",
+            "type": "auxiliary_diagnostic_center",
+            "primary_category": simulated_report.get("category_code") or "medical_laboratory",
+            "primary_category_label": simulated_report.get("category_code") or "medical_laboratory",
+            "window_label": simulated_report.get("window_label"),
+            "recommended_items": deepcopy(simulated_report.get("test_items") or []),
+            "status": "report_generated",
+            "report": deepcopy(simulated_report),
+        }
+    round1_summary = payload.get("previous_round_summary")
+    if not isinstance(round1_summary, dict):
+        round1_entry = next(
+            (
+                entry
+                for entry in (payload.get("medical_record_entries") or [])
+                if str(entry.get("phase") or "").endswith("round1")
+            ),
+            None,
+        )
+        if round1_entry:
+            content = dict(round1_entry.get("content") or {})
+            round1_summary = {
+                "assistant_message": str(round1_entry.get("content_text") or ""),
+                "department": content.get("department") or "Internal Medicine",
+                "priority": content.get("priority") or "M",
+                "diagnosis_level": content.get("diagnosis_level") or 1,
+                "impression": content.get("impression"),
+                "test_required": content.get("test_required"),
+            }
+    if isinstance(round1_summary, dict) and round1_summary:
+        visit_data["internal_medicine_round1_summary"] = deepcopy(round1_summary)
+    if visit_data:
+        plan["visit_data"] = visit_data
     plan["request_overrides"] = {"debug_read_historical_records": True}
     return plan
 
@@ -356,6 +392,7 @@ def _build_internal_medicine_trace(
         post_final_reassessment=bool((response.get("dialogue") or {}).get("message_type") in {"final_update", "final_no_change"}),
     )
     dialogue = response.get("dialogue") or {}
+    llm_diagnostics = dict(private_memory.get("llm_diagnostics") or {})
     return {
         "merged_payload": merged_payload,
         "system_prompt": messages[0].get("content") if len(messages) > 1 else None,
@@ -372,8 +409,23 @@ def _build_internal_medicine_trace(
             "missing_fields": list(dialogue.get("missing_fields") or []),
             "question_focus": dialogue.get("question_focus"),
             "message_type": dialogue.get("message_type"),
+            "update_reason": dialogue.get("update_reason"),
+            "result_changed_fields": list(dialogue.get("result_changed_fields") or []),
+            "reassessment_intent": dialogue.get("reassessment_intent"),
+            "reply_rendering_mode": dialogue.get("reply_rendering_mode"),
         },
-        "fallback_reason": None if service.llm_settings.get("api_key") else "llm_unavailable",
+        "fallback_reason": llm_diagnostics.get("llm_error") or (None if service.llm_settings.get("api_key") else "llm_unavailable"),
+        "llm_attempted": bool(llm_diagnostics.get("llm_attempted")),
+        "llm_succeeded": bool(llm_diagnostics.get("llm_succeeded")),
+        "llm_error": llm_diagnostics.get("llm_error"),
+        "response_source": llm_diagnostics.get("response_source"),
+        "patient_reply_source": dialogue.get("patient_reply_source"),
+        "structured_result": dialogue.get("final_result") or {},
+        "patient_reply": dialogue.get("assistant_message"),
+        "update_reason": dialogue.get("update_reason"),
+        "result_changed_fields": list(dialogue.get("result_changed_fields") or []),
+        "reassessment_intent": dialogue.get("reassessment_intent"),
+        "reply_rendering_mode": dialogue.get("reply_rendering_mode"),
         "memory_delta": {
             "shared_memory": _deep_diff(before_memory, after_memory),
         },
@@ -424,6 +476,7 @@ def _build_surgery_trace(
         post_final_reassessment=bool((response.get("dialogue") or {}).get("message_type") in {"final_update", "final_no_change"}),
     )
     dialogue = response.get("dialogue") or {}
+    llm_diagnostics = dict(private_memory.get("llm_diagnostics") or {})
     return {
         "merged_payload": merged_payload,
         "system_prompt": messages[0].get("content") if len(messages) > 1 else build_surgery_system_prompt(),
@@ -440,8 +493,23 @@ def _build_surgery_trace(
             "missing_fields": list(dialogue.get("missing_fields") or []),
             "question_focus": dialogue.get("question_focus"),
             "message_type": dialogue.get("message_type"),
+            "update_reason": dialogue.get("update_reason"),
+            "result_changed_fields": list(dialogue.get("result_changed_fields") or []),
+            "reassessment_intent": dialogue.get("reassessment_intent"),
+            "reply_rendering_mode": dialogue.get("reply_rendering_mode"),
         },
-        "fallback_reason": None if service.llm_settings.get("api_key") else "llm_unavailable",
+        "fallback_reason": llm_diagnostics.get("llm_error") or (None if service.llm_settings.get("api_key") else "llm_unavailable"),
+        "llm_attempted": bool(llm_diagnostics.get("llm_attempted")),
+        "llm_succeeded": bool(llm_diagnostics.get("llm_succeeded")),
+        "llm_error": llm_diagnostics.get("llm_error"),
+        "response_source": llm_diagnostics.get("response_source"),
+        "patient_reply_source": dialogue.get("patient_reply_source"),
+        "structured_result": dialogue.get("final_result") or {},
+        "patient_reply": dialogue.get("assistant_message"),
+        "update_reason": dialogue.get("update_reason"),
+        "result_changed_fields": list(dialogue.get("result_changed_fields") or []),
+        "reassessment_intent": dialogue.get("reassessment_intent"),
+        "reply_rendering_mode": dialogue.get("reply_rendering_mode"),
         "memory_delta": {
             "shared_memory": _deep_diff(before_memory, after_memory),
         },
@@ -475,7 +543,7 @@ def build_default_doctor_debug_registry() -> DoctorDebugRegistry:
             preset_loader=get_surgery_presets,
             preload_adapter=_default_doctor_preload_adapter,
             trace_builder=_build_surgery_trace,
-            supports_round2=False,
+            supports_round2=True,
         )
     )
     return registry

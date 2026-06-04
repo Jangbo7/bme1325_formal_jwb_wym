@@ -6,6 +6,7 @@ from app.agents.internal_medicine.policy import (
     select_internal_medicine_policy_phase,
     validate_internal_medicine_policy_snapshot,
 )
+from app.agents.internal_medicine.patient_reply import build_patient_reply
 from app.agents.internal_medicine.prompts import (
     build_consultation_system_prompt,
     build_follow_up_llm_messages,
@@ -52,6 +53,7 @@ def build_internal_medicine_runtime_config() -> DepartmentAgentConfig:
         build_follow_up_llm_messages=build_follow_up_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
         build_final_message=build_final_message,
+        build_patient_reply=build_patient_reply,
         build_system_prompt=build_consultation_system_prompt,
         build_user_prompt=build_consultation_user_prompt,
         retrieve_rules=retrieve_relevant_internal_medicine_rules,

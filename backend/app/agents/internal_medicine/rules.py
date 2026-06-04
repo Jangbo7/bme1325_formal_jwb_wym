@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 
 from app.agents.clinical_policy import ClinicalPolicyRuntimeContext
+from app.agents.department_runtime.conclusions import normalize_round2_conclusion
+from app.agents.department_runtime.replies import normalize_prescription_plan
 
 
 INTERNAL_MEDICINE_RULE_STORE_PATH = Path(__file__).resolve().parent.parent.parent.parent / "rag" / "internal_medicine_rules.json"
@@ -364,6 +366,14 @@ def _detect_icu_red_flags(payload: dict) -> list[str]:
 
 
 def _infer_test_plan(result: dict, payload: dict) -> dict:
+    if result.get("test_required") is False:
+        return {
+            "test_required": False,
+            "test_category": "none",
+            "test_items": [],
+            "test_reason": str(result.get("test_reason") or "").strip(),
+        }
+
     category = str(result.get("test_category") or "").strip()
     try:
         diagnosis_level = int(result.get("diagnosis_level") or 1)
@@ -655,7 +665,121 @@ def _apply_round1_outcome_policy(
     return applied
 
 
+def _extract_round2_report(payload: dict) -> dict:
+    report = payload.get("simulated_report")
+    if isinstance(report, dict):
+        return report
+    diagnostic_session = payload.get("diagnostic_session")
+    if isinstance(diagnostic_session, dict) and isinstance(diagnostic_session.get("report"), dict):
+        return diagnostic_session.get("report") or {}
+    return {}
+
+
+def _build_round2_internal_medicine_result(payload: dict) -> dict | None:
+    report = _extract_round2_report(payload)
+    report_summary = report.get("report_summary") if isinstance(report.get("report_summary"), dict) else {}
+    report_text = f"{json.dumps(report_summary, ensure_ascii=False)} {report.get('report_text') or ''}".lower()
+    has_report = bool(report_summary) or bool(str(report.get("report_text") or "").strip())
+    if not has_report:
+        return None
+
+    h_pylori_value = str(report_summary.get("h_pylori") or report_summary.get("hpylori") or "").strip().lower()
+    h_pylori_positive = h_pylori_value in {"positive", "阳性", "pos", "+"} or "h. pylori positive" in report_text or "幽门螺杆菌阳性" in report_text
+
+    base_result = {
+        "diagnosis_level": 1,
+        "priority": "L",
+        "department": "Internal Medicine",
+        "test_required": False,
+        "test_category": "none",
+        "test_items": [],
+        "tests_suggested": [],
+        "test_reason": "",
+        "primary_disposition": "outpatient_management",
+    }
+
+    if h_pylori_positive:
+        return {
+            **base_result,
+            "note": "二轮复诊已拿到关键检查结果，当前不建议重复基础检查，应直接结合报告完成门诊处理。",
+            "clinical_impression": "检查提示幽门螺杆菌阳性，结合上腹烧灼痛，倾向胃炎或消化性溃疡相关问题。",
+            "final_assessment_summary": "二轮复诊已获得关键检查结果，目前更适合直接给出门诊处理与随访建议，而不是重复基础检查。",
+            "disposition_advice": "建议由医生结合本次报告直接制定门诊治疗方案，并安排后续复诊评估。",
+            "patient_plan": "建议结合报告直接制定门诊治疗方案，并安排 1-2 周内复诊评估症状变化；若出现黑便、呕血或疼痛明显加重，应立即就医。",
+            "patient_facing_plan": "检查结果提示幽门螺杆菌阳性，本轮重点应是结合报告制定门诊治疗和复诊计划，而不是重复基础检查。",
+            "medication_or_action": [
+                "结合幽门螺杆菌阳性结果评估是否启动抑酸治疗和根除方案",
+                "规律饮食，避免咖啡、酒精和刺激性食物",
+            ],
+            "medication_recommendation": {
+                "recommended": True,
+                "intent": "targeted_treatment",
+                "summary": "建议由医生评估后给予抑酸治疗，并结合幽门螺杆菌阳性结果决定是否启动根除方案。",
+            },
+            "prescription_plan": [
+                {
+                    "drug_name": "质子泵抑制剂",
+                    "intent": "acid_suppression",
+                    "dose_text": "按常规门诊剂量",
+                    "frequency_text": "每日 1-2 次",
+                    "duration_text": "2-4 周",
+                    "instructions": "餐前服用，具体品种和剂量由医生结合病史确认。",
+                    "requires_doctor_review": True,
+                },
+                {
+                    "drug_name": "幽门螺杆菌根除方案",
+                    "intent": "eradication_consideration",
+                    "dose_text": "按标准根除方案评估",
+                    "frequency_text": "依方案执行",
+                    "duration_text": "通常 10-14 天",
+                    "instructions": "需由医生结合过敏史、既往用药史和地区耐药情况确认是否启动。",
+                    "requires_doctor_review": True,
+                },
+            ],
+            "followup_recommendation": {
+                "observation_required": False,
+                "observation_setting": "none",
+                "revisit_required": True,
+                "revisit_window": "1-2周",
+                "revisit_conditions": ["腹痛持续加重", "出现黑便", "出现呕血", "夜间疼痛明显加重"],
+            },
+            "return_precautions": ["黑便", "呕血", "持续加重的上腹痛"],
+            "needs_medication": True,
+            "red_flags": [],
+        }
+
+    return {
+        **base_result,
+        "note": "二轮复诊已拿到检查结果，当前应以结果解读和处理建议为主，不默认重复基础检查。",
+        "clinical_impression": "当前已进入二轮复诊，重点是结合上一轮判断和现有报告完成结论。",
+        "final_assessment_summary": "目前已拿到检查结果，本轮应以报告解读、处理建议和随访安排为主。",
+        "disposition_advice": "建议由医生结合现有报告与症状变化完成门诊处理，并根据恢复情况安排复诊。",
+        "patient_plan": "建议结合现有报告完成本轮门诊处理；如症状持续或明显加重，应按医生安排及时复诊。",
+        "patient_facing_plan": "本轮已经有检查结果，重点是结合报告给出处理建议，而不是默认重复基础检查。",
+        "medication_or_action": ["结合现有报告评估是否需要门诊用药或调整方案"],
+        "followup_recommendation": {
+            "observation_required": False,
+            "observation_setting": "none",
+            "revisit_required": True,
+            "revisit_window": "1周内",
+            "revisit_conditions": ["症状持续未缓解", "症状明显加重"],
+        },
+        "red_flags": [],
+    }
+
+
 def rule_based_internal_medicine(payload: dict) -> dict:
+    consultation_round = 1
+    try:
+        consultation_round = int(payload.get("consultation_round") or 1)
+    except Exception:
+        consultation_round = 1
+
+    if consultation_round >= 2:
+        round2_result = _build_round2_internal_medicine_result(payload)
+        if round2_result is not None:
+            return round2_result
+
     rules = retrieve_relevant_internal_medicine_rules(payload, top_k=1)
     if rules:
         result = dict(rules[0]["result"])
@@ -692,6 +816,7 @@ def _normalize_final_result(result: dict, payload: dict) -> dict:
     normalized["test_items"] = _normalize_string_list(normalized.get("test_items"), normalized["tests_suggested"])
     normalized["medication_or_action"] = _normalize_string_list(normalized.get("medication_or_action"))
     normalized["red_flags"] = _normalize_string_list(normalized.get("red_flags"))
+    normalized["prescription_plan"] = normalize_prescription_plan(normalized.get("prescription_plan"))
 
     if not normalized["tests_suggested"]:
         normalized["tests_suggested"] = list(normalized["test_items"])
@@ -753,6 +878,13 @@ def final_result_changed(previous: dict | None, current: dict | None) -> bool:
         "needs_second_consultation",
         "needs_second_internal_medicine_consultation",
         "recommended_department",
+        "primary_disposition",
+        "medication_recommendation",
+        "admission_recommendation",
+        "procedure_recommendation",
+        "followup_recommendation",
+        "return_precautions",
+        "prescription_plan",
     }
     comparable_previous = {key: previous.get(key) for key in significant_keys}
     comparable_current = {key: current.get(key) for key in significant_keys}
@@ -792,6 +924,15 @@ def validate_internal_medicine_result(
                     "needs_second_internal_medicine_consultation": llm_result.get("needs_second_internal_medicine_consultation"),
                     "next_step_reason": llm_result.get("next_step_reason"),
                     "clinical_impression": llm_result.get("clinical_impression"),
+                    "final_assessment_summary": llm_result.get("final_assessment_summary"),
+                    "primary_disposition": llm_result.get("primary_disposition"),
+                    "medication_recommendation": llm_result.get("medication_recommendation"),
+                    "admission_recommendation": llm_result.get("admission_recommendation"),
+                    "procedure_recommendation": llm_result.get("procedure_recommendation"),
+                    "followup_recommendation": llm_result.get("followup_recommendation"),
+                    "return_precautions": llm_result.get("return_precautions"),
+                    "patient_facing_plan": llm_result.get("patient_facing_plan"),
+                    "prescription_plan": llm_result.get("prescription_plan"),
                     "needs_tests": llm_result.get("needs_tests"),
                     "needs_medication": llm_result.get("needs_medication"),
                     "recommended_department": llm_result.get("recommended_department"),
@@ -826,4 +967,6 @@ def validate_internal_medicine_result(
             memory=memory,
             policy_runtime_context=policy_runtime_context,
         )
+    else:
+        normalized = normalize_round2_conclusion(normalized, consultation_round=consultation_round or 2)
     return normalized
