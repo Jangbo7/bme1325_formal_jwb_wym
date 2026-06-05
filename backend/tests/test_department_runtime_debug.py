@@ -58,6 +58,35 @@ def get_patient(snapshot: dict, patient_id: str) -> dict:
     raise AssertionError(f"patient {patient_id} not found in runtime snapshot")
 
 
+def seed_surgery_patient_runtime(client: TestClient, patient_id: str, *, visit_state: str, patient_state: str) -> str:
+    container = client.app.state.container
+    encounter = container["encounter_orchestration_service"].create_or_get_encounter(
+        patient_id=patient_id,
+        patient_name="Surgery Player",
+    )
+    visit_id = encounter["id"]
+    container["visit_repo"].update_visit(
+        visit_id,
+        state=visit_state,
+        assigned_department_id="surgery",
+        assigned_department_name="Surgery",
+        active_agent_type="surgery",
+        current_department="Surgery",
+    )
+    container["patient_repo"].update_patient(
+        patient_id,
+        name="Surgery Player",
+        lifecycle_state=patient_state,
+        location="Surgery",
+        visit_id=visit_id,
+    )
+    container["department_runtime_service"].sync_patient_runtime(
+        patient_id=patient_id,
+        visit_id=visit_id,
+    )
+    return visit_id
+
+
 def test_department_runtime_debug_page_is_available(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     response = client.get("/department-runtime-debug")
@@ -132,7 +161,7 @@ def test_department_runtime_snapshot_tracks_initial_and_return_queue(tmp_path, m
     assert visit_after_triage_resp.status_code == 200
     visit_after_triage = get_data(visit_after_triage_resp)["visit"]
     assert visit_after_triage["assigned_department_id"] == "internal"
-    assert visit_after_triage["assigned_department_name"] == "General Medicine"
+    assert visit_after_triage["assigned_department_name"] == "Internal Medicine"
 
     triage_snapshot = get_data(client.get("/api/v1/department-runtime-debug/snapshot", headers=api_headers()))
     internal_after_triage = get_department(triage_snapshot, "internal")
@@ -240,3 +269,53 @@ def test_department_runtime_snapshot_tracks_initial_and_return_queue(tmp_path, m
     assert round2_patient["department_flow_status"] == "in_consultation_round2"
     assert round2_patient["department_status"] == "in_consultation_round2"
     assert round2_patient["department_round"] == "round2"
+
+
+def test_department_runtime_snapshot_assigns_surgery_doctor_slot_and_consult_room(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    patient_id = "P-SURGERY-001"
+    seed_surgery_patient_runtime(
+        client,
+        patient_id,
+        visit_state="in_consultation",
+        patient_state="in_consultation",
+    )
+
+    snapshot = get_data(client.get("/api/v1/department-runtime-debug/snapshot", headers=api_headers()))
+    surgery_department = get_department(snapshot, "surgery")
+    patient = get_patient(snapshot, patient_id)
+
+    assert patient["assigned_department_id"] == "surgery"
+    assert patient["assigned_doctor_slot_id"] in {"surgery_doctor_slot_1", "surgery_doctor_slot_2"}
+    assert patient["assigned_doctor_slot_name"] in {"Surgery Doctor Slot 1", "Surgery Doctor Slot 2"}
+    assert patient["current_room_node_id"] in {"surgery_consult_room_1", "surgery_consult_room_2"}
+    assert patient["room_type"] == "consultation"
+    assert surgery_department["doctor_slots"]
+    assert surgery_department["rooms"]
+    assert any(item["active_count"] == 1 for item in surgery_department["doctor_slots"])
+    assert any(item["active_count"] == 1 for item in surgery_department["rooms"] if item["room_type"] == "consultation")
+
+
+def test_department_runtime_snapshot_maps_surgery_procedure_stage_to_department_room(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    patient_id = "P-SURGERY-002"
+    visit_id = seed_surgery_patient_runtime(
+        client,
+        patient_id,
+        visit_state="waiting_outpatient_procedure",
+        patient_state="in_test",
+    )
+
+    snapshot = get_data(client.get("/api/v1/department-runtime-debug/snapshot", headers=api_headers()))
+    surgery_department = get_department(snapshot, "surgery")
+    patient = get_patient(snapshot, patient_id)
+
+    assert patient["visit_id"] == visit_id
+    assert patient["assigned_department_id"] == "surgery"
+    assert patient["current_room_node_id"] == "surgery_outpatient_procedure_room"
+    assert patient["current_room_name"] == "Surgery Outpatient Procedure Room"
+    assert patient["room_type"] == "outpatient_procedure"
+    assert any(
+        item["node_id"] == "surgery_outpatient_procedure_room" and item["active_count"] == 1
+        for item in surgery_department["rooms"]
+    )

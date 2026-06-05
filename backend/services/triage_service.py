@@ -23,7 +23,7 @@ def rule_based_triage(payload):
 
     level = 3
     priority = "M"
-    dept = "General Medicine"
+    dept = "Internal Medicine"
     note = "Please proceed to consultation soon."
 
     danger_keywords = ("chest", "breath", "faint", "severe")
@@ -40,7 +40,7 @@ def rule_based_triage(payload):
     else:
         level = 4
         priority = "L"
-        dept = "General Medicine"
+        dept = "Internal Medicine"
         note = "Low to medium risk. Continue standard consultation process."
 
     return {

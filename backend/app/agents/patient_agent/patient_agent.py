@@ -24,9 +24,14 @@ class ControlledPatientAgent:
             rag_context=self.rag_context,
         )
 
-    def generate_case(self, *, seed: str | None = None) -> PatientCaseCard:
+    def generate_case(
+        self,
+        *,
+        seed: str | None = None,
+        department_id: str | None = None,
+    ) -> PatientCaseCard:
         self._require_llm_config(stage="generate_case")
-        return self.case_generator.generate(seed=seed)
+        return self.case_generator.generate(seed=seed, department_id=department_id)
 
     def reply(self, *, case_card: PatientCaseCard, context: PatientReplyContext) -> PatientAgentTurnResult:
         decision = self.policy.decide(case_card, context)

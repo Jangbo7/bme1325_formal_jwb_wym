@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.departments.registry import list_departments
 from app.schemas.hospital_runtime import HospitalNode
+from app.services.department_resources import list_department_resource_configs
 
 
 SYSTEM_NODES = [
@@ -66,5 +67,27 @@ def build_department_nodes() -> list[HospitalNode]:
     return nodes
 
 
+def build_room_nodes() -> list[HospitalNode]:
+    nodes: list[HospitalNode] = []
+    for config in list_department_resource_configs():
+        for room in config.room_nodes:
+            nodes.append(
+                HospitalNode(
+                    node_id=room.node_id,
+                    node_type="room",
+                    name=room.name,
+                    department_id=config.department_id,
+                    room_type=room.room_type,
+                    capacity=room.capacity,
+                    supports_queue=False,
+                    supports_consultation=room.room_type == "consultation",
+                    supported_actions=[],
+                    entry_conditions=[],
+                    exit_conditions=[],
+                )
+            )
+    return nodes
+
+
 def list_hospital_nodes() -> list[HospitalNode]:
-    return [*build_department_nodes(), *SYSTEM_NODES]
+    return [*build_department_nodes(), *build_room_nodes(), *SYSTEM_NODES]

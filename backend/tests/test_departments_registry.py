@@ -31,12 +31,12 @@ def test_formal_departments_have_expected_count_and_ids():
 def test_triage_mapping_keeps_legacy_compatibility():
     assert map_department_from_triage("anything", "H")["id"] == "emergency"
     assert map_department_from_triage("Fever Clinic", "M")["id"] == "fever"
-    assert map_department_from_triage("General Medicine", "M")["id"] == "internal"
+    assert map_department_from_triage("Internal Medicine", "M")["id"] == "internal"
 
 
 def test_resolve_department_supports_id_label_and_triage_text():
     assert resolve_department("internal", "M")["id"] == "internal"
-    assert resolve_department("General Medicine", "M")["id"] == "internal"
+    assert resolve_department("Internal Medicine", "M")["id"] == "internal"
     assert resolve_department("fever clinic", "M")["id"] == "fever"
     assert resolve_department("unknown text", "H")["id"] == "emergency"
 

@@ -37,11 +37,17 @@ class PatientAgentDebugRunner:
         self.patient_state_machine = self.triage_service.patient_state_machine
         self.bus = container["event_bus"]
 
-    def spawn(self, *, seed: str | None = None) -> PatientAgentDebugState:
+    def spawn(
+        self,
+        *,
+        seed: str | None = None,
+        department_id: str | None = None,
+    ) -> PatientAgentDebugState:
         patient_id = generate_patient_id()
         case_row, case_card = self.patient_agent_service.spawn_case(
             patient_id=patient_id,
             seed=seed,
+            department_id=department_id,
         )
         encounter = self.encounter_orchestration_service.create_or_get_encounter(
             patient_id=patient_id,

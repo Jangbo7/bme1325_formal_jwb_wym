@@ -352,6 +352,62 @@ def _internal_medicine_preload_adapter(
     return plan
 
 
+def _surgery_preload_adapter(
+    controller: _BaseDoctorAgentDebugController,
+    config: DoctorDebugAgentConfig,
+    payload: dict,
+) -> dict[str, Any]:
+    plan = _default_doctor_preload_adapter(controller, config, payload)
+    visit_data: dict[str, Any] = {}
+    simulated_report = payload.get("simulated_report")
+    if simulated_report:
+        visit_data["simulated_report"] = deepcopy(simulated_report)
+        visit_data["diagnostic_session"] = {
+            "id": f"diag-session-debug-{payload.get('preset_id') or 'surgery'}",
+            "type": "auxiliary_diagnostic_center",
+            "primary_category": simulated_report.get("category_code") or "surgery_review",
+            "primary_category_label": simulated_report.get("category_code") or "surgery_review",
+            "window_label": simulated_report.get("window_label"),
+            "recommended_items": deepcopy(simulated_report.get("test_items") or []),
+            "status": "report_generated",
+            "report": deepcopy(simulated_report),
+        }
+    outpatient_procedure_summary = payload.get("outpatient_procedure_summary")
+    if isinstance(outpatient_procedure_summary, dict) and outpatient_procedure_summary:
+        visit_data["outpatient_procedure_summary"] = deepcopy(outpatient_procedure_summary)
+
+    round1_summary = payload.get("previous_round_summary")
+    if not isinstance(round1_summary, dict):
+        round1_entry = next(
+            (
+                entry
+                for entry in (payload.get("medical_record_entries") or [])
+                if str(entry.get("phase") or "").endswith("round1")
+            ),
+            None,
+        )
+        if round1_entry:
+            content = dict(round1_entry.get("content") or {})
+            round1_summary = {
+                "assistant_message": str(round1_entry.get("content_text") or ""),
+                "department": content.get("department") or "Surgery",
+                "priority": content.get("priority") or "M",
+                "diagnosis_level": content.get("diagnosis_level") or 1,
+                "next_step_decision": content.get("next_step_decision"),
+                "needs_second_consultation": content.get("needs_second_consultation"),
+                "needs_outpatient_procedure": content.get("needs_outpatient_procedure"),
+                "outpatient_procedure_category": content.get("outpatient_procedure_category"),
+                "outpatient_procedure_reason": content.get("outpatient_procedure_reason"),
+            }
+    if isinstance(round1_summary, dict) and round1_summary:
+        visit_data["surgery_round1_summary"] = deepcopy(round1_summary)
+
+    if visit_data:
+        plan["visit_data"] = visit_data
+    plan["request_overrides"] = {"debug_read_historical_records": True}
+    return plan
+
+
 def _build_internal_medicine_trace(
     controller: _BaseDoctorAgentDebugController,
     config: DoctorDebugAgentConfig,
@@ -541,7 +597,7 @@ def build_default_doctor_debug_registry() -> DoctorDebugRegistry:
             label="Surgery Agent Debug",
             service_container_key="surgery_service",
             preset_loader=get_surgery_presets,
-            preload_adapter=_default_doctor_preload_adapter,
+            preload_adapter=_surgery_preload_adapter,
             trace_builder=_build_surgery_trace,
             supports_round2=True,
         )
