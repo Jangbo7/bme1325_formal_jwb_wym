@@ -1,28 +1,28 @@
-from app.agents.surgery.workflow import ConsultationProgress
+from app.agents.department_runtime.conclusions import round2_response_keys
 from app.agents.department_runtime.prompting import (
     build_shared_consultation_system_prompt,
     build_shared_consultation_user_prompt,
     build_shared_follow_up_llm_messages,
 )
-from app.agents.department_runtime.conclusions import round2_response_keys
+from app.agents.surgery.workflow import ConsultationProgress
 
 
 FIELD_PROMPTS = {
     "chief_complaint": [
-        "Please describe the main surgical problem bothering you most in one sentence.",
-        "Let me confirm the main surgical concern again. What is the main problem this visit?",
+        "先确认一下，这次最主要想处理的外科问题是什么？",
+        "我再确认一下，这次来外科最困扰你的主要问题是什么？",
     ],
     "onset_time": [
-        "When did this problem start, and was it related to trauma, surgery, or another trigger?",
-        "Let me confirm the timeline again. Did this start today, yesterday, after an injury, or after surgery?",
+        "这个问题大概是从什么时候开始的？和受伤、手术或者换药有没有关系？",
+        "我再确认一下时间经过：是今天刚出现，还是受伤/手术后持续了几天？",
     ],
     "allergies": [
-        "Do you have any known drug or material allergies? If none, please reply 'no allergies'.",
-        "Let me confirm your allergy history again. Any known drug or material allergies?",
+        "有没有已知的药物、胶布、消毒材料或者其他过敏史？如果没有，直接说“没有过敏”就可以。",
+        "我再确认一下过敏史：目前已知有药物或材料过敏吗？",
     ],
     "pain_score": [
-        "If there is pain, how strong is it now on a 0 to 10 scale?",
-        "Please rate the pain from 0 to 10, where 10 is the worst pain you can imagine.",
+        "如果现在还有疼痛，按 0 到 10 分来说大概几分？",
+        "请按 0 到 10 分描述一下现在疼痛的强度，10 分代表最难受。",
     ],
 }
 
@@ -37,14 +37,11 @@ def build_follow_up_question(
     policy_runtime_context=None,
 ) -> str:
     del policy_runtime_context
-    complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or "the current surgical problem"
+    complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or "这次外科问题"
     variants = FIELD_PROMPTS.get(field_name)
     if not variants:
-        base = (
-            "I still need a bit more key information before I can continue the first-round surgical assessment. "
-            "Please add the exact location, whether there was trauma or surgery, and whether it is getting worse."
-        )
-        return f"Let me ask it another way: {base}" if is_repeated else base
+        base = "我还需要再补一条关键信息，才能继续完成这次外科评估。"
+        return f"我换个问法再确认一下：{base}" if is_repeated else base
 
     index = min(asked_count, len(variants) - 1)
     message = variants[index].format(complaint=complaint)
@@ -58,29 +55,18 @@ def build_transition_follow_up_question(shared_memory: dict, *, policy_runtime_c
     del policy_runtime_context
     complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or ""
     symptoms = [item for item in (shared_memory.get("clinical_memory", {}).get("symptoms") or []) if item]
-    symptom_text = ", ".join(symptoms)
+    symptom_text = "、".join(symptoms)
     if complaint and symptom_text:
         return (
-            f"I have recorded the main surgical concern as '{complaint}' and symptoms such as {symptom_text}. "
-            "Please add the exact location, whether there was trauma or surgery, and whether bleeding, swelling, or pain is getting worse."
+            f"我先记录到你这次的主要外科问题是“{complaint}”，目前提到的情况包括：{symptom_text}。"
+            "请再补充一下具体部位、是否和外伤或近期手术有关，以及疼痛、出血、肿胀有没有在加重。"
         )
     if complaint:
         return (
-            f"I have recorded the main surgical concern as '{complaint}'. "
-            "Please add when it started, the exact location, and whether there was trauma or surgery before it began."
+            f"我先记录到你这次的主要外科问题是“{complaint}”。"
+            "请再补充一下它是从什么时候开始的，具体部位在哪里，以及是否和受伤或手术有关。"
         )
-    return "Please continue with the main surgical problem, when it started, and whether you have any allergies."
-
-
-def build_initial_message(shared_memory: dict, progress: ConsultationProgress, *, policy_runtime_context=None) -> str:
-    del policy_runtime_context
-    complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or "the current surgical problem"
-    if progress.patient_reply_count == 0:
-        return (
-            f"I will start with a first-round surgery intake. You mentioned '{complaint}'. "
-            "Please add when it started, whether there was trauma or a recent procedure, any allergy history, and what feels worst right now."
-        )
-    return "I received your update. Please continue with specific changes in pain, bleeding, swelling, or wound status."
+    return "请继续补充这次外科问题的开始时间、是否和受伤或手术有关，以及有没有过敏史。"
 
 
 def build_initial_message(
@@ -91,18 +77,18 @@ def build_initial_message(
     policy_runtime_context=None,
 ) -> str:
     del policy_runtime_context
-    complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or "the current surgical problem"
+    complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or "这次外科问题"
     if progress.patient_reply_count == 0:
         if int(consultation_round or 1) >= 2:
             return (
-                f"I will continue the second-round surgical reassessment using the prior consultation summary and available test results. "
-                f"You mentioned '{complaint}'. Please focus on what changed after the tests and what feels worst right now."
+                f"我先结合上一轮判断、已有检查结果和处置情况，继续完成这次外科二轮复诊。"
+                f"你这次的主要问题是“{complaint}”。请先说一下最近有哪些变化，现在最难受的点是什么。"
             )
         return (
-            f"I will start with a first-round surgery intake. You mentioned '{complaint}'. "
-            "Please add when it started, whether there was trauma or a recent procedure, any allergy history, and what feels worst right now."
+            f"我先为你做这一轮外科初步问诊。你提到的主要问题是“{complaint}”。"
+            "请再补充一下它是从什么时候开始的、是否和外伤或近期手术有关、有没有过敏史，以及现在最难受的表现是什么。"
         )
-    return "I received your update. Please continue with specific changes in pain, bleeding, swelling, or wound status."
+    return "我收到你的补充了。请继续说一下疼痛、出血、肿胀、伤口或活动受限方面有没有新的变化。"
 
 
 def build_consultation_system_prompt(
@@ -113,9 +99,9 @@ def build_consultation_system_prompt(
 ) -> str:
     del policy_runtime_context
     return build_shared_consultation_system_prompt(
-        base_role_text="You are a surgery outpatient consultation assistant.",
+        base_role_text="你是外科门诊问诊助手。",
         consultation_round=consultation_round,
-        language="en",
+        language="zh",
         policy_prompt_context=policy_prompt_context,
     )
 
@@ -144,68 +130,17 @@ def build_consultation_user_prompt(
         policy_prompt_context=policy_prompt_context,
         policy_runtime_context=policy_runtime_context,
         consultation_round=consultation_round,
-        language="en",
+        language="zh",
         round1_response_keys=(
             "department, priority, diagnosis_level, note, patient_plan, tests_suggested, "
             "medication_or_action, red_flags, test_required, test_category, test_items, test_reason, "
             "next_step_decision, needs_second_consultation, needs_second_internal_medicine_consultation, next_step_reason, "
             "clinical_impression, needs_tests, needs_medication, recommended_department, "
-            "recommended_department_reason, disposition_advice."
+            "recommended_department_reason, disposition_advice, needs_outpatient_procedure, "
+            "outpatient_procedure_category, outpatient_procedure_reason, procedure_can_parallel_with_tests."
         ),
         default_response_keys=round2_response_keys(),
     )
-
-
-
-def build_final_message(result: dict, *, message_type: str = "final") -> str:
-    heading = {
-        "final": "[Surgery Initial Assessment]",
-        "final_update": "[Surgery Updated Assessment]",
-        "final_no_change": "[Surgery Assessment Unchanged]",
-    }.get(message_type, "[Surgery Initial Assessment]")
-
-    if message_type == "final_no_change":
-        intro = "Based on the latest update, the current recommendation does not change."
-    elif message_type == "final_update":
-        intro = "Based on the latest update, the recommendation is updated as follows."
-    else:
-        intro = "Based on the current information, the recommendation is as follows."
-
-    department = result.get("department") or "Surgery"
-    priority = result.get("priority") or "M"
-    note = str(result.get("note") or "Continue outpatient surgical follow-up.")
-    patient_plan = str(result.get("patient_plan") or "Please continue the surgical clinic workflow and complete the recommended next step.")
-    tests = [str(item).strip() for item in (result.get("tests_suggested") or []) if str(item).strip()]
-    actions = [str(item).strip() for item in (result.get("medication_or_action") or []) if str(item).strip()]
-    red_flags = [str(item).strip() for item in (result.get("red_flags") or []) if str(item).strip()]
-    next_step_decision = str(result.get("next_step_decision") or "").strip()
-    disposition_advice = str(result.get("disposition_advice") or "").strip()
-    clinical_impression = str(result.get("clinical_impression") or "").strip()
-    recommended_department = str(result.get("recommended_department") or "").strip()
-    needs_second_consult = result.get("needs_second_consultation")
-    if needs_second_consult is None:
-        needs_second_consult = result.get("needs_second_internal_medicine_consultation")
-
-    lines = [
-        heading,
-        intro,
-        f"Department: {department}",
-        f"Priority: {priority}",
-        f"Assessment note: {clinical_impression or note}",
-        f"Patient plan: {disposition_advice or patient_plan}",
-    ]
-    if next_step_decision:
-        lines.append(f"Next step decision: {next_step_decision}")
-    if needs_second_consult is not None:
-        lines.append(f"Needs second surgery consultation: {bool(needs_second_consult)}")
-    if recommended_department:
-        lines.append(f"Recommended clinic: {recommended_department}")
-    lines.append(f"Suggested tests: {', '.join(tests) if tests else 'No additional tests suggested for now'}")
-    lines.append(f"Suggested actions: {', '.join(actions) if actions else 'Continue the current surgery clinic workflow'}")
-    if red_flags:
-        lines.append(f"Red flags: {', '.join(red_flags)}")
-    lines.append("Seek urgent reassessment immediately if symptoms worsen significantly.")
-    return "\n".join(lines)
 
 
 def build_follow_up_llm_messages(
@@ -224,6 +159,41 @@ def build_follow_up_llm_messages(
         question_focus=question_focus,
         payload=payload,
         policy_runtime_context=policy_runtime_context,
-        language="en",
-        assistant_label="surgery outpatient",
+        language="zh",
+        assistant_label="外科门诊",
     )
+
+
+def build_final_message(result: dict, *, message_type: str = "final") -> str:
+    is_round2 = bool(
+        result.get("primary_disposition")
+        or result.get("final_assessment_summary")
+        or result.get("patient_facing_plan")
+        or result.get("followup_recommendation")
+    )
+    if is_round2:
+        heading = {
+            "final": "[外科二轮结论]",
+            "final_update": "[外科二轮结论更新]",
+            "final_no_change": "[外科二轮结论未变]",
+        }.get(message_type, "[外科二轮结论]")
+        summary = str(result.get("final_assessment_summary") or result.get("clinical_impression") or "").strip()
+        plan = str(result.get("patient_facing_plan") or result.get("patient_plan") or "").strip()
+        return "\n".join(
+            part
+            for part in [
+                heading,
+                summary,
+                plan,
+            ]
+            if part
+        )
+
+    heading = {
+        "final": "[外科初步评估]",
+        "final_update": "[外科评估更新]",
+        "final_no_change": "[外科评估未变]",
+    }.get(message_type, "[外科初步评估]")
+    impression = str(result.get("clinical_impression") or result.get("note") or "").strip()
+    plan = str(result.get("disposition_advice") or result.get("patient_plan") or "").strip()
+    return "\n".join(part for part in [heading, impression, plan] if part)

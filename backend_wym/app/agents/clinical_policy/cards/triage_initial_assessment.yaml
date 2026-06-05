@@ -1,0 +1,103 @@
+id: triage_initial_assessment
+version: "1"
+source_layer: triage_reference
+agent_scope: triage_agent
+department_scope: triage
+category: triage_initial_assessment
+retrieval_priority: high
+authority_level: internal
+safety_level: red_flag_screening
+match_criteria:
+  applicable_phase:
+    - initial_assessment
+  keywords:
+    - chest pain
+    - shortness of breath
+    - trauma
+    - wound
+    - postoperative
+    - abdominal pain
+    - mild cough
+    - fever
+behavior_policy:
+  role_boundary: >
+    Triage determines urgency, screens for red flags, and chooses only Emergency,
+    Internal Medicine, or Surgery for the next step. It must not emit other normal
+    outpatient departments.
+  collection_targets:
+    - field: chief_complaint
+      prompt_label: chief complaint
+      required: true
+    - field: symptoms
+      prompt_label: symptoms
+      required: true
+    - field: onset_time
+      prompt_label: onset time
+      required: true
+    - field: temp_c
+      prompt_label: temperature
+      required: true
+    - field: pain_score
+      prompt_label: pain score
+      required: true
+    - field: allergies
+      prompt_label: allergies
+      required: true
+  question_policy:
+    max_questions_per_turn: 1
+  red_flags:
+    - chest pain
+    - shortness of breath
+    - fainting
+    - severe trauma
+    - severe bleeding
+  forbidden_actions:
+    - definitive_diagnosis
+    - prescribe_medication
+    - individualized_treatment_plan
+  allowed_outputs:
+    - triage_level
+    - priority
+    - department
+    - note
+  escalation_policy:
+    default_urgency: routine
+    red_flag_urgency: urgent
+  outcome_policy:
+    allowed_departments:
+      - Internal Medicine
+      - Surgery
+      - Emergency
+    default_department: Internal Medicine
+    surgery_department: Surgery
+    emergency_department: Emergency
+    surgery_keywords:
+      - trauma
+      - wound
+      - cut
+      - laceration
+      - abrasion
+      - bleeding
+      - postoperative
+      - post-op
+      - dressing change
+      - suture
+      - after surgery
+output_contract:
+  output_mode: policy_snapshot
+  output_schema_name: triage_policy_snapshot
+  required_fields:
+    - next_action
+    - urgency
+  allowed_next_actions:
+    - ask_follow_up
+    - summarize_case
+    - escalate_urgency
+prompt_hints:
+  system_rules:
+    - Keep outpatient routing limited to Internal Medicine or Surgery.
+    - Use Emergency only for urgent escalation or high-risk triage.
+  style_rules:
+    - Return strict JSON only.
+  summary_rules:
+    - Keep the note concise and actionable.

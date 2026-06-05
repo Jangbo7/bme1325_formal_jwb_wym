@@ -37,12 +37,12 @@ def test_surgery_round2_system_and_user_prompts_share_reassessment_context():
         historical_records_template={"current_visit": {"summary": {"entry_count": 2}}},
     )
 
-    assert "second-round consultation" in system_prompt
-    assert "Consultation round: 2" in user_prompt
-    assert "Previous consultation summary" in user_prompt
+    assert "二轮面诊" in system_prompt
+    assert "问诊轮次：第 2 轮" in user_prompt
+    assert "上一轮摘要" in user_prompt
     assert "Ultrasound did not show free fluid." in user_prompt
-    assert "This is a second-round consultation." in user_prompt
-    assert "primary_disposition must be a single final disposition" in user_prompt
+    assert "这是二轮面诊" in user_prompt
+    assert "primary_disposition" in user_prompt
     assert "medication_recommendation" in user_prompt
     assert "followup_recommendation" in user_prompt
 
@@ -65,8 +65,8 @@ def test_surgery_round2_followup_prompt_uses_shared_second_round_scaffold():
         },
     )
 
-    assert "second-round follow-up assistant" in messages[0]["content"]
-    assert "Previous consultation summary" in messages[1]["content"]
+    assert "二轮面诊追问助手" in messages[0]["content"]
+    assert "上一轮摘要" in messages[1]["content"]
     assert "No retained foreign body seen." in messages[1]["content"]
 
 
@@ -82,8 +82,8 @@ def test_surgery_round2_initial_message_mentions_second_round():
         consultation_round=2,
     )
 
-    assert "second-round surgical reassessment" in message
-    assert "first-round surgery intake" not in message
+    assert "外科二轮复诊" in message
+    assert "外科初步问诊" not in message
 
 
 def test_internal_medicine_round2_followup_prompt_remains_chinese():

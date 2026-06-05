@@ -25,8 +25,10 @@ def select_surgery_policy_phase(
 ) -> str | None:
     del payload, shared_memory, mode, merged_payload
     consultation_round = int(private_memory.get("consultation_round") or 1)
-    if consultation_round != 1 or progress.completed:
+    if progress.completed:
         return None
+    if consultation_round >= 2:
+        return "round2_result_review"
     return "round1_initial_consultation"
 
 
@@ -41,11 +43,17 @@ def adapt_surgery_policy_prompt(
     del payload, missing_fields
     if not policy_prompt_context:
         return ""
-    prefix = "Round1 surgery intake policy"
-    if prompt_kind != "llm":
-        prefix = "Round1 surgery policy"
+    phase = str(policy_runtime_context.policy_context.get("phase") or "") if policy_runtime_context else ""
+    if phase == "round2_result_review":
+        prefix = "外科二轮复诊策略"
+        if prompt_kind != "llm":
+            prefix = "外科二轮策略"
+    else:
+        prefix = "外科初诊策略"
+        if prompt_kind != "llm":
+            prefix = "外科初诊规则"
     card_id = policy_runtime_context.primary_card.id if policy_runtime_context and policy_runtime_context.primary_card else "unknown"
-    return f"{prefix} ({card_id}):\n{policy_prompt_context}"
+    return f"{prefix}（{card_id}）:\n{policy_prompt_context}"
 
 
 def validate_surgery_policy_snapshot(
@@ -56,7 +64,7 @@ def validate_surgery_policy_snapshot(
     validation_result: ClinicalPolicyValidatorResult | None = None,
     **kwargs,
 ) -> ClinicalPolicyValidatorResult:
-    del payload, kwargs
+    del payload, kwargs, policy_runtime_context
     if validation_result is None:
         return ClinicalPolicyValidatorResult(ok=True, normalized_output=dict(snapshot or {}))
 
@@ -104,16 +112,19 @@ def build_surgery_policy_fallback(
         },
         reason=reason,
     )
+    phase = str(policy_runtime_context.policy_context.get("phase") or "") if policy_runtime_context else ""
     next_action = str(fallback_snapshot.get("next_action") or "").strip()
     if next_action == "escalate_urgency":
-        assistant_message = "Current symptoms may require urgent surgical assessment. Please seek higher-priority evaluation immediately."
+        assistant_message = "目前情况提示可能需要尽快回外科或直接到急诊进一步处理，请不要继续按普通复诊节奏等待。"
     else:
         questions = fallback_snapshot.get("follow_up_questions") or []
-        assistant_message = str(
-            questions[0]
-            if questions
-            else "Please continue describing the main surgical problem, when it started, and whether you have any allergies."
-        ).strip()
+        if questions:
+            assistant_message = str(questions[0]).strip()
+        elif phase == "round2_result_review":
+            assistant_message = "我还需要补一条和这次复查安全性最相关的信息：现在有没有发热、伤口渗液明显增多，或者疼痛比之前更重？"
+        else:
+            assistant_message = "请继续补充这次外科问题的开始时间、是否和受伤或手术有关，以及有没有过敏史。"
+
     updated_result = dict(consultation_result or {})
     if fallback_snapshot.get("red_flags"):
         updated_result["red_flags"] = list(fallback_snapshot.get("red_flags") or [])

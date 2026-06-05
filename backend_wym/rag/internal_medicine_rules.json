@@ -1,0 +1,154 @@
+[
+  {
+    "id": "im-rule-001",
+    "title": "高血压管理",
+    "keywords": ["hypertension", "high blood pressure", "blood pressure", "高血压", "血压高", "140/90"],
+    "conditions": {
+      "symptoms_any": ["hypertension", "high blood pressure", "高血压", "血压高"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Internal Medicine",
+      "note": "考虑血压控制不佳，建议调整生活方式并复测血压。",
+      "test_required": true,
+      "test_category": "medical_laboratory",
+      "test_items": ["肾功能", "电解质", "尿常规"],
+      "test_reason": "评估高血压相关靶器官影响并指导用药。"
+    },
+    "source": "Internal Medicine Guidelines v1 - Cardiovascular"
+  },
+  {
+    "id": "im-rule-002",
+    "title": "2型糖尿病评估",
+    "keywords": ["diabetes", "type 2 diabetes", "high blood sugar", "HbA1c", "糖尿病", "血糖高"],
+    "conditions": {
+      "symptoms_any": ["diabetes", "high blood sugar", "糖尿病", "血糖高"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Internal Medicine",
+      "note": "考虑糖代谢异常，建议完善糖尿病相关检查并评估并发症风险。",
+      "test_required": true,
+      "test_category": "medical_laboratory",
+      "test_items": ["空腹血糖", "糖化血红蛋白", "尿微量白蛋白"],
+      "test_reason": "用于确认糖代谢状态并制定后续治疗方案。"
+    },
+    "source": "Internal Medicine Guidelines v1 - Endocrine"
+  },
+  {
+    "id": "im-rule-003",
+    "title": "慢性肾病评估",
+    "keywords": ["kidney", "renal", "CKD", "creatinine", "eGFR", "肾功能", "慢性肾病"],
+    "conditions": {
+      "symptoms_any": ["kidney", "renal", "CKD", "肾功能", "慢性肾病"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Internal Medicine",
+      "note": "需排查肾功能受损，建议先完善实验室评估。",
+      "test_required": true,
+      "test_category": "medical_laboratory",
+      "test_items": ["肌酐", "尿素氮", "eGFR", "尿常规"],
+      "test_reason": "用于判断肾功能分期和是否需要进一步专科评估。"
+    },
+    "source": "Internal Medicine Guidelines v1 - Nephrology"
+  },
+  {
+    "id": "im-rule-004",
+    "title": "贫血初筛",
+    "keywords": ["anemia", "fatigue", "dizziness", "贫血", "乏力", "头晕"],
+    "conditions": {
+      "symptoms_any": ["anemia", "fatigue", "贫血", "乏力", "头晕"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Internal Medicine",
+      "note": "考虑贫血相关表现，建议先行血液学检查。",
+      "test_required": true,
+      "test_category": "medical_laboratory",
+      "test_items": ["血常规", "铁蛋白", "维生素B12", "叶酸"],
+      "test_reason": "用于判定贫血类型并指导后续补充或治疗。"
+    },
+    "source": "Internal Medicine Guidelines v1 - Hematology"
+  },
+  {
+    "id": "im-rule-005",
+    "title": "甲状腺功能异常评估",
+    "keywords": ["thyroid", "TSH", "T3", "T4", "甲状腺", "甲亢", "甲减"],
+    "conditions": {
+      "symptoms_any": ["thyroid", "TSH", "甲状腺", "甲亢", "甲减"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Internal Medicine",
+      "note": "考虑甲状腺功能异常可能，建议完善甲状腺功能检查。",
+      "test_required": true,
+      "test_category": "medical_laboratory",
+      "test_items": ["TSH", "FT4", "FT3"],
+      "test_reason": "用于判断甲状腺功能状态并确定后续治疗方向。"
+    },
+    "source": "Internal Medicine Guidelines v1 - Endocrine"
+  },
+  {
+    "id": "im-rule-006",
+    "title": "哮喘相关症状评估",
+    "keywords": ["asthma", "wheezing", "shortness of breath", "asthmatic", "哮喘", "喘鸣", "气短"],
+    "conditions": {
+      "symptoms_any": ["asthma", "wheezing", "shortness of breath", "哮喘", "喘鸣", "气短"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Internal Medicine",
+      "note": "呼吸道症状需进一步评估，建议先做影像和肺功能相关检查。",
+      "test_required": true,
+      "test_category": "medical_imaging",
+      "test_items": ["胸部X线", "必要时肺功能检查"],
+      "test_reason": "用于初步排查肺部病变并评估气道受限。"
+    },
+    "source": "Internal Medicine Guidelines v1 - Pulmonology"
+  },
+  {
+    "id": "im-rule-007",
+    "title": "COPD 相关症状评估",
+    "keywords": ["COPD", "chronic bronchitis", "emphysema", "smoker", "慢阻肺", "慢性支气管炎"],
+    "conditions": {
+      "symptoms_any": ["COPD", "chronic bronchitis", "慢阻肺", "慢性支气管炎"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Internal Medicine",
+      "note": "考虑慢性气道疾病可能，建议完善呼吸系统相关检查。",
+      "test_required": true,
+      "test_category": "medical_imaging",
+      "test_items": ["胸部X线", "必要时胸部CT"],
+      "test_reason": "用于评估慢性气道疾病和肺部结构改变。"
+    },
+    "source": "Internal Medicine Guidelines v1 - Pulmonology"
+  },
+  {
+    "id": "im-rule-008",
+    "title": "胃炎或消化不良评估",
+    "keywords": ["gastritis", "stomach pain", "acid reflux", "GERD", "胃痛", "反酸", "消化不良"],
+    "conditions": {
+      "symptoms_any": ["gastritis", "stomach pain", "acid reflux", "胃痛", "反酸", "消化不良"]
+    },
+    "result": {
+      "diagnosis_level": 2,
+      "priority": "M",
+      "department": "Internal Medicine",
+      "note": "消化系统症状需先排查炎症和并发症风险。",
+      "test_required": true,
+      "test_category": "medical_laboratory",
+      "test_items": ["血常规", "肝肾功能", "幽门螺杆菌相关检测"],
+      "test_reason": "用于辅助判断胃肠道病因并指导后续治疗。"
+    },
+    "source": "Internal Medicine Guidelines v1 - GI"
+  }
+]

@@ -159,7 +159,7 @@ class OpenEMRClient:
                     "value": payload.local_visit_id,
                 }
             ],
-            "serviceType": {"text": payload.department or "General Medicine"},
+            "serviceType": {"text": payload.department or "Internal Medicine"},
         }
         if payload.started_at:
             resource["period"] = {"start": payload.started_at}

@@ -78,6 +78,8 @@ def department_runtime_debug_page():
     .department { padding: 12px; }
     .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
     .summary div { border: 1px dashed var(--line); border-radius: 10px; padding: 8px; font-size: 13px; }
+    .resource-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 10px; }
+    .resource-card { border: 1px dashed var(--line); border-radius: 10px; padding: 8px; font-size: 13px; background: #f8fbf6; }
     .patients { display: grid; gap: 10px; margin-top: 12px; }
     .patient { padding: 10px; }
     .row { margin-top: 4px; font-size: 13px; }
@@ -162,6 +164,23 @@ def department_runtime_debug_page():
       return payload.data;
     }
 
+    function saveOpenDetails() {
+      const openIds = new Set();
+      document.querySelectorAll("details[data-detail-id][open]").forEach(function (el) {
+        openIds.add(el.getAttribute("data-detail-id"));
+      });
+      return openIds;
+    }
+
+    function restoreOpenDetails(openIds) {
+      openIds.forEach(function (id) {
+        var escaped = id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        document.querySelectorAll('details[data-detail-id="' + escaped + '"]').forEach(function (el) {
+          el.open = true;
+        });
+      });
+    }
+
     function renderPatient(patient) {
       const dialogue = patient.current_dialogue
         ? `
@@ -178,11 +197,15 @@ def department_runtime_debug_page():
           <div class="row">patient: ${patient.patient_id}</div>
           <div class="row">visit_state: ${patient.visit_state || "-"}</div>
           <div class="row">lifecycle: ${patient.patient_lifecycle_state || "-"}</div>
+          <div class="row">runner: ${patient.execution_runner_kind || "-"} / capability: ${patient.department_capability_class || "-"}</div>
+          <div class="row">agent enabled: ${patient.department_agent_enabled}</div>
+          <div class="row">doctor slot: ${patient.assigned_doctor_slot_name || "-"} (${patient.assigned_doctor_slot_id || "-"})</div>
           <div class="row">queue_kind: ${patient.queue_kind || "-"}</div>
           <div class="row">llm: ${patient.llm_mode || "-"}${patient.llm_probability != null ? ` (p=${patient.llm_probability})` : ""}</div>
           <div class="row">node: ${patient.current_node_id || "-"}</div>
+          <div class="row">room: ${patient.current_room_name || "-"} (${patient.current_room_node_id || "-"}) / ${patient.room_type || "-"}</div>
           <div class="row">last_action: ${patient.last_action || "-"} | finished: ${patient.finished}</div>
-          <details>
+          <details data-detail-id="patient-${patient.patient_id}">
             <summary>Details</summary>
             <div class="row">visit: ${patient.visit_id}</div>
             <div class="row">target_node: ${patient.target_node_id || "-"}</div>
@@ -210,11 +233,27 @@ def department_runtime_debug_page():
         <div class="stat"><strong>last_tick</strong><div>${snapshot.last_tick_at || "-"}</div></div>
       `;
 
-      departmentsEl.innerHTML = snapshot.departments.map((department) => `
+      departmentsEl.innerHTML = snapshot.departments.map((department) => {
+        const doctorSlots = (department.doctor_slots || []).map((slot) => `
+          <div class="resource-card">
+            <div><strong>${slot.label}</strong></div>
+            <div>id: ${slot.slot_id}</div>
+            <div>active/capacity: ${slot.active_count}/${slot.capacity}</div>
+          </div>
+        `).join("");
+        const rooms = (department.rooms || []).map((room) => `
+          <div class="resource-card">
+            <div><strong>${room.name}</strong></div>
+            <div>type: ${room.room_type}</div>
+            <div>active/capacity: ${room.active_count}/${room.capacity}</div>
+          </div>
+        `).join("");
+        return `
         <section class="department">
-          <details>
+          <details data-detail-id="dept-${department.department_id}">
           <summary><strong>${department.department_name}</strong> (${department.patients.length})</summary>
           <div class="summary">
+            <div>capability: ${department.department_capability_class} / agent=${department.department_agent_enabled}</div>
             <div>active: ${department.summary.active_count}</div>
             <div>pending reg: ${department.summary.pending_registration_count}</div>
             <div>waiting r1/r2: ${department.summary.waiting_round1_count}/${department.summary.waiting_round2_count}</div>
@@ -225,12 +264,15 @@ def department_runtime_debug_page():
             <div>updated: ${department.summary.updated_at}</div>
             <div>patients: ${department.patients.length}</div>
           </div>
+          ${doctorSlots ? `<div class="resource-grid">${doctorSlots}</div>` : ""}
+          ${rooms ? `<div class="resource-grid">${rooms}</div>` : ""}
           <div class="patients">
             ${department.patients.length ? department.patients.map(renderPatient).join("") : "<div class='muted'>No patients.</div>"}
           </div>
           </details>
         </section>
-      `).join("");
+      `;
+      }).join("");
 
       if (snapshot.unassigned_patients && snapshot.unassigned_patients.length) {
         unassignedPanelEl.style.display = "block";
@@ -243,8 +285,10 @@ def department_runtime_debug_page():
 
     async function refresh(showStatus = false) {
       try {
+        const openIds = saveOpenDetails();
         const snapshot = await api("/api/v1/department-runtime-debug/snapshot");
         render(snapshot);
+        restoreOpenDetails(openIds);
         if (showStatus) statusEl.textContent = "Snapshot refreshed.";
       } catch (error) {
         statusEl.textContent = error.message;

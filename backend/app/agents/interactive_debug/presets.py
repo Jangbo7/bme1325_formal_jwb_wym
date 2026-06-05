@@ -235,7 +235,7 @@ SURGERY_PRESETS = [
     },
     {
         "preset_id": "surgery_postop_wound_check",
-        "label": "Stable Post-op Wound Check",
+        "label": "Round1 Post-op Wound Check",
         "payload": {
             "patient_profile": {"name": "Wang Li", "age": 47, "sex": "female", "allergies": ["penicillin"], "chronic_conditions": ["type 2 diabetes"]},
             "visit_state": VisitLifecycleState.IN_CONSULTATION.value,
@@ -254,6 +254,80 @@ SURGERY_PRESETS = [
                 allergies=["penicillin"],
                 chronic_conditions=["type 2 diabetes"],
             ),
+        },
+    },
+    {
+        "preset_id": "surgery_round2_postop_review",
+        "label": "Round2 Post-op Review",
+        "payload": {
+            "patient_profile": {"name": "Wang Li", "age": 47, "sex": "female", "allergies": ["penicillin"], "chronic_conditions": ["type 2 diabetes"]},
+            "visit_state": VisitLifecycleState.IN_SECOND_CONSULTATION.value,
+            "patient_lifecycle_state": PatientLifecycleState.IN_CONSULTATION.value,
+            "consultation_round": 2,
+            "chief_complaint": "Routine dressing change after surgery",
+            "symptoms": "postoperative wound review, mild soreness, no fever, no pus, no new bleeding",
+            "onset_time": "3 days after surgery",
+            "vitals": {"temp_c": 36.9, "heart_rate": 86, "pain_score": 3},
+            "shared_memory": _base_shared_memory(
+                "Wang Li", 47, "female",
+                chief_complaint="Routine dressing change after surgery",
+                symptoms=["postoperative wound review", "mild soreness", "no fever", "no pus", "no new bleeding"],
+                onset_time="3 days after surgery",
+                vitals={"temp_c": 36.9, "heart_rate": 86, "pain_score": 3},
+                allergies=["penicillin"],
+                chronic_conditions=["type 2 diabetes"],
+            ),
+            "simulated_report": {
+                "category_code": "postoperative_wound_review",
+                "window_label": "Surgical Review Desk",
+                "report_summary": {
+                    "wound_status": "clean and dry",
+                    "redness": "minimal",
+                    "drainage": "none",
+                    "fever": "absent",
+                },
+                "test_items": ["Wound assessment", "Post-op dressing review"],
+            },
+            "outpatient_procedure_summary": {
+                "completed": True,
+                "category": "dressing_change",
+                "completed_at": "2026-06-04T09:30:00+08:00",
+                "status": "completed",
+            },
+            "medical_record_entries": [
+                {
+                    "phase": "surgery_round1",
+                    "entry_type": "initial_consult_note",
+                    "actor": "surgery_agent",
+                    "title": "Initial Surgery Assessment",
+                    "content_text": "postoperative wound stable, arranged dressing change and planned review",
+                    "content": {
+                        "department": "Surgery",
+                        "priority": "M",
+                        "diagnosis_level": 1,
+                        "next_step_decision": "test_first",
+                        "needs_second_consultation": True,
+                        "needs_outpatient_procedure": True,
+                        "outpatient_procedure_category": "dressing_change",
+                        "outpatient_procedure_reason": "postoperative wound care",
+                    },
+                },
+                {
+                    "phase": "testing",
+                    "entry_type": "test_result_note",
+                    "actor": "system",
+                    "title": "Post-op Wound Review",
+                    "content_text": "wound clean and dry, no drainage or fever",
+                    "content": {
+                        "report_summary": {
+                            "wound_status": "clean and dry",
+                            "redness": "minimal",
+                            "drainage": "none",
+                            "fever": "absent",
+                        }
+                    },
+                },
+            ],
         },
     },
 ]

@@ -72,7 +72,7 @@ def test_map_note_and_report_payloads_are_readable():
     }
     visit = {
         "id": "visit-1",
-        "current_department": "General Medicine",
+        "current_department": "Internal Medicine",
         "openemr_encounter_id": "enc-1",
     }
     triage_note = map_triage_to_note(
@@ -80,7 +80,7 @@ def test_map_note_and_report_payloads_are_readable():
         visit,
         {
             "chief_complaint": "Fever and cough",
-            "department": "General Medicine",
+            "department": "Internal Medicine",
             "priority": "M",
             "risk_flags": ["persistent fever"],
         },
@@ -94,7 +94,7 @@ def test_map_note_and_report_payloads_are_readable():
         {
             "chief_complaint": "Fever and cough",
             "final_result": {
-                "department": "General Medicine",
+                "department": "Internal Medicine",
                 "priority": "M",
                 "note": "Upper respiratory tract infection likely.",
                 "patient_plan": "Hydration and rest.",

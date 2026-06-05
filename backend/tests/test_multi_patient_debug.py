@@ -11,6 +11,7 @@ from app.agents.patient_agent.schemas import (
     PatientSymptomFacts,
 )
 from app.main import create_app
+from app.services.department_capabilities import DEPARTMENT_CAPABILITY_OVERRIDES, DepartmentCapability, list_departments_for_mode
 
 
 def create_test_client(tmp_path, monkeypatch):
@@ -96,10 +97,12 @@ def sample_case() -> PatientCaseCard:
     )
 
 
-def install_fake_patient_agent(client: TestClient):
+def install_fake_patient_agent(client: TestClient, captured_departments: list[str | None] | None = None):
     service = client.app.state.container["patient_agent_service"]
 
-    def fake_generate_case(seed=None):
+    def fake_generate_case(seed=None, department_id=None):
+        if captured_departments is not None:
+            captured_departments.append(department_id)
         return sample_case()
 
     def fake_reply(*, case_card, context):
@@ -279,7 +282,8 @@ def test_multi_patient_debug_rejects_invalid_llm_probability(tmp_path, monkeypat
 
 def test_multi_patient_debug_intelligent_mode_works_with_fake_agent(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
-    install_fake_patient_agent(client)
+    generated_departments: list[str | None] = []
+    install_fake_patient_agent(client, captured_departments=generated_departments)
     controller = client.app.state.container["multi_patient_debug_controller"]
 
     start_resp = post_json(
@@ -302,6 +306,10 @@ def test_multi_patient_debug_intelligent_mode_works_with_fake_agent(tmp_path, mo
     assert snapshot["total_spawned"] == 2
     assert len(snapshot["patients"]) == 2
     assert all(item["mode"] == "intelligent_agent" for item in snapshot["patients"])
+    assert all(item["execution_runner_kind"] == "intelligent" for item in snapshot["patients"])
+    assert all(item["department_agent_enabled"] is True for item in snapshot["patients"])
+    assert set(generated_departments) == {"internal", "surgery"}
+    assert set(item["assigned_department_id"] for item in snapshot["patients"]) == {"internal", "surgery"}
     assert all(item["case_summary"] is not None for item in snapshot["patients"])
     assert all(item["assigned_department_id"] is not None for item in snapshot["patients"])
     assert all("next_step_at" in item for item in snapshot["patients"])
@@ -354,9 +362,10 @@ def test_multi_patient_debug_department_mixed_mode_uses_multiple_agent_types(tmp
         time.sleep(0.01)
 
     snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
-    modes = {item["mode"] for item in snapshot["patients"]}
-    assert "legacy_template" in modes
-    assert "intelligent_agent" in modes
+    assert all(item["mode"] == "department_mixed" for item in snapshot["patients"])
+    runner_kinds = {item["execution_runner_kind"] for item in snapshot["patients"]}
+    assert "legacy" in runner_kinds
+    assert "intelligent" in runner_kinds
 
 
 def test_multi_patient_debug_intelligent_mode_exposes_structured_llm_error_in_snapshot(tmp_path, monkeypatch):
@@ -381,3 +390,91 @@ def test_multi_patient_debug_intelligent_mode_exposes_structured_llm_error_in_sn
     assert snapshot["total_spawned"] == 0
     assert "LLM_UNAVAILABLE" in (snapshot["last_error"] or "")
     assert "\"stage\": \"generate_case\"" in (snapshot["last_error"] or "")
+
+
+def test_multi_patient_debug_department_mixed_script_only_departments_never_use_real_agent(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    controller = client.app.state.container["multi_patient_debug_controller"]
+    patient_agent_service = client.app.state.container["patient_agent_service"]
+    internal_medicine_service = client.app.state.container["internal_medicine_service"]
+    surgery_service = client.app.state.container.get("surgery_service")
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("script-only departments should not use real agent services")
+
+    patient_agent_service.agent.generate_case = fail_if_called
+    internal_medicine_service.create_session = fail_if_called
+    internal_medicine_service.continue_session = fail_if_called
+    if surgery_service is not None:
+        surgery_service.create_session = fail_if_called
+        surgery_service.continue_session = fail_if_called
+    controller._department_ids = ["ophthalmology"]
+
+    start_resp = post_json(
+        client,
+        "/api/v1/multi-patient-debug/start",
+        {
+            "mode": "department_mixed",
+            "spawn_interval_seconds": 0.0,
+            "step_interval_seconds": 0.1,
+            "max_active_patients": 1,
+        },
+    )
+    assert start_resp.status_code == 200
+
+    for _ in range(80):
+        controller.tick_once()
+        time.sleep(0.01)
+
+    snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
+    assert snapshot["total_spawned"] >= 1
+    assert all(item["mode"] == "department_mixed" for item in snapshot["patients"])
+    assert all(item["assigned_department_id"] == "ophthalmology" for item in snapshot["patients"])
+    assert all(item["execution_runner_kind"] == "legacy" for item in snapshot["patients"])
+    assert all(item["department_agent_enabled"] is False for item in snapshot["patients"])
+    assert all(item["department_capability_class"] == "script_only" for item in snapshot["patients"])
+
+
+def test_multi_patient_debug_intelligent_mode_accepts_new_agent_enabled_department_via_capability_config(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    install_fake_patient_agent(client)
+    controller = client.app.state.container["multi_patient_debug_controller"]
+
+    monkeypatch.setitem(
+        DEPARTMENT_CAPABILITY_OVERRIDES,
+        "ophthalmology",
+        DepartmentCapability(
+            department_id="ophthalmology",
+            supports_patient_agent=True,
+            supports_consultation_agent=True,
+            supports_scripted_fallback=True,
+            preferred_runner_kind="intelligent",
+        ),
+    )
+    controller._department_ids = ["ophthalmology"]
+
+    start_resp = post_json(
+        client,
+        "/api/v1/multi-patient-debug/start",
+        {
+            "mode": "intelligent_agent",
+            "spawn_interval_seconds": 0.0,
+            "step_interval_seconds": 0.1,
+            "max_active_patients": 1,
+        },
+    )
+    assert start_resp.status_code == 200
+
+    controller.tick_once()
+
+    snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
+    assert snapshot["total_spawned"] == 1
+    assert snapshot["patients"][0]["mode"] == "intelligent_agent"
+    assert snapshot["patients"][0]["execution_runner_kind"] == "intelligent"
+    assert snapshot["patients"][0]["assigned_department_id"] == "ophthalmology"
+    assert snapshot["patients"][0]["department_agent_enabled"] is True
+    assert snapshot["patients"][0]["department_capability_class"] == "agent_enabled"
+
+
+def test_list_departments_for_mode_intelligent_uses_capability_config():
+    assert list_departments_for_mode("intelligent_agent") == ["internal", "surgery"]

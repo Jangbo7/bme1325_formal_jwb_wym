@@ -55,7 +55,7 @@
     "result": {
       "triage_level": 4,
       "priority": "L",
-      "department": "General Medicine",
+      "department": "Internal Medicine",
       "note": "No major high-risk indicators detected. Continue with the standard consultation process."
     },
     "source": "Mock triage guideline v0"

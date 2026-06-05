@@ -736,7 +736,10 @@ class PatientAgentChatDebugController(_BaseAgentDebugController):
             },
             "rag_hits": [
                 {"source": "reply_constraints", "content": self.patient_agent_service.agent.rag_context.build_reply_constraints()},
-                {"source": "case_constraints", "content": self.patient_agent_service.agent.rag_context.build_case_constraints()},
+                {
+                    "source": "case_constraints",
+                    "content": self.patient_agent_service.agent.rag_context.build_case_constraints(),
+                },
             ],
             "parsed_result": {
                 "case_summary": self.patient_agent_service.summarize_case_for_debug(case_card),

@@ -5,13 +5,22 @@ from datetime import datetime, timezone
 from app.departments.registry import list_departments
 from app.schemas.common import DepartmentFlowStatus, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
 from app.schemas.department_runtime import (
+    DepartmentDoctorSlotRuntimeView,
     DepartmentRuntimeDepartmentView,
     DepartmentRuntimePatientView,
+    DepartmentRoomRuntimeView,
     DepartmentRuntimeSnapshot,
     DepartmentRuntimeSummaryView,
 )
 from app.schemas.hospital_runtime import HospitalNodeRuntimeView, HospitalNodeSummary, HospitalRuntimeSnapshot
+from app.services.department_capabilities import get_department_capability
 from app.services.department_assignment import resolve_assigned_department_for_visit
+from app.services.department_resources import (
+    get_department_resource_config,
+    get_doctor_slot_by_id,
+    resolve_room_for_visit_state,
+    stable_doctor_slot_for_patient,
+)
 from app.services.hospital_nodes import list_hospital_nodes
 
 
@@ -63,6 +72,14 @@ class DepartmentRuntimeService:
         current_dialogue_preview: str | None = None,
         current_node_id: str | None = None,
         target_node_id: str | None = None,
+        execution_runner_kind: str | None = None,
+        department_agent_enabled: bool | None = None,
+        department_capability_class: str | None = None,
+        assigned_doctor_slot_id: str | None = None,
+        assigned_doctor_slot_name: str | None = None,
+        current_room_node_id: str | None = None,
+        current_room_name: str | None = None,
+        room_type: str | None = None,
         last_transition_action: str | None = None,
         transition_version: str | None = None,
     ) -> dict | None:
@@ -92,6 +109,28 @@ class DepartmentRuntimeService:
 
         existing = self.runtime_repo.get_patient_runtime(patient_id, resolved_visit_id) or {}
         visit_state = visit_row.get("state")
+        capability_info = self._resolve_department_capability_fields(
+            department_id=assigned_department_id,
+            existing=existing,
+            execution_runner_kind=execution_runner_kind,
+            department_agent_enabled=department_agent_enabled,
+            department_capability_class=department_capability_class,
+        )
+        slot_info = self._resolve_doctor_slot_assignment(
+            patient_id=patient_id,
+            department_id=assigned_department_id,
+            existing=existing,
+            assigned_doctor_slot_id=assigned_doctor_slot_id,
+            assigned_doctor_slot_name=assigned_doctor_slot_name,
+        )
+        room_info = self._resolve_room_assignment(
+            department_id=assigned_department_id,
+            visit_state=visit_state,
+            assigned_doctor_slot_id=slot_info["slot_id"],
+            current_room_node_id=current_room_node_id,
+            current_room_name=current_room_name,
+            room_type=room_type,
+        )
         target_queue_kind = None
         if visit_state == VisitLifecycleState.IN_SECOND_CONSULTATION.value:
             target_queue_kind = QueueTicketKind.RETURN_CONSULTATION.value
@@ -123,6 +162,11 @@ class DepartmentRuntimeService:
             "visit_id": resolved_visit_id,
             "assigned_department_id": assigned_department_id,
             "assigned_department_name": assigned_department_name,
+            "execution_runner_kind": capability_info["execution_runner_kind"],
+            "department_agent_enabled": capability_info["department_agent_enabled"],
+            "department_capability_class": capability_info["department_capability_class"],
+            "assigned_doctor_slot_id": slot_info["slot_id"],
+            "assigned_doctor_slot_name": slot_info["slot_name"],
             "queue_kind": queue_kind or existing.get("queue_kind"),
             "department_status": flow_status,
             "department_round": department_round,
@@ -132,7 +176,16 @@ class DepartmentRuntimeService:
             "patient_lifecycle_state": patient_row.get("lifecycle_state"),
             "active_agent_type": visit_row.get("active_agent_type"),
             "current_node": visit_row.get("current_node"),
-            "current_node_id": current_node_id or self._node_for_visit_state(visit_row.get("state"), assigned_department_id),
+            "current_node_id": current_node_id
+            or room_info["node_id"]
+            or self._node_for_visit_state(
+                visit_row.get("state"),
+                assigned_department_id,
+                assigned_doctor_slot_id=slot_info["slot_id"],
+            ),
+            "current_room_node_id": room_info["node_id"],
+            "current_room_name": room_info["name"],
+            "room_type": room_info["room_type"],
             "target_node_id": target_node_id or existing.get("target_node_id"),
             "last_transition_action": last_transition_action or existing.get("last_transition_action"),
             "transition_version": transition_version or now_iso(),
@@ -227,6 +280,9 @@ class DepartmentRuntimeService:
                 merged["npc_id"] = overlay.get("npc_id")
                 merged["last_action"] = overlay.get("last_action")
                 merged["finished"] = overlay.get("finished", False)
+                merged["execution_runner_kind"] = overlay.get("execution_runner_kind") or merged.get("execution_runner_kind")
+                merged["department_agent_enabled"] = overlay.get("department_agent_enabled", merged.get("department_agent_enabled", False))
+                merged["department_capability_class"] = overlay.get("department_capability_class") or merged.get("department_capability_class")
                 merged["current_node_id"] = overlay.get("current_node_id") or merged.get("current_node_id")
                 merged["target_node_id"] = overlay.get("target_node_id") or merged.get("target_node_id")
                 merged["current_counterparty"] = overlay.get("current_counterparty") or merged.get("current_counterparty")
@@ -242,6 +298,8 @@ class DepartmentRuntimeService:
         summaries = {item.department_id: item for item in self.runtime_repo.list_summaries()}
         departments: list[DepartmentRuntimeDepartmentView] = []
         for department in formal_departments:
+            resource_summary = self._build_resource_summary(department["id"], rows_by_department.get(department["id"], []))
+            capability = get_department_capability(department["id"])
             summary = summaries.get(department["id"]) or DepartmentRuntimeSummaryView(
                 department_id=department["id"],
                 department_name=department["label"],
@@ -269,7 +327,11 @@ class DepartmentRuntimeService:
                 DepartmentRuntimeDepartmentView(
                     department_id=department["id"],
                     department_name=department["label"],
+                    department_agent_enabled=capability.department_agent_enabled,
+                    department_capability_class=capability.department_capability_class,
                     summary=summary,
+                    doctor_slots=resource_summary["doctor_slots"],
+                    rooms=resource_summary["rooms"],
                     patients=patients,
                 )
             )
@@ -288,6 +350,9 @@ class DepartmentRuntimeService:
                     visit_id=overlay.get("encounter_id") or "",
                     assigned_department_id="unassigned",
                     assigned_department_name="Unassigned",
+                    execution_runner_kind=overlay.get("execution_runner_kind"),
+                    department_agent_enabled=overlay.get("department_agent_enabled", False),
+                    department_capability_class=overlay.get("department_capability_class"),
                     queue_kind=None,
                     department_status="unassigned",
                     department_round="none",
@@ -346,7 +411,11 @@ class DepartmentRuntimeService:
 
         grouped: dict[str, list[DepartmentRuntimePatientView]] = {}
         for row in rows:
-            node_id = row.current_node_id or self._node_for_visit_state(row.visit_state, row.assigned_department_id)
+            node_id = row.current_node_id or self._node_for_visit_state(
+                row.visit_state,
+                row.assigned_department_id,
+                assigned_doctor_slot_id=row.assigned_doctor_slot_id,
+            )
             grouped.setdefault(node_id or "unknown", []).append(row)
 
         node_views: list[HospitalNodeRuntimeView] = []
@@ -463,8 +532,20 @@ class DepartmentRuntimeService:
         return DepartmentFlowStatus.ASSIGNED_PENDING_REGISTRATION.value, "none", queue_kind
 
     @staticmethod
-    def _node_for_visit_state(visit_state: str | None, assigned_department_id: str | None) -> str:
+    def _node_for_visit_state(
+        visit_state: str | None,
+        assigned_department_id: str | None,
+        *,
+        assigned_doctor_slot_id: str | None = None,
+    ) -> str:
         department_id = assigned_department_id or "internal"
+        room = resolve_room_for_visit_state(
+            department_id,
+            visit_state,
+            assigned_doctor_slot_id=assigned_doctor_slot_id,
+        )
+        if room is not None:
+            return room.node_id
         if visit_state in {
             VisitLifecycleState.ARRIVED.value,
             VisitLifecycleState.TRIAGING.value,
@@ -487,11 +568,6 @@ class DepartmentRuntimeService:
             VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
             VisitLifecycleState.WAITING_RETURN_CONSULTATION.value,
         }:
-            if visit_state in {
-                VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE.value,
-                VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
-            }:
-                return "outpatient_procedure"
             return "testing"
         if visit_state in {
             VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
@@ -502,3 +578,128 @@ class DepartmentRuntimeService:
         if visit_state == VisitLifecycleState.WAITING_PHARMACY.value:
             return "pharmacy"
         return department_id
+
+    @staticmethod
+    def _resolve_doctor_slot_assignment(
+        *,
+        patient_id: str,
+        department_id: str,
+        existing: dict,
+        assigned_doctor_slot_id: str | None,
+        assigned_doctor_slot_name: str | None,
+    ) -> dict[str, str | None]:
+        slot_id = assigned_doctor_slot_id or existing.get("assigned_doctor_slot_id")
+        slot_name = assigned_doctor_slot_name or existing.get("assigned_doctor_slot_name")
+        slot = get_doctor_slot_by_id(department_id, slot_id)
+        if slot is None:
+            slot = stable_doctor_slot_for_patient(department_id, patient_id)
+        if slot is not None:
+            slot_id = slot.slot_id
+            slot_name = slot.label
+        return {
+            "slot_id": slot_id,
+            "slot_name": slot_name,
+        }
+
+    @staticmethod
+    def _resolve_department_capability_fields(
+        *,
+        department_id: str | None,
+        existing: dict,
+        execution_runner_kind: str | None,
+        department_agent_enabled: bool | None,
+        department_capability_class: str | None,
+    ) -> dict[str, str | bool]:
+        capability = get_department_capability(department_id)
+        resolved_runner_kind = execution_runner_kind or existing.get("execution_runner_kind") or capability.preferred_runner_kind
+        existing_agent_enabled = existing.get("department_agent_enabled")
+        if department_agent_enabled is None:
+            if existing_agent_enabled is None:
+                resolved_agent_enabled = capability.department_agent_enabled
+            else:
+                resolved_agent_enabled = bool(existing_agent_enabled)
+        else:
+            resolved_agent_enabled = department_agent_enabled
+        resolved_capability_class = (
+            department_capability_class
+            or existing.get("department_capability_class")
+            or capability.department_capability_class
+        )
+        return {
+            "execution_runner_kind": resolved_runner_kind,
+            "department_agent_enabled": bool(resolved_agent_enabled),
+            "department_capability_class": resolved_capability_class,
+        }
+
+    @staticmethod
+    def _resolve_room_assignment(
+        *,
+        department_id: str,
+        visit_state: str | None,
+        assigned_doctor_slot_id: str | None,
+        current_room_node_id: str | None,
+        current_room_name: str | None,
+        room_type: str | None,
+    ) -> dict[str, str | None]:
+        room = resolve_room_for_visit_state(
+            department_id,
+            visit_state,
+            assigned_doctor_slot_id=assigned_doctor_slot_id,
+        )
+        if room is not None:
+            return {
+                "node_id": room.node_id,
+                "name": room.name,
+                "room_type": room.room_type,
+            }
+        return {
+            "node_id": current_room_node_id,
+            "name": current_room_name,
+            "room_type": room_type,
+        }
+
+    @staticmethod
+    def _build_resource_summary(department_id: str, patient_rows: list[DepartmentRuntimePatientView]) -> dict[str, list]:
+        config = get_department_resource_config(department_id)
+        if config is None:
+            return {"doctor_slots": [], "rooms": []}
+
+        doctor_slot_views: list[DepartmentDoctorSlotRuntimeView] = []
+        for slot in config.doctor_slots:
+            active_patients = [
+                row.patient_id
+                for row in patient_rows
+                if not row.finished and row.assigned_doctor_slot_id == slot.slot_id
+            ]
+            doctor_slot_views.append(
+                DepartmentDoctorSlotRuntimeView(
+                    slot_id=slot.slot_id,
+                    label=slot.label,
+                    capacity=slot.capacity,
+                    active_count=len(active_patients),
+                    patient_ids=active_patients,
+                )
+            )
+
+        room_views: list[DepartmentRoomRuntimeView] = []
+        for room in config.room_nodes:
+            active_patients = [
+                row.patient_id
+                for row in patient_rows
+                if not row.finished and row.current_room_node_id == room.node_id
+            ]
+            room_views.append(
+                DepartmentRoomRuntimeView(
+                    node_id=room.node_id,
+                    name=room.name,
+                    room_type=room.room_type,
+                    capacity=room.capacity,
+                    active_count=len(active_patients),
+                    patient_ids=active_patients,
+                )
+            )
+
+        return {
+            "doctor_slots": doctor_slot_views,
+            "rooms": room_views,
+        }

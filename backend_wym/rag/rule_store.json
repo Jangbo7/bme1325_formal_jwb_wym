@@ -1,0 +1,63 @@
+[
+  {
+    "id": "triage-rule-001",
+    "title": "Chest pain or breathing issue with elevated heart rate",
+    "keywords": ["chest pain", "chest tightness", "breath shortness", "dyspnea", "chest", "breath"],
+    "conditions": {
+      "symptoms_any": ["chest pain", "chest tightness", "breath shortness", "dyspnea", "胸痛", "胸闷", "呼吸困难"],
+      "heart_rate_gte": 110
+    },
+    "result": {
+      "triage_level": 2,
+      "priority": "H",
+      "department": "Emergency",
+      "note": "Chest pain or breathing difficulty with fast heart rate suggests high risk and should be prioritized."
+    },
+    "source": "Mock triage guideline v0"
+  },
+  {
+    "id": "triage-rule-002",
+    "title": "High fever should be routed to fever clinic",
+    "keywords": ["fever", "high fever", "temp", "temperature"],
+    "conditions": {
+      "temp_c_gte": 38.5
+    },
+    "result": {
+      "triage_level": 3,
+      "priority": "M",
+      "department": "Fever Clinic",
+      "note": "Fever symptoms require assessment in the fever clinic."
+    },
+    "source": "Mock triage guideline v0"
+  },
+  {
+    "id": "triage-rule-003",
+    "title": "Severe pain should be treated urgently",
+    "keywords": ["severe pain", "extreme pain", "pain score 8", "剧烈疼痛"],
+    "conditions": {
+      "pain_score_gte": 8
+    },
+    "result": {
+      "triage_level": 2,
+      "priority": "H",
+      "department": "Emergency",
+      "note": "Severe pain indicates the patient should be handled urgently."
+    },
+    "source": "Mock triage guideline v0"
+  },
+  {
+    "id": "triage-rule-004",
+    "title": "Default low-risk outpatient routing",
+    "keywords": ["general", "outpatient", "default"],
+    "conditions": {
+      "default": true
+    },
+    "result": {
+      "triage_level": 4,
+      "priority": "L",
+      "department": "General Medicine",
+      "note": "No major high-risk indicators detected. Continue with the standard consultation process."
+    },
+    "source": "Mock triage guideline v0"
+  }
+]

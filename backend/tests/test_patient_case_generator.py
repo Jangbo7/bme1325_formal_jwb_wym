@@ -60,3 +60,46 @@ def test_patient_case_generator_retries_and_fails_on_invalid_payload():
         assert exc.code == "LLM_RESPONSE_INVALID"
         assert exc.details["stage"] == "generate_case"
     assert attempts["count"] == 3
+
+
+def test_patient_case_generator_uses_department_specific_constraints():
+    captured_messages = {}
+
+    def fake_request(messages):
+        captured_messages["messages"] = messages
+        return {
+            "case_id": "case-surgery-001",
+            "patient_profile": {
+                "name": "Zhao Min",
+                "age": 35,
+                "sex": "male",
+                "allergies": [],
+                "chronic_conditions": [],
+            },
+            "chief_complaint": "Painful finger laceration",
+            "present_illness": "Finger cut while cooking earlier today with persistent localized pain.",
+            "symptom_facts": {
+                "symptoms": ["finger pain", "laceration"],
+                "onset_time": "today",
+                "vitals": {"temp_c": 36.7, "heart_rate": 84, "pain_score": 5},
+                "associated_symptoms": [],
+                "negatives": ["no chest pain"],
+                "aggravating_factors": ["touching the wound"],
+                "relieving_factors": ["rest"],
+            },
+            "communication_style": "direct but cooperative",
+            "hidden_diagnosis_hint": "simple finger laceration",
+            "patient_goals": ["control pain", "know whether sutures are needed"],
+            "forbidden_reveals": ["simple finger laceration"],
+        }
+
+    generator = PatientCaseGenerator(
+        request_json=fake_request,
+        rag_context=PatientAgentRagContext(),
+    )
+
+    generator.generate(seed="surgery-seed", department_id="surgery")
+
+    constraint_text = str(captured_messages["messages"][1]["content"])
+    assert "common outpatient surgery visit" in constraint_text
+    assert "Avoid extreme emergencies, pregnancy, pediatrics" in constraint_text

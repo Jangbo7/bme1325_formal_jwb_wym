@@ -31,6 +31,7 @@ const hudRuntimeMode = document.getElementById("hudRuntimeMode");
 const hudRuntimeSpawn = document.getElementById("hudRuntimeSpawn");
 const hudRuntimeStep = document.getElementById("hudRuntimeStep");
 const hudRuntimeMax = document.getElementById("hudRuntimeMax");
+const hudRuntimeLlmProbability = document.getElementById("hudRuntimeLlmProbability");
 const hudRuntimeDragHandle = document.getElementById("hudRuntimeDragHandle");
 const hudQueueToggle = document.getElementById("hudQueueToggle");
 const hudPatientsToggle = document.getElementById("hudPatientsToggle");
@@ -834,6 +835,9 @@ function mapRuntimeNodeToRoomKind(nodeId) {
   if (nodeId === "internal") return "doctor_entry";
   if (nodeId === "surgery") return "consultation";
   if (nodeId === "rehabilitation") return "ward";
+  if (nodeId === "ward") return "ward";
+  if (String(nodeId).includes("consult_room")) return "consultation";
+  if (String(nodeId).includes("procedure")) return "lab";
   return rooms.some((room) => room.kind === nodeId) ? nodeId : "hall";
 }
 
@@ -849,7 +853,7 @@ function buildHospitalScenePatients() {
       if (String(patient.visit_state || "") === "completed") continue;
       items.push({
         patientId: patient.patient_id,
-        roomKind,
+        roomKind: mapRuntimeNodeToRoomKind(patient.current_room_node_id || patient.current_node_id || nodeId) || roomKind,
         finished: Boolean(patient.finished || patient.visit_state === "completed"),
         priority: patient.visit_state === "in_icu_rescue" ? "H" : "M",
         visitState: patient.visit_state || "",
@@ -871,6 +875,7 @@ function summarizeVisitStage(visitState) {
   if (["waiting_test", "waiting_test_payment", "test_payment_completed", "in_test", "waiting_return_consultation", "results_ready"].includes(state)) return "testing";
   if (state === "in_second_consultation") return "consult2";
   if (["diagnosis_finalized", "waiting_payment", "medical_payment_completed"].includes(state)) return "payment";
+  if (state === "admitted") return "ward";
   if (state === "waiting_pharmacy") return "pharmacy";
   if (state === "completed") return "completed";
   return state || "unknown";
@@ -884,7 +889,7 @@ function buildRuntimePatientDetails(snapshot) {
       details.push({
         label: patient.npc_id || patient.patient_id,
         patientId: patient.patient_id,
-        roomKind: mapRuntimeNodeToRoomKind(patient.current_node_id || node.node.node_id),
+        roomKind: mapRuntimeNodeToRoomKind(patient.current_room_node_id || patient.current_node_id || node.node.node_id),
         visitState: patient.visit_state || "",
         stage: summarizeVisitStage(patient.visit_state),
         currentNodeId: patient.current_node_id || node.node.node_id,
@@ -930,7 +935,7 @@ function updateRuntimeHudStatus() {
   const snapshot = integrationState.hospitalRuntime;
   const payload = getRuntimeStartPayloadFromHud();
   const draftPrefix = runtimeDraftState.dirty ? "Draft" : "Config";
-  const tuning = `${draftPrefix}: Mode=${payload.mode} | Spawn=${payload.spawn_interval_seconds}s | Step=${payload.step_interval_seconds}s | Max=${payload.max_active_patients}`;
+  const tuning = `${draftPrefix}: Mode=${payload.mode} | Spawn=${payload.spawn_interval_seconds}s | Step=${payload.step_interval_seconds}s | Max=${payload.max_active_patients} | LLM=${payload.llm_probability ?? "-"}`;
   if (!snapshot) {
     hudRuntimeStatus.textContent = integrationState.runtimeControlBusy
       ? `Runtime request in progress... | ${tuning}`
@@ -938,7 +943,7 @@ function updateRuntimeHudStatus() {
     return;
   }
   const runningText = snapshot.running ? "running" : "stopped";
-  hudRuntimeStatus.textContent = `Runtime ${runningText} | mode ${snapshot.mode || "unknown"} | active ${snapshot.active_count ?? 0} | spawned ${snapshot.total_spawned ?? 0} | blocked ${snapshot.blocked_count ?? 0} | ${tuning}`;
+  hudRuntimeStatus.textContent = `Runtime ${runningText} | mode ${snapshot.mode || "unknown"} | active ${snapshot.active_count ?? 0} | spawned ${snapshot.total_spawned ?? 0} | blocked ${snapshot.blocked_count ?? 0} | llm_probability=${snapshot.llm_probability ?? "-"} | ${tuning}`;
 }
 
 function getRuntimeStartPayloadFromHud() {
@@ -946,11 +951,16 @@ function getRuntimeStartPayloadFromHud() {
   const spawnInterval = Number(hudRuntimeSpawn?.value || 4);
   const stepInterval = Number(hudRuntimeStep?.value || 2);
   const maxActivePatients = Number(hudRuntimeMax?.value || 20);
+  const llmProbabilityRaw = hudRuntimeLlmProbability?.value ?? "";
+  const llmProbabilityNumber = Number(llmProbabilityRaw);
   return {
     mode,
     spawn_interval_seconds: Number.isFinite(spawnInterval) ? Math.max(0, spawnInterval) : 4,
     step_interval_seconds: Number.isFinite(stepInterval) ? Math.max(0.1, stepInterval) : 2,
     max_active_patients: Number.isFinite(maxActivePatients) ? Math.max(1, Math.round(maxActivePatients)) : 20,
+    llm_probability: llmProbabilityRaw === "" || !Number.isFinite(llmProbabilityNumber)
+      ? null
+      : Math.max(0, Math.min(1, llmProbabilityNumber)),
   };
 }
 
@@ -2805,6 +2815,7 @@ function bindHudControls() {
   });
 
   hudRuntimeStartBtn?.addEventListener("click", () => {
+    pushStatusHint("Use Restart to begin a new full run. Start Runtime only resumes a paused backend runtime.");
     controlHospitalRuntime("start");
   });
   hudRuntimeApplyBtn?.addEventListener("click", () => {
@@ -4084,28 +4095,45 @@ async function controlHospitalRuntime(action) {
 }
 
 async function applyHospitalRuntimeConfig() {
-  if (integrationState.runtimeControlBusy) return;
+  runtimeDraftState.dirty = false;
+  updateRuntimeHudStatus();
+  pushStatusHint("Runtime draft config saved. Use Restart to apply it to a new run.");
+}
+
+async function performFullRestart() {
+  if (integrationState.runtimeControlBusy || backendState.submitting) return;
   integrationState.runtimeControlBusy = true;
+  backendState.submitting = true;
   updateRuntimeHudStatus();
   try {
-    integrationState.hospitalRuntime = await backendClient.updateHospitalRuntimeConfig(getRuntimeStartPayloadFromHud());
+    await backendClient.resetHospitalRuntime();
+    integrationState.hospitalRuntime = await backendClient.startHospitalRuntime(getRuntimeStartPayloadFromHud());
     runtimeDraftState.dirty = false;
-    pushStatusHint("Hospital runtime config applied.");
-    await refreshIntegrationRuntime(true);
-    taskBoardPresenter.syncIntegratedView({
-      snapshot: getCurrentSceneSnapshot(),
-      medicalRecordTimeline: integrationState.medicalRecordTimeline,
-      hospitalRuntime: integrationState.hospitalRuntime,
-      departmentRuntime: integrationState.departmentRuntime,
-      departments: integrationState.departments,
-      openEmrHealth: integrationState.openEmrHealth,
-      icuPatients: integrationState.icuPatients,
-    });
+    integrationState.medicalRecordTimeline = null;
+    integrationState.lastMedicalRecordVisitId = null;
+    integrationState.lastMedicalRecordSummaryKey = "";
+    integrationState.departmentRuntime = null;
+    integrationState.icuPatients = null;
+    integrationState.openEmrHealth = null;
+    integrationState.lastRuntimeRefreshAt = 0;
+    latestSceneSnapshot = null;
+    visitSessionState.visit = null;
+    agentStore.lastPatient = null;
+    agentStore.lastSceneSnapshot = null;
+    triageConversationState.visitId = null;
+    triageConversationState.sessionId = null;
+    doctorConversationState.visitId = null;
+    doctorConversationState.sessionId = null;
+    localStorage.setItem(SESSION_STORAGE_KEYS.lastClientId, localStorage.getItem(SESSION_STORAGE_KEYS.activeClientId) || "");
+    localStorage.setItem(SESSION_STORAGE_KEYS.activeClientId, crypto.randomUUID());
+    pushStatusHint("Restarted hospital runtime and player session.");
+    window.location.search = "?fresh=1";
   } catch (error) {
-    backendState.lastError = error?.message || "hospital runtime config update failed";
-    pushStatusHint(`Hospital runtime config update failed: ${backendState.lastError}`);
+    backendState.lastError = error?.message || "restart failed";
+    pushStatusHint(`Restart failed: ${backendState.lastError}`);
   } finally {
     integrationState.runtimeControlBusy = false;
+    backendState.submitting = false;
     updateRuntimeHudStatus();
   }
 }
@@ -4996,7 +5024,7 @@ if (registrationUi.modal) {
 if (restartConfirmUi.okBtn) {
   restartConfirmUi.okBtn.addEventListener("click", () => {
     closeRestartConfirmModal();
-    window.location.search = "?fresh=1";
+    performFullRestart();
   });
 }
 

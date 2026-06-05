@@ -25,19 +25,19 @@ def test_queue_subscriber_creates_ticket(tmp_path):
     queue_repo = QueueRepository(db)
     bus = EventBus()
     patient_state_machine = PatientStateMachine()
-    patient_repo.update_patient("P-self", lifecycle_state="triaged", priority="M", location="General Medicine")
+    patient_repo.update_patient("P-self", lifecycle_state="triaged", priority="M", location="Internal Medicine")
     subscriber = QueueSubscriber(patient_repo, queue_repo, patient_state_machine, bus)
     subscriber.handle_triage_completed(
         {
             "patient_id": "P-self",
-            "department": "General Medicine",
+            "department": "Internal Medicine",
             "priority": "M",
         }
     )
     ticket = queue_repo.get_active_ticket_for_patient("P-self")
     patient = patient_repo.get("P-self")
     assert ticket is not None
-    assert ticket["department_name"] == "General Medicine"
+    assert ticket["department_name"] == "Internal Medicine"
     assert patient["lifecycle_state"] == "queued"
 
 

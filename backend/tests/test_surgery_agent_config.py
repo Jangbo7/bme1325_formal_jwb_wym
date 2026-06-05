@@ -4,16 +4,16 @@ from app.agents.clinical_policy import ClinicalPolicyRuntime
 from app.agents.surgery import create_surgery_service
 from app.agents.surgery.config import build_surgery_runtime_config
 from app.agents.surgery.patient_reply import build_patient_reply
-from app.agents.surgery.policy import load_surgery_policy_registry
+from app.agents.surgery.policy import load_surgery_policy_registry, select_surgery_policy_phase
 from app.agents.surgery.rules import rule_based_surgery, validate_surgery_result
 
 
-def _build_policy_runtime_context(*, chief_complaint: str, symptoms: str = "", message: str = ""):
+def _build_policy_runtime_context(*, chief_complaint: str, symptoms: str = "", message: str = "", phase: str = "round1_initial_consultation"):
     registry = load_surgery_policy_registry()
     match_result = registry.find(
         agent_scope="surgery_agent",
         department_scope="surgery",
-        phase="round1_initial_consultation",
+        phase=phase,
         context={
             "chief_complaint": chief_complaint,
             "symptoms": symptoms,
@@ -46,8 +46,10 @@ def _build_memory(*, chief_complaint: str, onset_time: str, symptoms: list[str],
 def test_surgery_policy_registry_and_runtime_config_load():
     registry = load_surgery_policy_registry()
     card = next(card for card in registry.cards if card.id == "surgery_initial_consultation")
+    round2_card = next(card for card in registry.cards if card.id == "surgery_round2_result_review")
     assert card.agent_scope == "surgery_agent"
     assert "recommend_other_clinic" in card.outcome_policy["allowed_decisions"]
+    assert "round2_result_review" in round2_card.applicable_phase
 
     config = build_surgery_runtime_config()
     assert config.agent_type == "surgery"
@@ -55,6 +57,17 @@ def test_surgery_policy_registry_and_runtime_config_load():
     assert config.policy_registry_loader is not None
     assert config.validate_result is not None
     assert config.build_patient_reply is not None
+
+
+def test_surgery_policy_phase_switches_to_round2_review():
+    phase = select_surgery_policy_phase(
+        payload={},
+        shared_memory={},
+        private_memory={"consultation_round": 2},
+        progress=SimpleNamespace(completed=False),
+        mode="create_session",
+    )
+    assert phase == "round2_result_review"
 
 
 def test_create_surgery_service_is_instantiable():
@@ -304,8 +317,8 @@ def test_surgery_reassessment_reply_answers_question_without_template_prefix():
 def test_surgery_round2_reply_explains_report_in_natural_chinese():
     message = build_patient_reply(
         {
-            "clinical_impression": "这次复查结果提示伤口恢复总体平稳，没有看到脓肿或明显感染扩散的证据",
-            "final_assessment_summary": "目前更适合继续门诊换药和短期复查，而不是重复做基础检查",
+            "clinical_impression": "这次复查结果提示伤口恢复总体平稳，没有看到明显感染扩散的证据",
+            "final_assessment_summary": "目前更适合继续门诊换药和短期复查，而不是重复基础检查",
             "patient_facing_plan": "先继续按外科门诊方案换药和观察，按时回来复查伤口变化",
             "followup_recommendation": {
                 "revisit_required": True,
@@ -347,7 +360,7 @@ def test_surgery_round2_question_only_reassessment_answers_report_without_repeat
         payload={"message": "What does the report show, and do I still need more tests?"},
     )
     assert "这次复查结果主要提示" in message
-    assert "暂时没有必要重复基础检查" in message
+    assert "暂时没有必要重复做基础检查" in message
     assert "基于你刚补充的信息" not in message
     assert "primary_disposition" not in message
 

@@ -37,6 +37,34 @@ def get_data(response):
     return body["data"]
 
 
+def seed_surgery_patient_runtime(client: TestClient, patient_id: str, *, visit_state: str, patient_state: str) -> None:
+    container = client.app.state.container
+    encounter = container["encounter_orchestration_service"].create_or_get_encounter(
+        patient_id=patient_id,
+        patient_name="Surgery Player",
+    )
+    visit_id = encounter["id"]
+    container["visit_repo"].update_visit(
+        visit_id,
+        state=visit_state,
+        assigned_department_id="surgery",
+        assigned_department_name="Surgery",
+        active_agent_type="surgery",
+        current_department="Surgery",
+    )
+    container["patient_repo"].update_patient(
+        patient_id,
+        name="Surgery Player",
+        lifecycle_state=patient_state,
+        location="Surgery",
+        visit_id=visit_id,
+    )
+    container["department_runtime_service"].sync_patient_runtime(
+        patient_id=patient_id,
+        visit_id=visit_id,
+    )
+
+
 def test_hospital_runtime_debug_page_is_available(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     response = client.get("/hospital-runtime-debug")
@@ -68,9 +96,32 @@ def test_hospital_runtime_snapshot_has_nodes(tmp_path, monkeypatch):
     snapshot = get_data(client.get("/api/v1/hospital-runtime-debug/snapshot", headers=api_headers()))
     node_ids = {item["node"]["node_id"] for item in snapshot["nodes"]}
     assert {"testing", "payment", "pharmacy"}.issubset(node_ids)
+    assert {
+        "surgery_consult_room_1",
+        "surgery_consult_room_2",
+        "surgery_outpatient_procedure_room",
+    }.issubset(node_ids)
     assert snapshot["departments"]
     assert snapshot["total_spawned"] >= 8
     assert snapshot["active_count"] <= 8
     assert snapshot["supervisor_mode"] == "engine_driven"
     assert snapshot["fairness_policy"] == "oldest_due_first"
     assert snapshot["node_capacities"]["testing"] == 2
+
+
+def test_hospital_runtime_snapshot_groups_surgery_patient_into_room_nodes(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    seed_surgery_patient_runtime(
+        client,
+        "P-SURGERY-HOSP-1",
+        visit_state="in_outpatient_procedure",
+        patient_state="in_test",
+    )
+
+    snapshot = get_data(client.get("/api/v1/hospital-runtime-debug/snapshot", headers=api_headers()))
+    procedure_node = next(item for item in snapshot["nodes"] if item["node"]["node_id"] == "surgery_outpatient_procedure_room")
+    assert procedure_node["node"]["node_type"] == "room"
+    assert procedure_node["node"]["department_id"] == "surgery"
+    assert procedure_node["node"]["room_type"] == "outpatient_procedure"
+    assert procedure_node["summary"]["active_count"] == 1
+    assert any(patient["patient_id"] == "P-SURGERY-HOSP-1" for patient in procedure_node["patients"])

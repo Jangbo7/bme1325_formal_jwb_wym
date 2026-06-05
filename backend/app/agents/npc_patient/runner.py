@@ -119,6 +119,11 @@ class NpcPatientRunner:
         dispatch[planned.action](state, profile, planned, force_offline_llm=force_offline_llm)
         state.step_count += 1
         self._sync_state(state, preserve_dialogue=preserve_dialogue)
+        if state.visit_state == VisitLifecycleState.WAITING_PAYMENT.value:
+            state.finished = True
+            state.phase = "finished"
+            state.status = "finished"
+            state.clear_dialogue()
         return state
 
     def _build_context(self, state: NpcPatientDebugState) -> NpcPlanningContext:
@@ -350,7 +355,10 @@ class NpcPatientRunner:
 
     def _create_internal_medicine_session(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
         round_number = int(planned.payload.get("round") or 1)
-        consultation_definition = self._require_consultation_definition(state)
+        consultation_definition = self._consultation_definition_for_visit(self._require_visit_row(state))
+        if consultation_definition is None:
+            self._create_scripted_consultation_session(state, profile, round_number)
+            return
         consultation_service = self._require_consultation_service(consultation_definition.agent_type)
         payload = {
             "patient_id": state.patient_id,
@@ -383,7 +391,10 @@ class NpcPatientRunner:
 
     def _reply_internal_medicine(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
         round_number = int(planned.payload.get("round") or 1)
-        consultation_definition = self._require_consultation_definition(state)
+        consultation_definition = self._consultation_definition_for_visit(self._require_visit_row(state))
+        if consultation_definition is None:
+            self._reply_scripted_consultation(state, profile, round_number)
+            return
         consultation_service = self._require_consultation_service(consultation_definition.agent_type)
         session_id = self._resolve_internal_session_id(state, round_number)
         reply_key = self._phase_for_round(round_number)
@@ -413,6 +424,98 @@ class NpcPatientRunner:
             session_id=session_id,
             phase=reply_key,
             counterparty=f"{consultation_definition.agent_type}_agent",
+        )
+
+    def _create_scripted_consultation_session(
+        self,
+        state: NpcPatientDebugState,
+        profile: NpcPatientProfile,
+        round_number: int,
+    ) -> None:
+        visit_row = self._require_visit_row(state)
+        assigned_department = self._assigned_department(visit_row)
+        agent_type = self._scripted_agent_type(assigned_department["id"])
+        session_id = f"{agent_type}-session-{uuid.uuid4().hex[:8]}"
+        opening_message = self._scripted_consultation_message(
+            assigned_department_name=assigned_department["label"],
+            round_number=round_number,
+            is_reply=False,
+            chief_complaint=profile.chief_complaint,
+        )
+        self.session_repo.create_or_update(
+            session_id,
+            state.patient_id,
+            "scripted_consultation",
+            agent_type=agent_type,
+            visit_id=state.encounter_id,
+        )
+        self.session_repo.append_turn(
+            session_id,
+            state.patient_id,
+            "assistant",
+            opening_message,
+            now_iso(),
+            metadata={"scripted": True, "round": round_number},
+        )
+        state.active_session_id = session_id
+        state.phase = self._phase_for_round(round_number)
+        state.status = "awaiting_patient_reply"
+        self._record_session_transcript(
+            state,
+            session_id=session_id,
+            phase=state.phase,
+            counterparty=agent_type,
+        )
+
+    def _reply_scripted_consultation(
+        self,
+        state: NpcPatientDebugState,
+        profile: NpcPatientProfile,
+        round_number: int,
+    ) -> None:
+        visit_row = self._require_visit_row(state)
+        assigned_department = self._assigned_department(visit_row)
+        agent_type = self._scripted_agent_type(assigned_department["id"])
+        session_id = self._resolve_scripted_session_id(state, assigned_department["id"])
+        reply_key = self._phase_for_round(round_number)
+        replies = (
+            profile.internal_medicine_round1_replies
+            if round_number == 1
+            else profile.internal_medicine_round2_replies
+        )
+        reply_index = min(state.reply_counters[reply_key], len(replies) - 1)
+        patient_message = replies[reply_index]
+        doctor_message = self._scripted_consultation_message(
+            assigned_department_name=assigned_department["label"],
+            round_number=round_number,
+            is_reply=True,
+            chief_complaint=profile.chief_complaint,
+        )
+        self.session_repo.append_turn(
+            session_id,
+            state.patient_id,
+            "user",
+            patient_message,
+            now_iso(),
+            metadata={"scripted": True, "round": round_number},
+        )
+        self.session_repo.append_turn(
+            session_id,
+            state.patient_id,
+            "assistant",
+            doctor_message,
+            now_iso(),
+            metadata={"scripted": True, "round": round_number},
+        )
+        state.reply_counters[reply_key] += 1
+        state.active_session_id = session_id
+        state.phase = reply_key
+        state.status = "awaiting_patient_reply"
+        self._record_session_transcript(
+            state,
+            session_id=session_id,
+            phase=reply_key,
+            counterparty=agent_type,
         )
 
     def _trigger_encounter_event(self, state: NpcPatientDebugState, profile: NpcPatientProfile, planned: PlannedNpcAction, *, force_offline_llm: bool = False) -> None:
@@ -483,9 +586,6 @@ class NpcPatientRunner:
                 )
             state.phase = "internal_medicine_round2"
             state.status = VisitLifecycleState.IN_SECOND_CONSULTATION.value
-        elif event in {"pay_medical", "plan_disposition", "choose_pharmacy", "choose_outpatient_treatment", "complete_visit"}:
-            state.phase = self._phase_for_visit_state(self.visit_repo.get(state.encounter_id).get("state") if self.visit_repo.get(state.encounter_id) else state.visit_state)
-            state.status = event
         else:
             state.phase = "testing"
             state.status = event
@@ -536,6 +636,49 @@ class NpcPatientRunner:
         if latest:
             return latest["id"]
         raise ValueError("triage session not found")
+
+    def _resolve_scripted_session_id(self, state: NpcPatientDebugState, department_id: str) -> str:
+        if state.active_session_id:
+            return state.active_session_id
+        latest = self.session_repo.get_latest_by_visit_and_agent(
+            state.encounter_id,
+            self._scripted_agent_type(department_id),
+        )
+        if latest:
+            return latest["id"]
+        raise ValueError("scripted consultation session not found")
+
+    @staticmethod
+    def _scripted_agent_type(department_id: str) -> str:
+        return f"scripted_{department_id}_consultation"
+
+    @staticmethod
+    def _scripted_consultation_message(
+        *,
+        assigned_department_name: str,
+        round_number: int,
+        is_reply: bool,
+        chief_complaint: str,
+    ) -> str:
+        if round_number == 2:
+            if is_reply:
+                return (
+                    f"I have reviewed the follow-up information for this {assigned_department_name} visit. "
+                    "We can continue with the planned outpatient management and follow-up."
+                )
+            return (
+                f"I am the {assigned_department_name} clinician reviewing your return visit. "
+                "Please tell me how things changed after the prior tests or treatment."
+            )
+        if is_reply:
+            return (
+                f"I have documented the details about {chief_complaint}. "
+                "I will continue the outpatient assessment and plan the next steps."
+            )
+        return (
+            f"I am the {assigned_department_name} clinician. "
+            f"Please describe the main concern about {chief_complaint} and any recent changes."
+        )
 
     def _record_session_transcript(
         self,
@@ -670,8 +813,8 @@ class NpcPatientRunner:
             return "testing"
         if visit_state == "in_second_consultation":
             return "internal_medicine_round2"
-        if visit_state in {"waiting_payment", "medical_payment_completed", "waiting_pharmacy"}:
-            return "payment"
+        if visit_state == "waiting_payment":
+            return "finished"
         return "system"
 
     def _assigned_department(self, visit_row: dict) -> dict:

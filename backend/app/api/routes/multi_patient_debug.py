@@ -219,14 +219,30 @@ def multi_patient_debug_page():
             id: p.assigned_department_id,
             name: p.assigned_department_name,
           },
+          doctor_slot: {
+            id: p.assigned_doctor_slot_id,
+            name: p.assigned_doctor_slot_name,
+          },
+          room: {
+            id: p.current_room_node_id,
+            name: p.current_room_name,
+            type: p.room_type,
+          },
+          execution: {
+            runner: p.execution_runner_kind,
+            department_agent_enabled: p.department_agent_enabled,
+            capability_class: p.department_capability_class,
+          },
           dialogue: p.current_dialogue,
           case_summary: p.case_summary,
           last_error: p.last_error,
         };
         return `
           <article class="card">
-            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.llm_mode || "-"}</span></div>
+            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.execution_runner_kind}</span> <span class="badge">${p.department_capability_class || "-"}</span></div>
             <div class="row">department: ${p.assigned_department_name || "-"} (${p.assigned_department_id || "-"})</div>
+            <div class="row">agent enabled: ${p.department_agent_enabled}</div>
+            <div class="row">doctor slot: ${p.assigned_doctor_slot_name || "-"} (${p.assigned_doctor_slot_id || "-"})</div>
             <div class="row">patient: ${p.patient_id}</div>
             <div class="row">encounter: ${p.encounter_id || "-"}</div>
             <div class="row">visit: ${p.visit_state || "-"}</div>
@@ -234,6 +250,7 @@ def multi_patient_debug_page():
             <div class="row">phase/status: ${p.phase} / ${p.status}</div>
             <div class="row">llm: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
             <div class="row">node: ${p.current_node_id || "-" } -> ${p.target_node_id || "-"}</div>
+            <div class="row">room: ${p.current_room_name || "-"} (${p.current_room_node_id || "-"}) / ${p.room_type || "-"}</div>
             <div class="row">last action: ${p.last_action || "-"}</div>
             <div class="row">step: ${p.step_count} | finished: ${p.finished}</div>
             <details>

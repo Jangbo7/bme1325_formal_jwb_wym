@@ -12,6 +12,9 @@ class HospitalNode(BaseModel):
     node_id: str
     node_type: str
     name: str
+    department_id: str | None = None
+    room_type: str | None = None
+    capacity: int | None = None
     supports_queue: bool
     supports_consultation: bool
     supported_actions: list[str] = Field(default_factory=list)

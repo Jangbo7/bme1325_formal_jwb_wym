@@ -217,6 +217,11 @@ class Database:
                         visit_id TEXT NOT NULL,
                         assigned_department_id TEXT NOT NULL,
                         assigned_department_name TEXT NOT NULL,
+                        execution_runner_kind TEXT,
+                        department_agent_enabled INTEGER NOT NULL DEFAULT 0,
+                        department_capability_class TEXT,
+                        assigned_doctor_slot_id TEXT,
+                        assigned_doctor_slot_name TEXT,
                         queue_kind TEXT,
                         department_status TEXT NOT NULL DEFAULT 'assigned_pending_registration',
                         department_round TEXT NOT NULL DEFAULT 'none',
@@ -227,6 +232,9 @@ class Database:
                         active_agent_type TEXT,
                         current_node TEXT,
                         current_node_id TEXT,
+                        current_room_node_id TEXT,
+                        current_room_name TEXT,
+                        room_type TEXT,
                         target_node_id TEXT,
                         last_transition_action TEXT,
                         transition_version TEXT,
@@ -275,7 +283,15 @@ class Database:
                 self._ensure_column(conn, "department_patient_runtime", "department_round", "TEXT NOT NULL DEFAULT 'none'")
                 self._ensure_column(conn, "department_patient_runtime", "entered_department_at", "TEXT")
                 self._ensure_column(conn, "department_patient_runtime", "source_of_truth_version", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "execution_runner_kind", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "department_agent_enabled", "INTEGER NOT NULL DEFAULT 0")
+                self._ensure_column(conn, "department_patient_runtime", "department_capability_class", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "assigned_doctor_slot_id", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "assigned_doctor_slot_name", "TEXT")
                 self._ensure_column(conn, "department_patient_runtime", "current_node_id", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "current_room_node_id", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "current_room_name", "TEXT")
+                self._ensure_column(conn, "department_patient_runtime", "room_type", "TEXT")
                 self._ensure_column(conn, "department_patient_runtime", "target_node_id", "TEXT")
                 self._ensure_column(conn, "department_patient_runtime", "last_transition_action", "TEXT")
                 self._ensure_column(conn, "department_patient_runtime", "transition_version", "TEXT")

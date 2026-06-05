@@ -175,12 +175,6 @@ export function createBackendClient({ baseUrl, apiKey }) {
         body: JSON.stringify({}),
       });
     },
-    updateHospitalRuntimeConfig(payload) {
-      return request("/api/v1/hospital-runtime-debug/update-config", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-    },
     resetHospitalRuntime() {
       return request("/api/v1/hospital-runtime-debug/reset", {
         method: "POST",
