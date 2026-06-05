@@ -202,14 +202,29 @@ export function createBackendClient({ baseUrl, apiKey }) {
         body: JSON.stringify(payload),
       });
     },
+    createSurgerySession(payload) {
+      return request("/api/v1/surgery-sessions", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
     sendInternalMedicineMessage(sessionId, payload) {
       return request(`/api/v1/internal-medicine-sessions/${sessionId}/messages`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
     },
+    sendSurgeryMessage(sessionId, payload) {
+      return request(`/api/v1/surgery-sessions/${sessionId}/messages`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
     getInternalMedicineSession(sessionId) {
       return request(`/api/v1/internal-medicine-sessions/${sessionId}`, { method: "GET" });
+    },
+    getSurgerySession(sessionId) {
+      return request(`/api/v1/surgery-sessions/${sessionId}`, { method: "GET" });
     },
     createIcuSession(payload) {
       return request("/api/v1/icu-sessions", {

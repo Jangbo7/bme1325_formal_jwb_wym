@@ -22,8 +22,6 @@ const hudRuntimePanel = document.getElementById("hudRuntimePanel");
 const hudTasksToggle = document.getElementById("hudTasksToggle");
 const hudLabelsToggle = document.getElementById("hudLabelsToggle");
 const hudDebugToggle = document.getElementById("hudDebugToggle");
-const hudRuntimeStartBtn = document.getElementById("hudRuntimeStartBtn");
-const hudRuntimeApplyBtn = document.getElementById("hudRuntimeApplyBtn");
 const hudRuntimeStopBtn = document.getElementById("hudRuntimeStopBtn");
 const hudRuntimeResetBtn = document.getElementById("hudRuntimeResetBtn");
 const hudRuntimeStatus = document.getElementById("hudRuntimeStatus");
@@ -460,10 +458,6 @@ const integrationState = {
   lastMedicalRecordVisitId: null,
   lastMedicalRecordSummaryKey: "",
   runtimeControlBusy: false,
-};
-
-const runtimeDraftState = {
-  dirty: false,
 };
 
 const runtimePanelState = {
@@ -934,8 +928,7 @@ function updateRuntimeHudStatus() {
   if (!hudRuntimeStatus) return;
   const snapshot = integrationState.hospitalRuntime;
   const payload = getRuntimeStartPayloadFromHud();
-  const draftPrefix = runtimeDraftState.dirty ? "Draft" : "Config";
-  const tuning = `${draftPrefix}: Mode=${payload.mode} | Spawn=${payload.spawn_interval_seconds}s | Step=${payload.step_interval_seconds}s | Max=${payload.max_active_patients} | LLM=${payload.llm_probability ?? "-"}`;
+  const tuning = `Config: Mode=${payload.mode} | Spawn=${payload.spawn_interval_seconds}s | Step=${payload.step_interval_seconds}s | Max=${payload.max_active_patients} | LLM=${payload.llm_probability ?? "-"}`;
   if (!snapshot) {
     hudRuntimeStatus.textContent = integrationState.runtimeControlBusy
       ? `Runtime request in progress... | ${tuning}`
@@ -2814,13 +2807,6 @@ function bindHudControls() {
     });
   });
 
-  hudRuntimeStartBtn?.addEventListener("click", () => {
-    pushStatusHint("Use Restart to begin a new full run. Start Runtime only resumes a paused backend runtime.");
-    controlHospitalRuntime("start");
-  });
-  hudRuntimeApplyBtn?.addEventListener("click", () => {
-    applyHospitalRuntimeConfig();
-  });
   hudRuntimeStopBtn?.addEventListener("click", () => {
     controlHospitalRuntime("stop");
   });
@@ -2828,13 +2814,11 @@ function bindHudControls() {
     controlHospitalRuntime("reset");
   });
 
-  [hudRuntimeMode, hudRuntimeSpawn, hudRuntimeStep, hudRuntimeMax].forEach((element) => {
+  [hudRuntimeMode, hudRuntimeSpawn, hudRuntimeStep, hudRuntimeMax, hudRuntimeLlmProbability].forEach((element) => {
     element?.addEventListener("input", () => {
-      runtimeDraftState.dirty = true;
       updateRuntimeHudStatus();
     });
     element?.addEventListener("change", () => {
-      runtimeDraftState.dirty = true;
       updateRuntimeHudStatus();
     });
   });
@@ -3185,6 +3169,14 @@ function getCurrentSceneSnapshot() {
   return latestSceneSnapshot || agentStore.lastSceneSnapshot || null;
 }
 
+function getCurrentConsultationAgentType(snapshot = getCurrentSceneSnapshot(), patient = getCurrentSelfPatient(), visit = getCurrentVisit()) {
+  return snapshot?.ui_flags?.consultation_agent_type
+    || visit?.active_agent_type
+    || patient?.active_agent_type
+    || doctorConversationState.activeAgentType
+    || "internal_medicine";
+}
+
 function buildDoctorDialoguePayloadFromSceneSnapshot(snapshot = getCurrentSceneSnapshot()) {
   const activeDialogue = snapshot?.active_dialogue || null;
   const selfPatient = snapshot?.self_patient || getCurrentSelfPatient();
@@ -3196,13 +3188,18 @@ function buildDoctorDialoguePayloadFromSceneSnapshot(snapshot = getCurrentSceneS
   }
   const isSecondRoundState = ["in_second_consultation", "diagnosis_finalized", "waiting_payment"].includes(visitState);
   const round2SessionId = activeVisit?.data?.internal_medicine_round2_session_id || null;
-  if (!activeDialogue || activeDialogue.agent_type !== "internal_medicine") {
+  const consultationAgentType = getCurrentConsultationAgentType(snapshot, selfPatient, activeVisit);
+  const sessionRefKey = consultationAgentType === "surgery"
+    ? (isSecondRoundState ? "surgery_round2_session_id" : "surgery_session_id")
+    : (isSecondRoundState ? "internal_medicine_round2_session_id" : "internal_medicine_session_id");
+  if (!activeDialogue || activeDialogue.agent_type !== consultationAgentType) {
     return {
       patient: selfPatient,
       dialogue: isSecondRoundState && !round2SessionId ? {} : (selfPatient?.dialogue || {}),
       visit_id: activeVisit?.id || selfPatient?.visit_id || null,
       visit_state: visitState,
-      session_id: isSecondRoundState ? round2SessionId : (doctorConversationState.sessionId || null),
+      session_id: activeVisit?.data?.[sessionRefKey] || doctorConversationState.sessionId || null,
+      agent_type: consultationAgentType,
     };
   }
   return {
@@ -3218,6 +3215,7 @@ function buildDoctorDialoguePayloadFromSceneSnapshot(snapshot = getCurrentSceneS
     visit_id: activeVisit?.id || selfPatient?.visit_id || null,
     visit_state: activeVisit?.state || selfPatient?.visit_state || null,
     session_id: activeDialogue.session_id || doctorConversationState.sessionId || null,
+    agent_type: consultationAgentType,
   };
 }
 
@@ -3333,17 +3331,25 @@ function getDoctorSessionIdFromContext(patient = getCurrentSelfPatient(), visit 
   const patientSessionId = String(patient?.session_id || "");
   const visitState = visit?.state || patient?.visit_state || "";
   const isSecondRound = ["in_second_consultation", "diagnosis_finalized", "waiting_payment"].includes(visitState);
+  const consultationAgentType = getCurrentConsultationAgentType(getCurrentSceneSnapshot(), patient, visit);
   if (isSecondRound) {
-    return visit?.data?.internal_medicine_round2_session_id || null;
+    return consultationAgentType === "surgery"
+      ? (visit?.data?.surgery_round2_session_id || null)
+      : (visit?.data?.internal_medicine_round2_session_id || null);
   }
-  const visitSessionId = visit?.data?.internal_medicine_session_id || null;
+  const visitSessionId = consultationAgentType === "surgery"
+    ? (visit?.data?.surgery_session_id || null)
+    : (visit?.data?.internal_medicine_session_id || null);
   if (visitSessionId) return visitSessionId;
 
-  if (visit?.active_agent_type === "internal_medicine" && doctorConversationState.sessionId) {
+  if (visit?.active_agent_type === consultationAgentType && doctorConversationState.sessionId) {
     return doctorConversationState.sessionId;
   }
 
   if (doctorConversationState.sessionId) return doctorConversationState.sessionId;
+  if (consultationAgentType === "surgery") {
+    return patientSessionId.startsWith("surgery-session-") ? patientSessionId : null;
+  }
   return patientSessionId.startsWith("im-session-") ? patientSessionId : null;
 }
 
@@ -3671,7 +3677,7 @@ async function openExistingDoctorDialogue() {
     return;
   }
 
-  doctorConversationState.activeAgentType = "internal_medicine";
+  doctorConversationState.activeAgentType = getCurrentConsultationAgentType();
   const sessionId = getDoctorSessionIdFromContext();
   if (!sessionId) {
     pushStatusHint("No active doctor consultation session was found.");
@@ -3684,7 +3690,9 @@ async function openExistingDoctorDialogue() {
     return;
   }
   try {
-    const data = await backendClient.getInternalMedicineSession(sessionId);
+    const data = doctorConversationState.activeAgentType === "surgery"
+      ? await backendClient.getSurgerySession(sessionId)
+      : await backendClient.getInternalMedicineSession(sessionId);
     if (data?.patient) {
       agentStore.syncPatient(data.patient);
     }
@@ -4064,15 +4072,10 @@ async function controlHospitalRuntime(action) {
   integrationState.runtimeControlBusy = true;
   updateRuntimeHudStatus();
   try {
-    if (action === "start") {
-      integrationState.hospitalRuntime = await backendClient.startHospitalRuntime(getRuntimeStartPayloadFromHud());
-    } else if (action === "stop") {
+    if (action === "stop") {
       integrationState.hospitalRuntime = await backendClient.stopHospitalRuntime();
     } else if (action === "reset") {
       integrationState.hospitalRuntime = await backendClient.resetHospitalRuntime();
-    }
-    if (action === "start" || action === "reset") {
-      runtimeDraftState.dirty = false;
     }
     pushStatusHint(`Hospital runtime ${action} request completed.`);
     await refreshIntegrationRuntime(true);
@@ -4094,12 +4097,6 @@ async function controlHospitalRuntime(action) {
   }
 }
 
-async function applyHospitalRuntimeConfig() {
-  runtimeDraftState.dirty = false;
-  updateRuntimeHudStatus();
-  pushStatusHint("Runtime draft config saved. Use Restart to apply it to a new run.");
-}
-
 async function performFullRestart() {
   if (integrationState.runtimeControlBusy || backendState.submitting) return;
   integrationState.runtimeControlBusy = true;
@@ -4108,7 +4105,6 @@ async function performFullRestart() {
   try {
     await backendClient.resetHospitalRuntime();
     integrationState.hospitalRuntime = await backendClient.startHospitalRuntime(getRuntimeStartPayloadFromHud());
-    runtimeDraftState.dirty = false;
     integrationState.medicalRecordTimeline = null;
     integrationState.lastMedicalRecordVisitId = null;
     integrationState.lastMedicalRecordSummaryKey = "";
@@ -4356,13 +4352,16 @@ async function submitCreateDoctorSessionRequest() {
   backendState.submitting = true;
   try {
     const round = visitState === "in_second_consultation" ? 2 : 1;
-    doctorConversationState.activeAgentType = "internal_medicine";
-    const data = await backendClient.createInternalMedicineSession({
+    doctorConversationState.activeAgentType = getCurrentConsultationAgentType(getCurrentSceneSnapshot(), selfPatient, visit);
+    const payload = {
       patient_id: doctorConversationState.patientId,
       name: "You (Player)",
       visit_id: visitId,
       round,
-    });
+    };
+    const data = doctorConversationState.activeAgentType === "surgery"
+      ? await backendClient.createSurgerySession(payload)
+      : await backendClient.createInternalMedicineSession(payload);
     doctorConversationState.sessionId = data.session_id || doctorConversationState.sessionId;
     doctorConversationState.visitId = data.visit_id || visitId;
     if (data.patient) {
@@ -4725,13 +4724,21 @@ async function submitDoctorDialogueReply() {
   try {
     const selfPatient = getCurrentSelfPatient();
     const visitState = getCurrentVisit()?.state || selfPatient?.visit_state || "";
+    const consultationAgentType = getCurrentConsultationAgentType();
     const data = visitState === "in_icu_rescue"
       ? await backendClient.sendIcuMessage(doctorConversationState.sessionId, {
         patient_id: doctorConversationState.patientId,
         name: "You (Player)",
         message,
       })
-      : await backendClient.sendInternalMedicineMessage(doctorConversationState.sessionId, {
+      : consultationAgentType === "surgery"
+        ? await backendClient.sendSurgeryMessage(doctorConversationState.sessionId, {
+          patient_id: doctorConversationState.patientId,
+          name: "You (Player)",
+          visit_id: doctorConversationState.visitId || getCurrentVisit()?.id || null,
+          message,
+        })
+        : await backendClient.sendInternalMedicineMessage(doctorConversationState.sessionId, {
         patient_id: doctorConversationState.patientId,
         name: "You (Player)",
         visit_id: doctorConversationState.visitId || getCurrentVisit()?.id || null,
