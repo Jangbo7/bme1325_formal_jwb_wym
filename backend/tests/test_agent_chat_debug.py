@@ -148,6 +148,26 @@ def test_doctor_debug_registry_contains_surgery_config(tmp_path, monkeypatch):
     assert any(agent["agent_type"] == "internal_medicine" for agent in available_agents)
 
 
+def test_unified_doctor_agent_debug_surgery_round2_preload_uses_second_round_context(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+
+    preload = get_data(
+        post_json(
+            client,
+            "/api/v1/doctor-agent-debug/preload",
+            {"agent_type": "surgery", "preset_id": "surgery_round2_postop_review"},
+        )
+    )
+    assert preload["agent_type"] == "surgery"
+    assert preload["preload_summary"]["consultation_round"] == 2
+    assert preload["preload_summary"]["visit_state"] == "in_second_consultation"
+    assert preload["trace"]["parsed_result"]["message_type"] == "final"
+    assert preload["trace"]["merged_payload"]["previous_round_summary"]["needs_outpatient_procedure"] is True
+    assert preload["trace"]["merged_payload"]["diagnostic_session"]["window_label"] == "Surgical Review Desk"
+    assert preload["trace"]["merged_payload"]["procedure_completed"] is True
+    assert "first-round surgery intake" not in preload["latest_reply"]["content"]
+
+
 def test_patient_agent_chat_debug_preload_and_message(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     install_fake_patient_agent(client)

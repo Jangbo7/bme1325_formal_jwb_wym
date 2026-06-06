@@ -21,7 +21,11 @@ def create_test_client_without_llm(tmp_path, monkeypatch):
     monkeypatch.setenv("MOCK_API_KEY", "mock-key-001")
     monkeypatch.setenv("SIMULATOR_ENABLED", "false")
     monkeypatch.setenv("REDIS_MIRROR_ENABLED", "false")
+    monkeypatch.setenv("ACTIVE_LLM_PROVIDER", "current")
     monkeypatch.setenv("LLM_API_KEY", "")
+    monkeypatch.setenv("CURRENT_LLM_API_KEY", "")
+    monkeypatch.setenv("CURRENT_LLM_MODEL", "")
+    monkeypatch.setenv("CURRENT_LLM_ENDPOINT", "")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("DEEPSEEK_V3_API_KEY", "")
     monkeypatch.setenv("DEEPSEEK_R1_API_KEY", "")
@@ -84,7 +88,7 @@ def sample_case() -> PatientCaseCard:
 def install_fake_patient_agent(client: TestClient):
     service = client.app.state.container["patient_agent_service"]
 
-    def fake_generate_case(seed=None):
+    def fake_generate_case(seed=None, department_id=None):
         return sample_case()
 
     def fake_reply(*, case_card, context):

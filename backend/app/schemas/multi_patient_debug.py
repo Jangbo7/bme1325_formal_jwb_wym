@@ -21,6 +21,9 @@ class MultiPatientDebugStartRequest(BaseModel):
 class MultiPatientDebugPatientSnapshot(BaseModel):
     npc_id: str
     mode: MultiPatientMode
+    execution_runner_kind: Literal["intelligent", "legacy"]
+    department_agent_enabled: bool = False
+    department_capability_class: Literal["agent_enabled", "script_only"] = "script_only"
     llm_mode: Literal["offline", "online"] | None = None
     llm_probability: float | None = None
     profile_id: str | None = None
@@ -30,6 +33,8 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     patient_lifecycle_state: str | None = None
     assigned_department_id: str | None = None
     assigned_department_name: str | None = None
+    assigned_doctor_slot_id: str | None = None
+    assigned_doctor_slot_name: str | None = None
     phase: str
     status: str
     current_counterparty: CounterpartyType
@@ -40,6 +45,9 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     finished: bool = False
     case_summary: dict | None = None
     current_node_id: str | None = None
+    current_room_node_id: str | None = None
+    current_room_name: str | None = None
+    room_type: str | None = None
     target_node_id: str | None = None
     next_step_at: str | None = None
 

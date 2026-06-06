@@ -56,6 +56,15 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.hud__runtime-panel {
+  resize: both;
+  overflow: auto;
+  min-width: 360px;
+  min-height: 220px;
+  max-width: min(88vw, 920px);
+  max-height: 70vh;
+}
+
 .hud__panel-title {
   margin-bottom: 8px;
   font-size: 11px;
@@ -63,6 +72,11 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #ffe7b4;
+}
+
+.hud__panel-title--drag {
+  cursor: move;
+  user-select: none;
 }
 
 .hud__tips {
@@ -75,6 +89,152 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.hud__runtime-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.hud__runtime-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hud__runtime-field {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: #f6e6bf;
+}
+
+.hud__runtime-field span {
+  color: #ffe7b4;
+}
+
+.hud__runtime-field input,
+.hud__runtime-field select {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 228, 183, 0.22);
+  background: rgba(255, 248, 234, 0.08);
+  color: #fff7e7;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.hud__runtime-stats {
+  display: grid;
+  gap: 10px;
+  font-size: 12px;
+  color: #f6e6bf;
+}
+
+.hud__runtime-stats-block {
+  display: grid;
+  gap: 6px;
+}
+
+.hud__runtime-stats-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ffe7b4;
+}
+
+.hud__runtime-stats-line {
+  line-height: 1.45;
+  font-family: "Consolas", "Courier New", monospace;
+  color: #fff7e7;
+}
+
+.hud__runtime-patient-list {
+  display: grid;
+  gap: 6px;
+}
+
+.hud__runtime-patient {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 241, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 248, 234, 0.06);
+}
+
+.hud__runtime-patient-topline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hud__runtime-patient-name {
+  font-weight: 700;
+  color: #fff6de;
+}
+
+.hud__runtime-stage {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.hud__runtime-stage--triage {
+  background: rgba(77, 121, 216, 0.32);
+  border-color: rgba(158, 199, 255, 0.8);
+}
+
+.hud__runtime-stage--queue {
+  background: rgba(224, 182, 91, 0.28);
+  border-color: rgba(255, 224, 138, 0.82);
+}
+
+.hud__runtime-stage--consult {
+  background: rgba(140, 122, 240, 0.3);
+  border-color: rgba(198, 179, 255, 0.82);
+}
+
+.hud__runtime-stage--testing {
+  background: rgba(108, 199, 191, 0.3);
+  border-color: rgba(155, 233, 227, 0.82);
+}
+
+.hud__runtime-stage--payment {
+  background: rgba(220, 167, 104, 0.3);
+  border-color: rgba(243, 213, 154, 0.82);
+}
+
+.hud__runtime-stage--pharmacy {
+  background: rgba(118, 197, 157, 0.3);
+  border-color: rgba(189, 236, 207, 0.82);
+}
+
+.hud__runtime-stage--completed {
+  background: rgba(121, 150, 125, 0.3);
+  border-color: rgba(194, 218, 197, 0.8);
+}
+
+.hud__runtime-stage--unknown {
+  background: rgba(123, 123, 144, 0.28);
+  border-color: rgba(201, 201, 222, 0.76);
+}
+
+.hud__runtime-patient-detail {
+  font-family: "Consolas", "Courier New", monospace;
+  line-height: 1.4;
+  color: #f1e8d6;
 }
 
 .hud__btn--route {

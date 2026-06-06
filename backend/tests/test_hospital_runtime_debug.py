@@ -74,3 +74,5 @@ def test_hospital_runtime_snapshot_has_nodes(tmp_path, monkeypatch):
     assert snapshot["supervisor_mode"] == "engine_driven"
     assert snapshot["fairness_policy"] == "oldest_due_first"
     assert snapshot["node_capacities"]["testing"] == 2
+    assert snapshot["blocked_attempt_count"] >= snapshot["currently_blocked_patients"] >= 0
+    assert snapshot["department_coverage"]

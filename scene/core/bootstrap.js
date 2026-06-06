@@ -16,10 +16,29 @@ const floorStateLabel = document.getElementById("floor-state");
 const hudRestartBtn = document.getElementById("hudRestartBtn");
 const hudResumeBtn = document.getElementById("hudResumeBtn");
 const hudHelpToggle = document.getElementById("hudHelpToggle");
+const hudRuntimeToggle = document.getElementById("hudRuntimeToggle");
 const hudHelpPanel = document.getElementById("hudHelpPanel");
+const hudRuntimePanel = document.getElementById("hudRuntimePanel");
 const hudTasksToggle = document.getElementById("hudTasksToggle");
 const hudLabelsToggle = document.getElementById("hudLabelsToggle");
 const hudDebugToggle = document.getElementById("hudDebugToggle");
+const hudRuntimeStartBtn = document.getElementById("hudRuntimeStartBtn");
+const hudRuntimeApplyBtn = document.getElementById("hudRuntimeApplyBtn");
+const hudRuntimeStopBtn = document.getElementById("hudRuntimeStopBtn");
+const hudRuntimeResetBtn = document.getElementById("hudRuntimeResetBtn");
+const hudRuntimeStatus = document.getElementById("hudRuntimeStatus");
+const hudRuntimeMode = document.getElementById("hudRuntimeMode");
+const hudRuntimeSpawn = document.getElementById("hudRuntimeSpawn");
+const hudRuntimeStep = document.getElementById("hudRuntimeStep");
+const hudRuntimeMax = document.getElementById("hudRuntimeMax");
+const hudRuntimeLlmProbability = document.getElementById("hudRuntimeLlmProbability");
+const hudRuntimeDragHandle = document.getElementById("hudRuntimeDragHandle");
+const hudQueueToggle = document.getElementById("hudQueueToggle");
+const hudPatientsToggle = document.getElementById("hudPatientsToggle");
+const hudRuntimeStatsToggle = document.getElementById("hudRuntimeStatsToggle");
+const hudRuntimeStatsPanel = document.getElementById("hudRuntimeStatsPanel");
+const hudRuntimeStatsDragHandle = document.getElementById("hudRuntimeStatsDragHandle");
+const hudRuntimeStatsContent = document.getElementById("hudRuntimeStatsContent");
 const hudNpcRouteButtons = Array.from(document.querySelectorAll("[data-route-target]"));
 
 const TILE = 32;
@@ -39,9 +58,13 @@ const camera = { x: 0, y: 0 };
 let fixedNpcRuntime = null;
 const overlayState = {
   helpOpen: false,
+  runtimeOpen: false,
   tasksOpen: false,
   labelsOpen: false,
   debugOpen: false,
+  queueOpen: true,
+  patientsOpen: true,
+  runtimeStatsOpen: false,
 };
 
 const palette = {
@@ -110,7 +133,7 @@ const rooms = [
   { floor: 1, x: 18, y: 5, w: 14, h: 9, kind: "triage" },
   { floor: 1, x: 33, y: 5, w: 14, h: 9, kind: "consultation" },
   { floor: 1, x: 48, y: 5, w: 14, h: 9, kind: "consultation" },
-  { floor: 1, x: 63, y: 5, w: 13, h: 9, kind: "pharmacy" },
+  { floor: 1, x: 63, y: 5, w: 13, h: 9, kind: "doctor_entry" },
   { floor: 1, x: 8, y: 17, w: 18, h: 12, kind: "hall" },
   { floor: 1, x: 27, y: 17, w: 15, h: 11, kind: "lab" },
   { floor: 1, x: 43, y: 17, w: 15, h: 11, kind: "icu" },
@@ -118,7 +141,7 @@ const rooms = [
   { floor: 1, x: 10, y: 32, w: 16, h: 11, kind: "office" },
   { floor: 1, x: 27, y: 32, w: 16, h: 11, kind: "empty_room" },
   { floor: 1, x: 44, y: 32, w: 15, h: 11, kind: "empty_room" },
-  { floor: 1, x: 60, y: 32, w: 14, h: 11, kind: "empty_room" },
+  { floor: 1, x: 60, y: 32, w: 14, h: 11, kind: "pharmacy_pickup" },
   { floor: 1, x: 31, y: 45, w: 22, h: 7, kind: "hall" },
 ];
 
@@ -127,7 +150,7 @@ const doorSpecs = [
   { roomIndex: 1, side: "bottom", offset: 6.0, length: 2.2, label: "TRIAGE-A" },
   { roomIndex: 2, side: "bottom", offset: 5.8, length: 2.2, label: "CONS-1" },
   { roomIndex: 3, side: "bottom", offset: 5.8, length: 2.2, label: "CONS-2" },
-  { roomIndex: 4, side: "bottom", offset: 5.2, length: 2.2, label: "PHARM-A" },
+  { roomIndex: 4, side: "bottom", offset: 5.2, length: 2.2, label: "DOC-ENTRY" },
   { roomIndex: 5, side: "top", offset: 7.4, length: 2.2, label: "HALL-N" },
   { roomIndex: 5, side: "right", offset: 4.8, length: 2.0, label: "HALL-E" },
   { roomIndex: 6, side: "top", offset: 5.8, length: 2.2, label: "LAB-A" },
@@ -136,7 +159,7 @@ const doorSpecs = [
   { roomIndex: 9, side: "top", offset: 5.8, length: 2.2, label: "OFFICE-A" },
   { roomIndex: 10, side: "top", offset: 5.8, length: 2.2, label: "RESERVE-A" },
   { roomIndex: 11, side: "top", offset: 5.4, length: 2.2, label: "RESERVE-B" },
-  { roomIndex: 12, side: "top", offset: 5.2, length: 2.2, label: "RESERVE-C" },
+  { roomIndex: 12, side: "top", offset: 5.2, length: 2.2, label: "PHARM-PICKUP" },
   { roomIndex: 13, side: "top", offset: 9.4, length: 2.4, label: "SOUTH-HALL" },
 ];
 
@@ -166,14 +189,16 @@ const props = [
   { floor: 1, x: 47.2, y: 35.6, w: 3.4, h: 1.3, type: "sofa", z: 18 },
   { floor: 1, x: 50.8, y: 35.5, w: 2.4, h: 1.2, type: "desk", z: 20 },
   { floor: 1, x: 63.2, y: 35.5, w: 3.0, h: 1.2, type: "cabinet", z: 22 },
-  { floor: 1, x: 66.8, y: 35.5, w: 1.4, h: 1.4, type: "plant", z: 24 },
+  { floor: 1, x: 67.0, y: 35.4, w: 2.5, h: 1.2, type: "desk", z: 20 },
+  { floor: 1, x: 70.2, y: 35.5, w: 1.4, h: 1.4, type: "plant", z: 24 },
 ];
 
 const ROOM_KIND_LABELS = {
   registration: "Registration",
   consultation: "Consultation",
   triage: "Triage",
-  pharmacy: "Doctor Entry",
+  doctor_entry: "Doctor Entry",
+  pharmacy_pickup: "Pharmacy",
   ward: "Ward",
   lab: "Lab",
   icu: "ICU",
@@ -209,38 +234,173 @@ const zoneState = {
   lastEventAtMs: 0,
 };
 
+const INTERIOR_BASE_X = 12 * TILE;
+const INTERIOR_BASE_Y = 8 * TILE;
+
+const indoorRoomTemplates = {
+  registration: {
+    label: "Registration Room",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 20 * TILE, h: 12 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 16 * TILE, y: INTERIOR_BASE_Y + 7.5 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 4 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 14 * TILE, y: INTERIOR_BASE_Y + 4 * TILE, w: 4 * TILE, h: 2 * TILE, type: "reception" },
+      { x: INTERIOR_BASE_X + 6 * TILE, y: INTERIOR_BASE_Y + 3 * TILE, w: 2 * TILE, h: 1.2 * TILE, type: "plant" },
+      { x: INTERIOR_BASE_X + 5 * TILE, y: INTERIOR_BASE_Y + 8 * TILE, w: 3 * TILE, h: 1.2 * TILE, type: "sofa" },
+    ],
+    actionLabel: "Press E to submit registration",
+    statusHint: "Entered Registration Room. Press E to register, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  triage: {
+    label: "Triage Room",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 22 * TILE, h: 12 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 16 * TILE, y: INTERIOR_BASE_Y + 7.2 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 4 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 14 * TILE, y: INTERIOR_BASE_Y + 4 * TILE, w: 4 * TILE, h: 2 * TILE, type: "reception" },
+      { x: INTERIOR_BASE_X + 7 * TILE, y: INTERIOR_BASE_Y + 3.4 * TILE, w: 1.4 * TILE, h: 1.4 * TILE, type: "screen" },
+      { x: INTERIOR_BASE_X + 6 * TILE, y: INTERIOR_BASE_Y + 8.2 * TILE, w: 3 * TILE, h: 1.2 * TILE, type: "sofa" },
+    ],
+    actionLabel: "Press E to open triage intake",
+    statusHint: "Entered Triage Room. Press E to start triage, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  doctor_entry: {
+    label: "Doctor Entry Hall",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 22 * TILE, h: 12 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 16 * TILE, y: INTERIOR_BASE_Y + 7.2 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 4 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 14 * TILE, y: INTERIOR_BASE_Y + 4 * TILE, w: 4 * TILE, h: 2 * TILE, type: "desk" },
+      { x: INTERIOR_BASE_X + 6 * TILE, y: INTERIOR_BASE_Y + 3.5 * TILE, w: 2.8 * TILE, h: 1.2 * TILE, type: "cabinet" },
+      { x: INTERIOR_BASE_X + 6.2 * TILE, y: INTERIOR_BASE_Y + 8.2 * TILE, w: 3.4 * TILE, h: 1.2 * TILE, type: "sofa" },
+    ],
+    actionLabel: "Press E to continue consultation flow",
+    statusHint: "Entered Doctor Entry Hall. Press E near the desk, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  lab: {
+    label: "Laboratory",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 24 * TILE, h: 13 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 17 * TILE, y: INTERIOR_BASE_Y + 7 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 11 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 5 * TILE, y: INTERIOR_BASE_Y + 11 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 15 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 4 * TILE, h: 1.8 * TILE, type: "screen" },
+      { x: INTERIOR_BASE_X + 7 * TILE, y: INTERIOR_BASE_Y + 3.4 * TILE, w: 3.4 * TILE, h: 1.2 * TILE, type: "cabinet" },
+      { x: INTERIOR_BASE_X + 8 * TILE, y: INTERIOR_BASE_Y + 8.4 * TILE, w: 2.5 * TILE, h: 1.2 * TILE, type: "desk" },
+    ],
+    actionLabel: "Press E to continue test stage",
+    statusHint: "Entered Laboratory. Press E near the station, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  icu: {
+    label: "ICU Room",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 24 * TILE, h: 13 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 17 * TILE, y: INTERIOR_BASE_Y + 7 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 11 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 5 * TILE, y: INTERIOR_BASE_Y + 11 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 15 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 3.2 * TILE, h: 1.2 * TILE, type: "bed" },
+      { x: INTERIOR_BASE_X + 10 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 3.2 * TILE, h: 1.2 * TILE, type: "bed" },
+      { x: INTERIOR_BASE_X + 6.8 * TILE, y: INTERIOR_BASE_Y + 8.5 * TILE, w: 3.2 * TILE, h: 1.2 * TILE, type: "screen" },
+    ],
+    actionLabel: "Press E to consult ICU",
+    statusHint: "Entered ICU Room. Press E near the station, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  consultation: {
+    label: "Consultation Room",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 22 * TILE, h: 12 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 16 * TILE, y: INTERIOR_BASE_Y + 7.2 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 4 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 14 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 4 * TILE, h: 1.8 * TILE, type: "desk" },
+      { x: INTERIOR_BASE_X + 6.5 * TILE, y: INTERIOR_BASE_Y + 8.3 * TILE, w: 3.2 * TILE, h: 1.2 * TILE, type: "sofa" },
+      { x: INTERIOR_BASE_X + 8.2 * TILE, y: INTERIOR_BASE_Y + 3.8 * TILE, w: 1.4 * TILE, h: 1.4 * TILE, type: "plant" },
+    ],
+    actionLabel: "Press E to consult or talk",
+    statusHint: "Entered Consultation Room. Press E near the desk, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  pharmacy_pickup: {
+    label: "Pharmacy",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 22 * TILE, h: 12 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 16 * TILE, y: INTERIOR_BASE_Y + 7.2 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 4 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 14 * TILE, y: INTERIOR_BASE_Y + 4 * TILE, w: 4 * TILE, h: 2 * TILE, type: "cabinet" },
+      { x: INTERIOR_BASE_X + 10.5 * TILE, y: INTERIOR_BASE_Y + 4.4 * TILE, w: 2.8 * TILE, h: 1.2 * TILE, type: "desk" },
+      { x: INTERIOR_BASE_X + 6.5 * TILE, y: INTERIOR_BASE_Y + 8.3 * TILE, w: 3.2 * TILE, h: 1.2 * TILE, type: "sofa" },
+    ],
+    actionLabel: "Press E to pick up medication",
+    statusHint: "Entered Pharmacy. Press E near the counter, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  office: {
+    label: "Office",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 22 * TILE, h: 12 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 16 * TILE, y: INTERIOR_BASE_Y + 7.2 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 4 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 14 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 4 * TILE, h: 1.8 * TILE, type: "desk" },
+      { x: INTERIOR_BASE_X + 7 * TILE, y: INTERIOR_BASE_Y + 3.4 * TILE, w: 3 * TILE, h: 1.2 * TILE, type: "cabinet" },
+      { x: INTERIOR_BASE_X + 8 * TILE, y: INTERIOR_BASE_Y + 8.3 * TILE, w: 3.4 * TILE, h: 1.2 * TILE, type: "sofa" },
+    ],
+    actionLabel: "Press E to talk to staff",
+    statusHint: "Entered Office. Press E near the desk, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  ward: {
+    label: "Ward",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 24 * TILE, h: 13 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 17 * TILE, y: INTERIOR_BASE_Y + 7.2 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 11 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 5 * TILE, y: INTERIOR_BASE_Y + 11 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 14 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 3 * TILE, h: 1.2 * TILE, type: "bed" },
+      { x: INTERIOR_BASE_X + 10 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 3 * TILE, h: 1.2 * TILE, type: "bed" },
+      { x: INTERIOR_BASE_X + 6.5 * TILE, y: INTERIOR_BASE_Y + 8.5 * TILE, w: 3.2 * TILE, h: 1.2 * TILE, type: "sofa" },
+    ],
+    actionLabel: "Press E to talk to staff",
+    statusHint: "Entered Ward. Press E near the station, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+  empty_room: {
+    label: "Reserve Room",
+    room: { x: INTERIOR_BASE_X, y: INTERIOR_BASE_Y, w: 20 * TILE, h: 12 * TILE },
+    interactPoint: { x: INTERIOR_BASE_X + 15 * TILE, y: INTERIOR_BASE_Y + 7.2 * TILE, floor: 1, radius: 72 },
+    exitPoint: { x: INTERIOR_BASE_X + 3 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1, radius: 72 },
+    spawn: { x: INTERIOR_BASE_X + 4 * TILE, y: INTERIOR_BASE_Y + 10 * TILE, floor: 1 },
+    furniture: [
+      { x: INTERIOR_BASE_X + 12 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 3 * TILE, h: 1.2 * TILE, type: "sofa" },
+      { x: INTERIOR_BASE_X + 7.5 * TILE, y: INTERIOR_BASE_Y + 4.2 * TILE, w: 1.4 * TILE, h: 1.4 * TILE, type: "plant" },
+    ],
+    actionLabel: "Press E to look around",
+    statusHint: "Entered Reserve Room. Press E near the desk, Q to return.",
+    exitHint: "Press E at EXIT or Q to return.",
+  },
+};
+
 const microScene = {
   mode: "campus",
   returnPoint: null,
-  room: {
-    x: 12 * TILE,
-    y: 8 * TILE,
-    w: 20 * TILE,
-    h: 12 * TILE,
-  },
-  desk: {
-    x: 12 * TILE + 14 * TILE,
-    y: 8 * TILE + 4 * TILE,
-    w: 4 * TILE,
-    h: 2 * TILE,
-  },
-  interactPoint: {
-    x: 12 * TILE + 16 * TILE,
-    y: 8 * TILE + 7.5 * TILE,
-    floor: 1,
-    radius: 72,
-  },
-  exitPoint: {
-    x: 12 * TILE + 3 * TILE,
-    y: 8 * TILE + 10 * TILE,
-    floor: 1,
-    radius: 72,
-  },
   gate: {
     x: 4 * TILE,
     y: 23 * TILE,
     floor: 1,
     radius: 80,
+  },
+  indoor: {
+    activeRoomKind: null,
+    template: null,
   },
   annex: {
     room: {
@@ -287,6 +447,41 @@ const runtimeDebug = {
   pollFailureCount: 0,
   lastPollResult: "pending",
   lastError: "",
+};
+
+const integrationState = {
+  medicalRecordTimeline: null,
+  hospitalRuntime: null,
+  departmentRuntime: null,
+  departments: null,
+  openEmrHealth: null,
+  icuPatients: null,
+  lastRuntimeRefreshAt: 0,
+  lastMedicalRecordVisitId: null,
+  lastMedicalRecordSummaryKey: "",
+  runtimeControlBusy: false,
+};
+
+const runtimeDraftState = {
+  dirty: false,
+};
+
+const runtimePanelState = {
+  dragging: false,
+  pointerId: null,
+  startClientX: 0,
+  startClientY: 0,
+  startLeft: 0,
+  startTop: 0,
+};
+
+const runtimeStatsPanelState = {
+  dragging: false,
+  pointerId: null,
+  startClientX: 0,
+  startClientY: 0,
+  startLeft: 0,
+  startTop: 0,
 };
 
 function deriveRoomInteractPoint(roomKind, fallback, options = {}) {
@@ -338,12 +533,26 @@ function deriveRegistrationInteractPoint() {
 }
 
 function deriveDoctorEntryInteractPoint() {
-  return deriveRoomInteractPoint("pharmacy", { x: 69.2 * TILE, y: 11.2 * TILE, floor: 1, radius: 64 }, {});
+  return deriveRoomInteractPoint("doctor_entry", { x: 69.2 * TILE, y: 11.2 * TILE, floor: 1, radius: 64 }, {});
+}
+
+function derivePharmacyPickupInteractPoint() {
+  return deriveRoomInteractPoint("pharmacy_pickup", { x: 67.2 * TILE, y: 37.4 * TILE, floor: 1, radius: 64 }, {});
+}
+
+function deriveMainGatePoint() {
+  return {
+    x: microScene.gate.x,
+    y: microScene.gate.y,
+    floor: microScene.gate.floor,
+  };
 }
 
 const triageInteractPoint = deriveTriageInteractPoint();
 const registrationInteractPoint = deriveRegistrationInteractPoint();
 const doctorEntryInteractPoint = deriveDoctorEntryInteractPoint();
+const pharmacyPickupInteractPoint = derivePharmacyPickupInteractPoint();
+const mainGatePoint = deriveMainGatePoint();
 const labInteractPoint = deriveRoomInteractPoint("lab", { x: 34.5 * TILE, y: 22.5 * TILE, floor: 1, radius: 64 }, {});
 const privateApiConfig = window.HOS_PRIVATE_API || {};
 const backendState = {
@@ -460,9 +669,10 @@ function canInteractWithRegistrationDesk() {
 }
 
 function canInteractWithRegistrationRoomDesk() {
-  if (microScene.mode !== "registration_room") return false;
-  if (player.floor !== microScene.interactPoint.floor) return false;
-  return Math.hypot(player.x - microScene.interactPoint.x, player.y - microScene.interactPoint.y) <= microScene.interactPoint.radius;
+  const template = microScene.indoor.template;
+  if (microScene.mode !== "indoor_room" || microScene.indoor.activeRoomKind !== "registration" || !template) return false;
+  if (player.floor !== template.interactPoint.floor) return false;
+  return Math.hypot(player.x - template.interactPoint.x, player.y - template.interactPoint.y) <= template.interactPoint.radius;
 }
 
 function canSubmitRegistrationFromCurrentContext() {
@@ -470,9 +680,10 @@ function canSubmitRegistrationFromCurrentContext() {
 }
 
 function canInteractWithRegistrationRoomExit() {
-  if (microScene.mode !== "registration_room") return false;
-  if (player.floor !== microScene.exitPoint.floor) return false;
-  return Math.hypot(player.x - microScene.exitPoint.x, player.y - microScene.exitPoint.y) <= microScene.exitPoint.radius;
+  const template = microScene.indoor.template;
+  if (microScene.mode !== "indoor_room" || !template) return false;
+  if (player.floor !== template.exitPoint.floor) return false;
+  return Math.hypot(player.x - template.exitPoint.x, player.y - template.exitPoint.y) <= template.exitPoint.radius;
 }
 
 function canInteractWithAnnexGate() {
@@ -487,15 +698,14 @@ function canInteractWithAnnexExit() {
   return Math.hypot(player.x - microScene.annex.exitPoint.x, player.y - microScene.annex.exitPoint.y) <= microScene.annex.exitPoint.radius;
 }
 
-function enterRegistrationRoom() {
-  if (microScene.mode === "registration_room") return;
+function enterIndoorRoom(roomKind) {
+  const template = indoorRoomTemplates[roomKind];
+  if (!template || microScene.mode === "indoor_room") return;
   microScene.returnPoint = { x: player.x, y: player.y, floor: player.floor };
-  microScene.mode = "registration_room";
-  const spawn = {
-    x: microScene.room.x + TILE * 4,
-    y: microScene.room.y + microScene.room.h - TILE * 2,
-    floor: 1,
-  };
+  microScene.mode = "indoor_room";
+  microScene.indoor.activeRoomKind = roomKind;
+  microScene.indoor.template = template;
+  const spawn = template.spawn;
   const safe = findNearestWalkable(spawn.x, spawn.y, spawn.floor);
   player.x = safe.x;
   player.y = safe.y;
@@ -503,7 +713,7 @@ function enterRegistrationRoom() {
   camera.x = player.x;
   camera.y = player.y;
   updateFloorHud();
-  pushStatusHint("Entered Registration Room. Press E to register, Q to return.");
+  pushStatusHint(template.statusHint || "Entered room. Press E to interact, Q to return.");
 }
 
 function enterAnnexRoom() {
@@ -526,7 +736,7 @@ function enterAnnexRoom() {
 }
 
 function leaveRegistrationRoom() {
-  if (microScene.mode !== "registration_room") return;
+  if (microScene.mode !== "indoor_room") return;
   const fallback = floorSpawns[1];
   const target = microScene.returnPoint || { x: fallback.x, y: fallback.y, floor: 1 };
   const safe = findNearestWalkable(target.x, target.y, target.floor || 1);
@@ -534,6 +744,8 @@ function leaveRegistrationRoom() {
   player.y = safe.y;
   player.floor = target.floor || 1;
   microScene.mode = "campus";
+  microScene.indoor.activeRoomKind = null;
+  microScene.indoor.template = null;
   camera.x = player.x;
   camera.y = player.y;
   updateFloorHud();
@@ -558,6 +770,11 @@ function leaveAnnexRoom() {
 function canInteractWithDoctorEntry() {
   if (player.floor !== doctorEntryInteractPoint.floor) return false;
   return Math.hypot(player.x - doctorEntryInteractPoint.x, player.y - doctorEntryInteractPoint.y) <= doctorEntryInteractPoint.radius;
+}
+
+function canInteractWithPharmacyPickup() {
+  if (player.floor !== pharmacyPickupInteractPoint.floor) return false;
+  return Math.hypot(player.x - pharmacyPickupInteractPoint.x, player.y - pharmacyPickupInteractPoint.y) <= pharmacyPickupInteractPoint.radius;
 }
 
 function canInteractWithLab() {
@@ -601,6 +818,150 @@ function renderDialogueMessages(messages) {
 
 function renderDialogueEvidence(evidence) {
   renderDialogueEvidenceView(triageDialogueUi.evidenceList, evidence);
+}
+
+function truncateText(value, maxLength = 160) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function mapRuntimeNodeToRoomKind(nodeId) {
+  if (!nodeId) return "hall";
+  if (nodeId === "testing") return "lab";
+  if (nodeId === "payment") return "registration";
+  if (nodeId === "pharmacy") return "pharmacy_pickup";
+  if (nodeId === "internal") return "doctor_entry";
+  if (nodeId === "surgery") return "consultation";
+  if (nodeId === "rehabilitation") return "ward";
+  if (nodeId === "ward") return "ward";
+  if (String(nodeId).includes("consult_room")) return "consultation";
+  if (String(nodeId).includes("procedure")) return "lab";
+  return rooms.some((room) => room.kind === nodeId) ? nodeId : "hall";
+}
+
+function buildHospitalScenePatients() {
+  const snapshot = integrationState.hospitalRuntime;
+  if (!snapshot || !Array.isArray(snapshot.nodes)) return [];
+
+  const items = [];
+  for (const nodeView of snapshot.nodes) {
+    const nodeId = nodeView?.node?.node_id || "";
+    const roomKind = mapRuntimeNodeToRoomKind(nodeId);
+    for (const patient of nodeView?.patients || []) {
+      if (String(patient.visit_state || "") === "completed") continue;
+      items.push({
+        patientId: patient.patient_id,
+        roomKind: mapRuntimeNodeToRoomKind(patient.current_room_node_id || patient.current_node_id || nodeId) || roomKind,
+        finished: Boolean(patient.finished || patient.visit_state === "completed"),
+        priority: patient.visit_state === "in_icu_rescue" ? "H" : "M",
+        visitState: patient.visit_state || "",
+        currentNodeId: patient.current_node_id || nodeId,
+        targetNodeId: patient.target_node_id || "",
+        displayLabel: patient.npc_id || patient.patient_id,
+        statusSummary: truncateText(patient.department_status || patient.department_flow_status || patient.visit_state || "moving", 18),
+      });
+    }
+  }
+  return items;
+}
+
+function summarizeVisitStage(visitState) {
+  const state = String(visitState || "");
+  if (["arrived", "triaging", "waiting_followup", "triaged"].includes(state)) return "triage";
+  if (["registered", "waiting_consultation"].includes(state)) return "queue";
+  if (state === "in_consultation") return "consult1";
+  if (["waiting_test", "waiting_test_payment", "test_payment_completed", "in_test", "waiting_return_consultation", "results_ready"].includes(state)) return "testing";
+  if (state === "in_second_consultation") return "consult2";
+  if (["diagnosis_finalized", "waiting_payment", "medical_payment_completed"].includes(state)) return "payment";
+  if (state === "admitted") return "ward";
+  if (state === "waiting_pharmacy") return "pharmacy";
+  if (state === "completed") return "completed";
+  return state || "unknown";
+}
+
+function buildRuntimePatientDetails(snapshot) {
+  const details = [];
+  for (const node of snapshot?.nodes || []) {
+    for (const patient of node.patients || []) {
+      if (String(patient.visit_state || "") === "completed") continue;
+      details.push({
+        label: patient.npc_id || patient.patient_id,
+        patientId: patient.patient_id,
+        roomKind: mapRuntimeNodeToRoomKind(patient.current_room_node_id || patient.current_node_id || node.node.node_id),
+        visitState: patient.visit_state || "",
+        stage: summarizeVisitStage(patient.visit_state),
+        currentNodeId: patient.current_node_id || node.node.node_id,
+        targetNodeId: patient.target_node_id || "",
+        lastAction: patient.last_action || "-",
+        departmentStatus: patient.department_status || patient.department_flow_status || "-",
+      });
+    }
+  }
+  details.sort((a, b) => a.label.localeCompare(b.label));
+  return details;
+}
+
+function runtimeStageClass(stage) {
+  if (stage === "triage") return "hud__runtime-stage--triage";
+  if (stage === "queue") return "hud__runtime-stage--queue";
+  if (stage === "consult1" || stage === "consult2") return "hud__runtime-stage--consult";
+  if (stage === "testing") return "hud__runtime-stage--testing";
+  if (stage === "payment") return "hud__runtime-stage--payment";
+  if (stage === "pharmacy") return "hud__runtime-stage--pharmacy";
+  if (stage === "completed") return "hud__runtime-stage--completed";
+  return "hud__runtime-stage--unknown";
+}
+
+function createRuntimeStatsBlock(title, lines = []) {
+  const block = document.createElement("div");
+  block.className = "hud__runtime-stats-block";
+  const titleEl = document.createElement("div");
+  titleEl.className = "hud__runtime-stats-title";
+  titleEl.textContent = title;
+  block.appendChild(titleEl);
+  for (const line of lines) {
+    const lineEl = document.createElement("div");
+    lineEl.className = "hud__runtime-stats-line";
+    lineEl.textContent = line;
+    block.appendChild(lineEl);
+  }
+  return block;
+}
+
+function updateRuntimeHudStatus() {
+  if (!hudRuntimeStatus) return;
+  const snapshot = integrationState.hospitalRuntime;
+  const payload = getRuntimeStartPayloadFromHud();
+  const draftPrefix = runtimeDraftState.dirty ? "Draft" : "Config";
+  const tuning = `${draftPrefix}: Mode=${payload.mode} | Spawn=${payload.spawn_interval_seconds}s | Step=${payload.step_interval_seconds}s | Max=${payload.max_active_patients} | LLM=${payload.llm_probability ?? "-"}`;
+  if (!snapshot) {
+    hudRuntimeStatus.textContent = integrationState.runtimeControlBusy
+      ? `Runtime request in progress... | ${tuning}`
+      : `Runtime status unknown. ${tuning}`;
+    return;
+  }
+  const runningText = snapshot.running ? "running" : "stopped";
+  hudRuntimeStatus.textContent = `Runtime ${runningText} | mode ${snapshot.mode || "unknown"} | active ${snapshot.active_count ?? 0} | spawned ${snapshot.total_spawned ?? 0} | blocked ${snapshot.blocked_count ?? 0} | llm_probability=${snapshot.llm_probability ?? "-"} | ${tuning}`;
+}
+
+function getRuntimeStartPayloadFromHud() {
+  const mode = hudRuntimeMode?.value || "intelligent_agent";
+  const spawnInterval = Number(hudRuntimeSpawn?.value || 4);
+  const stepInterval = Number(hudRuntimeStep?.value || 2);
+  const maxActivePatients = Number(hudRuntimeMax?.value || 20);
+  const llmProbabilityRaw = hudRuntimeLlmProbability?.value ?? "";
+  const llmProbabilityNumber = Number(llmProbabilityRaw);
+  return {
+    mode,
+    spawn_interval_seconds: Number.isFinite(spawnInterval) ? Math.max(0, spawnInterval) : 4,
+    step_interval_seconds: Number.isFinite(stepInterval) ? Math.max(0.1, stepInterval) : 2,
+    max_active_patients: Number.isFinite(maxActivePatients) ? Math.max(1, Math.round(maxActivePatients)) : 20,
+    llm_probability: llmProbabilityRaw === "" || !Number.isFinite(llmProbabilityNumber)
+      ? null
+      : Math.max(0, Math.min(1, llmProbabilityNumber)),
+  };
 }
 
 function buildTriagePayloadFromForm() {
@@ -783,12 +1144,14 @@ function drawGroundBackdrop() {
 }
 
 function drawRegistrationRoomScene() {
+  const template = microScene.indoor.template;
+  if (!template) return;
   ctx.fillStyle = "#b68952";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const roomScreen = worldRectToScreenRect(microScene.room.x, microScene.room.y, microScene.room.w, microScene.room.h, 1);
+  const roomScreen = worldRectToScreenRect(template.room.x, template.room.y, template.room.w, template.room.h, 1);
   drawRoomBorder(roomScreen, "#e6d4b0");
-  drawRoomTiles(roomScreen, "#e6d4b0", "#dcc79d", microScene.room.x, microScene.room.y);
+  drawRoomTiles(roomScreen, "#e6d4b0", "#dcc79d", template.room.x, template.room.y);
 
   const wallTop = 8;
   ctx.fillStyle = palette.wallTop;
@@ -797,12 +1160,18 @@ function drawRegistrationRoomScene() {
   ctx.fillRect(roomScreen.x - wallTop, roomScreen.y, wallTop, roomScreen.h);
   ctx.fillRect(roomScreen.x + roomScreen.w, roomScreen.y, wallTop, roomScreen.h);
 
-  const deskRect = worldRectToScreenRect(microScene.desk.x, microScene.desk.y, microScene.desk.w, microScene.desk.h, 1);
-  drawRect(deskRect, "#b57f4e", "#7b512f", 2);
-  ctx.fillStyle = "#d9b484";
-  ctx.fillRect(deskRect.x + 6, deskRect.y + 6, Math.max(10, deskRect.w - 12), Math.max(8, deskRect.h - 12));
+  for (const furniture of template.furniture || []) {
+    drawProp({
+      floor: 1,
+      x: furniture.x / TILE,
+      y: furniture.y / TILE,
+      w: furniture.w / TILE,
+      h: furniture.h / TILE,
+      type: furniture.type,
+    });
+  }
 
-  const glowPoint = project(microScene.interactPoint.x, microScene.interactPoint.y, 0, 1);
+  const glowPoint = project(template.interactPoint.x, template.interactPoint.y, 0, 1);
   const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.2;
   ctx.save();
   ctx.strokeStyle = `rgba(255, 236, 170, ${Math.min(1, pulse + 0.2)})`;
@@ -820,10 +1189,10 @@ function drawRegistrationRoomScene() {
   ctx.fillStyle = "#fff7e5";
   ctx.font = "600 13px 'Trebuchet MS'";
   ctx.textAlign = "center";
-  ctx.fillText("Press E to submit registration, Q to return", glowPoint.x, glowPoint.y - 30);
+  ctx.fillText(template.actionLabel || "Press E to interact, Q to return", glowPoint.x, glowPoint.y - 30);
   ctx.restore();
 
-  const exitPoint = project(microScene.exitPoint.x, microScene.exitPoint.y, 0, 1);
+  const exitPoint = project(template.exitPoint.x, template.exitPoint.y, 0, 1);
   ctx.save();
   ctx.strokeStyle = "rgba(155, 237, 199, 0.92)";
   ctx.fillStyle = "rgba(91, 187, 136, 0.22)";
@@ -1098,16 +1467,22 @@ function canMoveTo(nextX, nextY, floor = activeFloor) {
 
   const foot = { x: nextX, y: nextY, r: CHARACTER_FOOT_RADIUS };
   let collisions = [...staticCollisions.filter((item) => item.floor === floor), ...doorCollidersForFloor(floor)];
-  if (microScene.mode === "registration_room") {
-    const room = microScene.room;
-    const desk = microScene.desk;
+  if (microScene.mode === "indoor_room" && microScene.indoor.template) {
+    const room = microScene.indoor.template.room;
     const wall = 10;
+    const blockers = (microScene.indoor.template.furniture || []).map((item) => ({
+      floor,
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h,
+    }));
     collisions = [
       { floor, x: room.x - wall, y: room.y - wall, w: room.w + wall * 2, h: wall },
       { floor, x: room.x - wall, y: room.y + room.h, w: room.w + wall * 2, h: wall },
       { floor, x: room.x - wall, y: room.y, w: wall, h: room.h },
       { floor, x: room.x + room.w, y: room.y, w: wall, h: room.h },
-      { floor, x: desk.x, y: desk.y, w: desk.w, h: desk.h },
+      ...blockers,
     ];
   } else if (microScene.mode === "annex_room") {
     const room = microScene.annex.room;
@@ -1551,7 +1926,8 @@ function drawLabels() {
     registration: "Registration",
     consultation: "Consultation",
     triage: "Triage",
-    pharmacy: "Doctor Entry",
+    doctor_entry: "Doctor Entry",
+    pharmacy_pickup: "Pharmacy",
     ward: "Ward",
     lab: "Lab",
     icu: "ICU",
@@ -1754,6 +2130,45 @@ function drawDoctorEntryHint() {
   ctx.fillText(label, point.x, point.y + 5);
 }
 
+function drawPharmacyPickupHint() {
+  if (!canInteractWithPharmacyPickup()) return;
+  const point = project(pharmacyPickupInteractPoint.x, pharmacyPickupInteractPoint.y, 0, pharmacyPickupInteractPoint.floor);
+  const selfPatient = getCurrentSelfPatient();
+  const visitState = getCurrentVisit()?.state || selfPatient?.visit_state || "";
+
+  let label = "Pharmacy standby";
+  if (backendState.submitting) {
+    label = "Synchronizing pharmacy...";
+  } else if (visitState === "waiting_pharmacy") {
+    label = "Press E to pick up medication";
+  } else if (visitState === "completed") {
+    label = "Medication already picked up";
+  } else if (visitState === "waiting_payment" || visitState === "diagnosis_finalized") {
+    label = "Complete payment first";
+  } else {
+    label = "Pharmacy opens after checkout";
+  }
+
+  const pulse = 0.55 + Math.sin(performance.now() * 0.012) * 0.18;
+  const boxWidth = 246;
+  const boxHeight = 28;
+  const boxLeft = point.x - boxWidth / 2;
+  const boxTop = point.y - boxHeight / 2;
+
+  ctx.fillStyle = "rgba(67, 45, 28, 0.94)";
+  ctx.fillRect(boxLeft, boxTop, boxWidth, boxHeight);
+  ctx.strokeStyle = backendState.submitting
+    ? `rgba(255, 198, 124, ${Math.min(0.95, pulse + 0.2)})`
+    : `rgba(138, 238, 182, ${Math.min(0.95, pulse + 0.22)})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxLeft, boxTop, boxWidth, boxHeight);
+
+  ctx.fillStyle = backendState.submitting ? "#ffe4bd" : "#effff5";
+  ctx.font = "600 13px 'Trebuchet MS'";
+  ctx.textAlign = "center";
+  ctx.fillText(label, point.x, point.y + 5);
+}
+
 function drawLabHint() {
   if (!canInteractWithLab()) return;
   const point = project(labInteractPoint.x, labInteractPoint.y, 0, labInteractPoint.floor);
@@ -1863,20 +2278,22 @@ function drawAnnexGateHint() {
 }
 
 function getRegistrationRoomCenterPoint() {
+  const template = microScene.indoor.template || indoorRoomTemplates.registration;
   return {
     floor: 1,
-    roomKind: "registration_room",
-    x: microScene.room.x + microScene.room.w * 0.5,
-    y: microScene.room.y + microScene.room.h * 0.5,
-    w: microScene.room.w,
-    h: microScene.room.h,
+    roomKind: template.label,
+    x: template.room.x + template.room.w * 0.5,
+    y: template.room.y + template.room.h * 0.5,
+    w: template.room.w,
+    h: template.room.h,
   };
 }
 
 function getRegistrationRoomExitPoint() {
+  const template = microScene.indoor.template || indoorRoomTemplates.registration;
   return {
-    x: microScene.exitPoint.x,
-    y: microScene.exitPoint.y,
+    x: template.exitPoint.x,
+    y: template.exitPoint.y,
     floor: 1,
   };
 }
@@ -1913,18 +2330,18 @@ function getObjectiveTarget() {
   }
 
   if (!patient || !visitState || visitState === "arrived" || visitState === "triaging" || visitState === "waiting_followup") {
-    if (microScene.mode === "registration_room") {
+    if (microScene.mode === "indoor_room") {
       return { label: "Press Q to Return to Campus", point: getRegistrationRoomExitPoint(), room: getRegistrationRoomCenterPoint() };
     }
     return { label: "Go to Triage", point: triageInteractPoint, room: getRoomCenterPoint("triage") };
   }
   if (visitState === "triaged") {
-    if (microScene.mode === "registration_room") {
-      return { label: "Register at Desk", point: microScene.interactPoint, room: getRegistrationRoomCenterPoint() };
+    if (microScene.mode === "indoor_room" && microScene.indoor.activeRoomKind === "registration") {
+      return { label: "Register at Desk", point: microScene.indoor.template?.interactPoint, room: getRegistrationRoomCenterPoint() };
     }
     return { label: "Go to Registration Room", point: registrationInteractPoint, room: getRoomCenterPoint("registration") };
   }
-  if (microScene.mode === "registration_room" && (visitState === "registered" || visitState === "waiting_consultation" || visitState === "in_consultation")) {
+  if (microScene.mode === "indoor_room" && (visitState === "registered" || visitState === "waiting_consultation" || visitState === "in_consultation")) {
     return { label: "Press Q to Return to Hall", point: getRegistrationRoomExitPoint(), room: getRegistrationRoomCenterPoint() };
   }
   if (visitState === "registered" || lifecycle === "queued") {
@@ -1932,7 +2349,7 @@ function getObjectiveTarget() {
     return { label: "Wait in Hall", point: room, room };
   }
   if (visitState === "waiting_consultation" || lifecycle === "called" || visitState === "in_consultation" || lifecycle === "in_consultation") {
-    return { label: "Go to Doctor", point: doctorEntryInteractPoint, room: getRoomCenterPoint("pharmacy") };
+    return { label: "Go to Doctor", point: doctorEntryInteractPoint, room: getRoomCenterPoint("doctor_entry") };
   }
   if (visitState === "in_icu_rescue") {
     const room = getRoomCenterPoint("icu");
@@ -1951,13 +2368,19 @@ function getObjectiveTarget() {
     return { label: "Handle Test Stage at Lab", point: room, room };
   }
   if (visitState === "waiting_second_consultation" || visitState === "in_second_consultation") {
-    return { label: "Go to Doctor (Second Consultation)", point: doctorEntryInteractPoint, room: getRoomCenterPoint("pharmacy") };
+    return { label: "Go to Doctor (Second Consultation)", point: doctorEntryInteractPoint, room: getRoomCenterPoint("doctor_entry") };
   }
   if (visitState === "diagnosis_finalized") {
     return { label: "Proceed to Payment", point: registrationInteractPoint, room: getRoomCenterPoint("registration") };
   }
   if (visitState === "waiting_payment") {
     return { label: "Return to Registration", point: registrationInteractPoint, room: getRoomCenterPoint("registration") };
+  }
+  if (visitState === "waiting_pharmacy") {
+    return { label: "Go to South Pharmacy", point: pharmacyPickupInteractPoint, room: getRoomCenterPoint("pharmacy_pickup") };
+  }
+  if (visitState === "completed") {
+    return { label: "Visit Completed", point: getRoomCenterPoint("pharmacy_pickup") || getRoomCenterPoint("hall"), room: getRoomCenterPoint("pharmacy_pickup") || getRoomCenterPoint("hall") };
   }
   return { label: "Explore the Campus", point: getRoomCenterPoint("hall"), room: getRoomCenterPoint("hall") };
 }
@@ -2024,7 +2447,7 @@ function drawObjectiveHighlight() {
   if (!target?.point) return;
   const pulse = 0.55 + Math.sin(performance.now() * 0.008) * 0.3;
   const worldDistance = Math.hypot(player.x - target.point.x, player.y - target.point.y);
-  const inRegistrationRoom = microScene.mode === "registration_room";
+  const inRegistrationRoom = microScene.mode === "indoor_room";
 
   if (target.room && !inRegistrationRoom) {
     const roomLeft = target.room.x - target.room.w / 2;
@@ -2071,7 +2494,7 @@ function drawObjectiveHighlight() {
 function drawTaskBoard() {
   if (!overlayState.tasksOpen) return;
 
-  const panelWidth = 430;
+  const panelWidth = 560;
   const rowHeight = 20;
   const panelHeight = 38 + rowHeight * taskBoard.tasks.length;
   const panelX = (canvas.width - panelWidth) / 2;
@@ -2088,7 +2511,7 @@ function drawTaskBoard() {
   ctx.fillText(taskBoard.title, panelX + 12, panelY + 22);
   ctx.font = "11px 'Segoe UI'";
   ctx.fillStyle = backendState.connected ? "#8ef0be" : "#ff9f9f";
-  ctx.fillText(backendState.connected ? "API online" : `API offline (${backendState.lastError})`, panelX + panelWidth - 165, panelY + 22);
+  ctx.fillText(backendState.connected ? "API online" : `API offline (${backendState.lastError})`, panelX + panelWidth - 190, panelY + 22);
 
   ctx.font = "13px 'Segoe UI'";
   for (let index = 0; index < taskBoard.tasks.length; index += 1) {
@@ -2096,15 +2519,15 @@ function drawTaskBoard() {
     const y = panelY + 42 + index * rowHeight;
     const marker = task.done ? "[x]" : "[ ]";
     ctx.fillStyle = task.done ? "#83ffc9" : "#f2ebff";
-    ctx.fillText(`${marker} ${task.text}`, panelX + 12, y);
+    ctx.fillText(truncateText(`${marker} ${task.text}`, 74), panelX + 12, y);
   }
 }
 
 function drawRuntimeDebugPanel() {
   if (!overlayState.debugOpen) return;
 
-  const panelWidth = 360;
-  const panelHeight = 122;
+  const panelWidth = 460;
+  const panelHeight = 176;
   const panelX = 18;
   const panelY = 18;
   const now = performance.now();
@@ -2126,10 +2549,30 @@ function drawRuntimeDebugPanel() {
   ctx.fillText(`Frames: ${runtimeDebug.frames}`, panelX + 12, panelY + 46);
   ctx.fillText(`Loop delta: ${loopDelta} ms`, panelX + 12, panelY + 66);
   ctx.fillText(`Render delta: ${renderDelta} ms`, panelX + 12, panelY + 86);
-  ctx.fillText(`Polls: ok ${runtimeDebug.pollSuccessCount} / fail ${runtimeDebug.pollFailureCount}`, panelX + 180, panelY + 46);
-  ctx.fillText(`Last poll: ${runtimeDebug.lastPollResult}`, panelX + 180, panelY + 66);
+  ctx.fillText(`Polls: ok ${runtimeDebug.pollSuccessCount} / fail ${runtimeDebug.pollFailureCount}`, panelX + 210, panelY + 46);
+  ctx.fillText(`Last poll: ${runtimeDebug.lastPollResult}`, panelX + 210, panelY + 66);
+  ctx.fillText(
+    `Record entries: ${integrationState.medicalRecordTimeline?.summary?.entry_count ?? 0}`,
+    panelX + 210,
+    panelY + 86
+  );
+  ctx.fillText(
+    `Dept runtime: ${integrationState.departmentRuntime?.active_count ?? 0} active`,
+    panelX + 12,
+    panelY + 108
+  );
+  ctx.fillText(
+    `Hospital runtime: ${integrationState.hospitalRuntime?.active_count ?? 0} active`,
+    panelX + 12,
+    panelY + 128
+  );
+  ctx.fillText(
+    `ICU pool: ${integrationState.icuPatients?.patients?.length ?? 0} | OpenEMR: ${integrationState.openEmrHealth ? "known" : "n/a"}`,
+    panelX + 12,
+    panelY + 148
+  );
   ctx.fillStyle = runtimeDebug.lastError ? "#ffb0b0" : "#9fd9b7";
-  ctx.fillText(`Last error: ${runtimeDebug.lastError || "none"}`, panelX + 12, panelY + 108);
+  ctx.fillText(`Last error: ${truncateText(runtimeDebug.lastError || "none", 58)}`, panelX + 12, panelY + 168);
 }
 
 function drawZoneStatusPanel() {
@@ -2161,6 +2604,45 @@ function drawZoneStatusPanel() {
 
   ctx.fillStyle = recentEventAge <= 1200 ? "#82ffd1" : "#cfc6db";
   ctx.fillText(`Last: ${zoneState.lastEventText}`, panelX + 12, panelY + 130);
+}
+
+function drawOtherPatientsPanel() {
+  if (!overlayState.debugOpen || !overlayState.patientsOpen) return;
+  const patients = latestSceneSnapshot?.other_patients || [];
+  const panelWidth = 430;
+  const rowHeight = 18;
+  const visibleRows = Math.min(8, Math.max(1, patients.length || 1));
+  const panelHeight = 38 + visibleRows * rowHeight;
+  const panelX = canvas.width - panelWidth - 18;
+  const panelY = canvas.height - panelHeight - 18;
+
+  ctx.fillStyle = "rgba(16, 11, 24, 0.86)";
+  ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+  ctx.strokeStyle = "rgba(174, 129, 255, 0.72)";
+  ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+
+  ctx.textAlign = "left";
+  ctx.font = "13px 'Segoe UI'";
+  ctx.fillStyle = "#d8b8ff";
+  ctx.fillText("Other Patients", panelX + 12, panelY + 22);
+
+  if (!patients.length) {
+    ctx.font = "12px 'Segoe UI'";
+    ctx.fillStyle = "#f2ebff";
+    ctx.fillText("No other active patients in current scene snapshot.", panelX + 12, panelY + 46);
+    return;
+  }
+
+  ctx.font = "12px 'Segoe UI'";
+  patients.slice(0, 8).forEach((patient, index) => {
+    const y = panelY + 44 + index * rowHeight;
+    ctx.fillStyle = patient.priority === "H" ? "#ffb0b0" : patient.priority === "L" ? "#b9ffd2" : "#f2ebff";
+    ctx.fillText(
+      truncateText(`${patient.name} | ${patient.visit_state || patient.lifecycle_state || "-"} | ${patient.location || "-"} | ${patient.active_agent_type || "none"}`, 60),
+      panelX + 12,
+      y
+    );
+  });
 }
 
 function drawFloorLayer(floor, activeDoor, dimmed) {
@@ -2198,8 +2680,8 @@ function drawFloorLayer(floor, activeDoor, dimmed) {
 
 function updateFloorHud() {
   if (!floorStateLabel) return;
-  floorStateLabel.textContent = microScene.mode === "registration_room"
-    ? "Current Zone: Registration Room"
+  floorStateLabel.textContent = microScene.mode === "indoor_room"
+    ? `Current Zone: ${microScene.indoor.template?.label || "Interior"}`
     : microScene.mode === "annex_room"
       ? "Current Zone: Annex Yard"
       : "Current Zone: Main Campus";
@@ -2229,10 +2711,16 @@ function syncHudToggleButton(button, active, ariaName = "pressed") {
 
 function syncOverlayUi() {
   if (hudHelpPanel) hudHelpPanel.classList.toggle("hidden", !overlayState.helpOpen);
+  if (hudRuntimePanel) hudRuntimePanel.classList.toggle("hidden", !overlayState.runtimeOpen);
+  if (hudRuntimeStatsPanel) hudRuntimeStatsPanel.classList.toggle("hidden", !overlayState.runtimeStatsOpen);
   syncHudToggleButton(hudHelpToggle, overlayState.helpOpen, "expanded");
+  syncHudToggleButton(hudRuntimeToggle, overlayState.runtimeOpen);
   syncHudToggleButton(hudTasksToggle, overlayState.tasksOpen);
   syncHudToggleButton(hudLabelsToggle, overlayState.labelsOpen);
   syncHudToggleButton(hudDebugToggle, overlayState.debugOpen);
+  syncHudToggleButton(hudQueueToggle, overlayState.queueOpen);
+  syncHudToggleButton(hudPatientsToggle, overlayState.patientsOpen);
+  syncHudToggleButton(hudRuntimeStatsToggle, overlayState.runtimeStatsOpen);
   if (hudResumeBtn) {
     const hasLastSession = Boolean(localStorage.getItem(SESSION_STORAGE_KEYS.lastClientId));
     hudResumeBtn.disabled = !hasLastSession;
@@ -2241,8 +2729,9 @@ function syncOverlayUi() {
 }
 
 function closeOverlayPanels() {
-  const hadOpenPanel = overlayState.helpOpen || overlayState.tasksOpen || overlayState.labelsOpen || overlayState.debugOpen;
+  const hadOpenPanel = overlayState.helpOpen || overlayState.runtimeOpen || overlayState.tasksOpen || overlayState.labelsOpen || overlayState.debugOpen;
   overlayState.helpOpen = false;
+  overlayState.runtimeOpen = false;
   overlayState.tasksOpen = false;
   overlayState.labelsOpen = false;
   overlayState.debugOpen = false;
@@ -2254,6 +2743,14 @@ function bindHudControls() {
   hudHelpToggle?.addEventListener("click", () => {
     overlayState.helpOpen = !overlayState.helpOpen;
     syncOverlayUi();
+  });
+
+  hudRuntimeToggle?.addEventListener("click", () => {
+    overlayState.runtimeOpen = !overlayState.runtimeOpen;
+    syncOverlayUi();
+    if (overlayState.runtimeOpen) {
+      refreshIntegrationRuntime(true);
+    }
   });
 
   hudTasksToggle?.addEventListener("click", () => {
@@ -2269,6 +2766,24 @@ function bindHudControls() {
   hudDebugToggle?.addEventListener("click", () => {
     overlayState.debugOpen = !overlayState.debugOpen;
     syncOverlayUi();
+  });
+
+  hudQueueToggle?.addEventListener("click", () => {
+    overlayState.queueOpen = !overlayState.queueOpen;
+    syncOverlayUi();
+  });
+
+  hudPatientsToggle?.addEventListener("click", () => {
+    overlayState.patientsOpen = !overlayState.patientsOpen;
+    syncOverlayUi();
+  });
+
+  hudRuntimeStatsToggle?.addEventListener("click", () => {
+    overlayState.runtimeStatsOpen = !overlayState.runtimeStatsOpen;
+    syncOverlayUi();
+    if (overlayState.runtimeStatsOpen) {
+      updateRuntimeStatsPanel();
+    }
   });
 
   hudRestartBtn?.addEventListener("click", () => {
@@ -2299,7 +2814,116 @@ function bindHudControls() {
     });
   });
 
+  hudRuntimeStartBtn?.addEventListener("click", () => {
+    pushStatusHint("Use Restart to begin a new full run. Start Runtime only resumes a paused backend runtime.");
+    controlHospitalRuntime("start");
+  });
+  hudRuntimeApplyBtn?.addEventListener("click", () => {
+    applyHospitalRuntimeConfig();
+  });
+  hudRuntimeStopBtn?.addEventListener("click", () => {
+    controlHospitalRuntime("stop");
+  });
+  hudRuntimeResetBtn?.addEventListener("click", () => {
+    controlHospitalRuntime("reset");
+  });
+
+  [hudRuntimeMode, hudRuntimeSpawn, hudRuntimeStep, hudRuntimeMax].forEach((element) => {
+    element?.addEventListener("input", () => {
+      runtimeDraftState.dirty = true;
+      updateRuntimeHudStatus();
+    });
+    element?.addEventListener("change", () => {
+      runtimeDraftState.dirty = true;
+      updateRuntimeHudStatus();
+    });
+  });
+
+  updateRuntimeHudStatus();
+  updateRuntimeStatsPanel();
   syncOverlayUi();
+}
+
+function bindRuntimePanelDrag() {
+  if (!hudRuntimePanel || !hudRuntimeDragHandle) return;
+
+  hudRuntimeDragHandle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    runtimePanelState.dragging = true;
+    runtimePanelState.pointerId = event.pointerId;
+    runtimePanelState.startClientX = event.clientX;
+    runtimePanelState.startClientY = event.clientY;
+    const rect = hudRuntimePanel.getBoundingClientRect();
+    hudRuntimePanel.style.position = "fixed";
+    hudRuntimePanel.style.left = `${rect.left}px`;
+    hudRuntimePanel.style.top = `${rect.top}px`;
+    hudRuntimePanel.style.right = "auto";
+    hudRuntimePanel.style.bottom = "auto";
+    runtimePanelState.startLeft = rect.left;
+    runtimePanelState.startTop = rect.top;
+    hudRuntimeDragHandle.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+
+  hudRuntimeDragHandle.addEventListener("pointermove", (event) => {
+    if (!runtimePanelState.dragging || runtimePanelState.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - runtimePanelState.startClientX;
+    const deltaY = event.clientY - runtimePanelState.startClientY;
+    const nextLeft = Math.max(8, Math.min(window.innerWidth - 220, runtimePanelState.startLeft + deltaX));
+    const nextTop = Math.max(8, Math.min(window.innerHeight - 120, runtimePanelState.startTop + deltaY));
+    hudRuntimePanel.style.left = `${nextLeft}px`;
+    hudRuntimePanel.style.top = `${nextTop}px`;
+  });
+
+  function endDrag(event) {
+    if (runtimePanelState.pointerId !== null && event.pointerId !== undefined && runtimePanelState.pointerId !== event.pointerId) return;
+    runtimePanelState.dragging = false;
+    runtimePanelState.pointerId = null;
+  }
+
+  hudRuntimeDragHandle.addEventListener("pointerup", endDrag);
+  hudRuntimeDragHandle.addEventListener("pointercancel", endDrag);
+}
+
+function bindRuntimeStatsPanelDrag() {
+  if (!hudRuntimeStatsPanel || !hudRuntimeStatsDragHandle) return;
+
+  hudRuntimeStatsDragHandle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    runtimeStatsPanelState.dragging = true;
+    runtimeStatsPanelState.pointerId = event.pointerId;
+    runtimeStatsPanelState.startClientX = event.clientX;
+    runtimeStatsPanelState.startClientY = event.clientY;
+    const rect = hudRuntimeStatsPanel.getBoundingClientRect();
+    hudRuntimeStatsPanel.style.position = "fixed";
+    hudRuntimeStatsPanel.style.left = `${rect.left}px`;
+    hudRuntimeStatsPanel.style.top = `${rect.top}px`;
+    hudRuntimeStatsPanel.style.right = "auto";
+    hudRuntimeStatsPanel.style.bottom = "auto";
+    runtimeStatsPanelState.startLeft = rect.left;
+    runtimeStatsPanelState.startTop = rect.top;
+    hudRuntimeStatsDragHandle.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+
+  hudRuntimeStatsDragHandle.addEventListener("pointermove", (event) => {
+    if (!runtimeStatsPanelState.dragging || runtimeStatsPanelState.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - runtimeStatsPanelState.startClientX;
+    const deltaY = event.clientY - runtimeStatsPanelState.startClientY;
+    const nextLeft = Math.max(8, Math.min(window.innerWidth - 220, runtimeStatsPanelState.startLeft + deltaX));
+    const nextTop = Math.max(8, Math.min(window.innerHeight - 120, runtimeStatsPanelState.startTop + deltaY));
+    hudRuntimeStatsPanel.style.left = `${nextLeft}px`;
+    hudRuntimeStatsPanel.style.top = `${nextTop}px`;
+  });
+
+  function endDrag(event) {
+    if (runtimeStatsPanelState.pointerId !== null && event.pointerId !== undefined && runtimeStatsPanelState.pointerId !== event.pointerId) return;
+    runtimeStatsPanelState.dragging = false;
+    runtimeStatsPanelState.pointerId = null;
+  }
+
+  hudRuntimeStatsDragHandle.addEventListener("pointerup", endDrag);
+  hudRuntimeStatsDragHandle.addEventListener("pointercancel", endDrag);
 }
 
 function update(delta, nowMs) {
@@ -2348,11 +2972,12 @@ function render() {
     drawTaskBoard();
     drawRuntimeDebugPanel();
     drawZoneStatusPanel();
+    drawOtherPatientsPanel();
     runtimeDebug.lastRenderAt = performance.now();
     return;
   }
 
-  if (microScene.mode === "registration_room") {
+  if (microScene.mode === "indoor_room") {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawRegistrationRoomScene();
     drawPlayer();
@@ -2360,6 +2985,7 @@ function render() {
     drawTaskBoard();
     drawRuntimeDebugPanel();
     drawZoneStatusPanel();
+    drawOtherPatientsPanel();
     runtimeDebug.lastRenderAt = performance.now();
     return;
   }
@@ -2377,11 +3003,13 @@ function render() {
   drawTriageHint();
   drawLabHint();
   drawDoctorEntryHint();
+  drawPharmacyPickupHint();
   drawFixedNpcHint();
   drawTaskBoard();
   drawMinimap();
   drawRuntimeDebugPanel();
   drawZoneStatusPanel();
+  drawOtherPatientsPanel();
   syncNpcDialogue();
   runtimeDebug.lastRenderAt = performance.now();
 }
@@ -2413,6 +3041,19 @@ const testReportUi = {
   items: document.getElementById("testReportItems"),
   body: document.getElementById("testReportBody"),
   closeBtn: document.getElementById("testReportCloseBtn"),
+};
+
+const pharmacyPickupUi = {
+  open: false,
+  reviewed: false,
+  modal: document.getElementById("pharmacyPickupModal"),
+  status: document.getElementById("pharmacyPickupStatus"),
+  visitBadge: document.getElementById("pharmacyPickupVisitBadge"),
+  stepBadge: document.getElementById("pharmacyPickupStepBadge"),
+  items: document.getElementById("pharmacyPickupItems"),
+  body: document.getElementById("pharmacyPickupBody"),
+  closeBtn: document.getElementById("pharmacyPickupCloseBtn"),
+  confirmBtn: document.getElementById("pharmacyPickupConfirmBtn"),
 };
 
 const passiveNpcDefinitions = [
@@ -2549,6 +3190,10 @@ function buildDoctorDialoguePayloadFromSceneSnapshot(snapshot = getCurrentSceneS
   const selfPatient = snapshot?.self_patient || getCurrentSelfPatient();
   const activeVisit = snapshot?.active_visit || getCurrentVisit();
   const visitState = activeVisit?.state || selfPatient?.visit_state || null;
+  if (visitState === "in_icu_rescue") {
+    const currentPatient = getCurrentSelfPatient() || selfPatient;
+    return buildIcuDialoguePayloadFromPatient(currentPatient, doctorConversationState.sessionId || currentPatient?.session_id || null);
+  }
   const isSecondRoundState = ["in_second_consultation", "diagnosis_finalized", "waiting_payment"].includes(visitState);
   const round2SessionId = activeVisit?.data?.internal_medicine_round2_session_id || null;
   if (!activeDialogue || activeDialogue.agent_type !== "internal_medicine") {
@@ -2577,14 +3222,32 @@ function buildDoctorDialoguePayloadFromSceneSnapshot(snapshot = getCurrentSceneS
 }
 
 function applySceneSnapshot(snapshot) {
+  const previousPatient = agentStore.lastPatient;
   latestSceneSnapshot = snapshot || null;
   agentStore.syncSceneSnapshot(snapshot);
 
   const selfPatient = snapshot?.self_patient || null;
   const visit = snapshot?.active_visit || null;
+  const visitState = visit?.state || selfPatient?.visit_state || "";
+
+  if (
+    visitState === "in_icu_rescue"
+    && previousPatient
+    && previousPatient.id === selfPatient?.id
+    && previousPatient.dialogue
+  ) {
+    agentStore.lastPatient = {
+      ...selfPatient,
+      dialogue: previousPatient.dialogue,
+      dialogue_source_agent: "icu",
+      active_agent_type: "icu",
+      session_id: doctorConversationState.sessionId || previousPatient.session_id || selfPatient?.session_id || null,
+    };
+  }
 
   visitSessionState.visit = visit;
   queueRuntime.syncFromApi(snapshot?.queues || [], triageConversationState.patientId);
+  npcRuntime?.syncHospitalPatients?.(buildHospitalScenePatients());
   taskBoardPresenter.syncSceneSnapshot(snapshot);
 
   if (!selfPatient) {
@@ -2605,10 +3268,14 @@ function applySceneSnapshot(snapshot) {
   const visitStateForSession = visit?.state || selfPatient?.visit_state || "";
   const isSecondRoundState = ["in_second_consultation", "diagnosis_finalized", "waiting_payment"].includes(visitStateForSession);
   let restoredDoctorSessionId = null;
-  if (isSecondRoundState) {
+  if (visitStateForSession === "in_icu_rescue") {
+    restoredDoctorSessionId = doctorConversationState.sessionId || selfPatient?.session_id || null;
+    doctorConversationState.activeAgentType = "icu";
+  } else if (isSecondRoundState) {
     restoredDoctorSessionId = visit?.data?.internal_medicine_round2_session_id || null;
   } else {
     restoredDoctorSessionId = visit?.data?.internal_medicine_session_id || null;
+    doctorConversationState.activeAgentType = "internal_medicine";
   }
   if (snapshot?.active_dialogue?.agent_type === "internal_medicine" && snapshot.active_dialogue.session_id) {
     restoredDoctorSessionId = snapshot.active_dialogue.session_id;
@@ -2629,6 +3296,16 @@ function applySceneSnapshot(snapshot) {
   if (doctorDialogueUi.open) {
     syncDoctorDialogue(buildDoctorDialoguePayloadFromSceneSnapshot(snapshot));
   }
+
+  taskBoardPresenter.syncIntegratedView({
+    snapshot,
+    medicalRecordTimeline: integrationState.medicalRecordTimeline,
+    hospitalRuntime: integrationState.hospitalRuntime,
+    departmentRuntime: integrationState.departmentRuntime,
+    departments: integrationState.departments,
+    openEmrHealth: integrationState.openEmrHealth,
+    icuPatients: integrationState.icuPatients,
+  });
 
   return { selfPatient, visit, queueTicket: snapshot?.active_queue_ticket || null };
 }
@@ -2674,14 +3351,14 @@ function hasStartedDoctorConversation(patient = getCurrentSelfPatient(), visit =
   return Boolean(getDoctorSessionIdFromContext(patient, visit));
 }
 
-function buildDoctorDialogueMessages(dialogue, fallbackText = "Doctor consultation started.") {
+function buildDoctorDialogueMessages(dialogue, fallbackText = "Doctor consultation started.", assistantLabel = "Doctor Agent / Internal Medicine") {
   const turns = dialogue?.turns || [];
   if (Array.isArray(turns) && turns.length > 0) {
     return turns.map((turn) => {
       const isFinal = turn.role === "assistant" && turn?.metadata?.message_type === "final";
       return {
         role: turn.role === "assistant" ? "assistant" : "user",
-        label: turn.role === "assistant" ? (isFinal ? "Final Plan" : "Doctor Agent / Internal Medicine") : "Patient",
+        label: turn.role === "assistant" ? (isFinal ? "Final Plan" : assistantLabel) : "Patient",
         body: turn.content || "",
         type: turn.role === "assistant" ? (isFinal ? "final" : "followup") : "user",
       };
@@ -2691,16 +3368,27 @@ function buildDoctorDialogueMessages(dialogue, fallbackText = "Doctor consultati
   return [
     {
       role: "assistant",
-      label: "Doctor Agent / Internal Medicine",
+      label: assistantLabel,
       body: dialogue?.assistant_message || fallbackText,
       type: dialogue?.message_type || "followup",
     },
   ];
 }
 
+function buildIcuDialoguePayloadFromPatient(patient, sessionId = null) {
+  return {
+    agent_type: "icu",
+    patient,
+    dialogue: patient?.dialogue || {},
+    visit_id: patient?.visit_id || getCurrentVisit()?.id || null,
+    visit_state: patient?.visit_state || getCurrentVisit()?.state || null,
+    session_id: sessionId || patient?.session_id || null,
+  };
+}
+
 function setDoctorDialogueBadges(visitState) {
   if (doctorDialogueUi.agentBadge) {
-    doctorDialogueUi.agentBadge.textContent = "Doctor Agent";
+    doctorDialogueUi.agentBadge.textContent = visitState === "in_icu_rescue" ? "ICU Doctor Agent" : "Doctor Agent";
   }
   if (doctorDialogueUi.visitBadge) {
     doctorDialogueUi.visitBadge.textContent = visitState ? `Visit: ${visitState}` : "Visit Pending";
@@ -2847,6 +3535,15 @@ function closeTestReportModal() {
   keys.clear();
 }
 
+function closePharmacyPickupModal() {
+  if (!pharmacyPickupUi.modal) return;
+  pharmacyPickupUi.open = false;
+  pharmacyPickupUi.reviewed = false;
+  pharmacyPickupUi.modal.classList.add("hidden");
+  pharmacyPickupUi.modal.setAttribute("aria-hidden", "true");
+  keys.clear();
+}
+
 function openTestReportModal(report) {
   if (!testReportUi.modal || !report) return;
   testReportUi.open = true;
@@ -2868,18 +3565,57 @@ function openTestReportModal(report) {
   }
 }
 
+function openPharmacyPickupModal() {
+  if (!pharmacyPickupUi.modal) return;
+  const visit = getCurrentVisit();
+  const items = getLatestMedicationList();
+  pharmacyPickupUi.open = true;
+  pharmacyPickupUi.reviewed = true;
+  pharmacyPickupUi.modal.classList.remove("hidden");
+  pharmacyPickupUi.modal.setAttribute("aria-hidden", "false");
+  if (pharmacyPickupUi.status) {
+    pharmacyPickupUi.status.textContent = items.length
+      ? "Review the medication list and then confirm pickup."
+      : "No explicit prescription list was found. Confirm pickup if the pharmacist has reviewed the order.";
+  }
+  if (pharmacyPickupUi.visitBadge) {
+    pharmacyPickupUi.visitBadge.textContent = `Visit: ${visit?.state || "-"}`;
+  }
+  if (pharmacyPickupUi.stepBadge) {
+    pharmacyPickupUi.stepBadge.textContent = "Step: review";
+  }
+  if (pharmacyPickupUi.items) {
+    pharmacyPickupUi.items.textContent = `Items: ${items.length ? items.join(", ") : "-"}`;
+  }
+  if (pharmacyPickupUi.body) {
+    pharmacyPickupUi.body.textContent = items.length
+      ? items.map((item, index) => `${index + 1}. ${item}`).join("\n")
+      : "No medication list available from the latest record entry.";
+  }
+  if (pharmacyPickupUi.confirmBtn) {
+    pharmacyPickupUi.confirmBtn.disabled = false;
+  }
+  keys.clear();
+}
+
 function syncDoctorDialogue(data) {
   if (!doctorDialogueUi.open) return;
   const payload = data || {};
   const patient = payload.patient || getCurrentSelfPatient();
   const dialogue = payload.dialogue || patient?.dialogue || {};
   const visitState = payload.visit_state || getCurrentVisit()?.state || patient?.visit_state || null;
+  const isIcuFlow = visitState === "in_icu_rescue" || payload.agent_type === "icu";
+  const assistantLabel = isIcuFlow ? "ICU Doctor Agent" : "Doctor Agent / Internal Medicine";
   const renderKey = `${payload.session_id || doctorConversationState.sessionId || ""}|${visitState || ""}|${dialogue.status || ""}|${dialogue.assistant_message || ""}|${Array.isArray(dialogue.turns) ? dialogue.turns.length : 0}`;
   if (doctorDialogueUi.lastRenderedAt === renderKey) return;
   doctorDialogueUi.lastRenderedAt = renderKey;
 
   if (doctorDialogueUi.status) {
-    if (visitState === "waiting_test") {
+    if (isIcuFlow) {
+      doctorDialogueUi.status.textContent = dialogue.status === "completed"
+        ? "ICU consultation completed."
+        : "ICU consultation in progress.";
+    } else if (visitState === "waiting_test") {
       doctorDialogueUi.status.textContent = "First consultation completed. Please continue diagnostic steps at Lab.";
     } else if (visitState === "waiting_test_payment" || visitState === "test_payment_completed" || visitState === "in_test" || visitState === "waiting_return_consultation" || visitState === "results_ready") {
       doctorDialogueUi.status.textContent = "Diagnostic stage in progress. Return after report is ready.";
@@ -2899,17 +3635,43 @@ function syncDoctorDialogue(data) {
   setDoctorDialogueBadges(visitState);
   renderDialogueMessagesView(
     doctorDialogueUi.messages,
-    buildDoctorDialogueMessages(dialogue, "The doctor agent is ready for consultation.")
+    buildDoctorDialogueMessages(
+      dialogue,
+      isIcuFlow ? "The ICU doctor agent is ready for consultation." : "The doctor agent is ready for consultation.",
+      assistantLabel
+    )
   );
   renderDialogueEvidenceView(doctorDialogueUi.evidenceList, patient?.triage_evidence || []);
 
-  const canChat = isInitialConsultationState(visitState) || isSecondConsultationState(visitState);
+  const canChat = isIcuFlow || isInitialConsultationState(visitState) || isSecondConsultationState(visitState);
   const isClosed = !canChat || dialogue.status === "completed";
   if (doctorDialogueUi.sendBtn) doctorDialogueUi.sendBtn.disabled = isClosed || doctorConversationState.sending;
   if (doctorDialogueUi.input) doctorDialogueUi.input.disabled = isClosed;
 }
 
 async function openExistingDoctorDialogue() {
+  const selfPatient = getCurrentSelfPatient();
+  const visitState = getCurrentVisit()?.state || selfPatient?.visit_state || "";
+  if (visitState === "in_icu_rescue") {
+    const icuSessionId = selfPatient?.session_id || null;
+    if (icuSessionId) {
+      try {
+        const data = await backendClient.getIcuSession(icuSessionId);
+        if (data?.patient) {
+          agentStore.syncPatient(data.patient);
+        }
+        openDoctorDialogue(buildIcuDialoguePayloadFromPatient(data?.patient || selfPatient, data?.session_id || icuSessionId));
+        return;
+      } catch (_error) {
+        // fall back to create session below
+      }
+    }
+    doctorConversationState.activeAgentType = "icu";
+    await submitCreateIcuSessionRequest();
+    return;
+  }
+
+  doctorConversationState.activeAgentType = "internal_medicine";
   const sessionId = getDoctorSessionIdFromContext();
   if (!sessionId) {
     pushStatusHint("No active doctor consultation session was found.");
@@ -3004,6 +3766,376 @@ async function openLatestSimulatedReportModal() {
     // fall through to hint
   }
   pushStatusHint("Simulated report is not ready yet.");
+}
+
+async function refreshMedicalRecordTimeline(force = false, snapshot = getCurrentSceneSnapshot()) {
+  const visit = getCurrentVisit();
+  const visitId = visit?.id || triageConversationState.visitId;
+  if (!visitId) {
+    integrationState.medicalRecordTimeline = null;
+    integrationState.lastMedicalRecordVisitId = null;
+    integrationState.lastMedicalRecordSummaryKey = "";
+    return null;
+  }
+  const summary = snapshot?.medical_record_summary || null;
+  const summaryKey = summary
+    ? `${summary.record_id || ""}|${summary.entry_count || 0}|${summary.updated_at || ""}`
+    : `none|${visitId}`;
+  const isSameTimeline = integrationState.lastMedicalRecordVisitId === visitId
+    && integrationState.lastMedicalRecordSummaryKey === summaryKey
+    && integrationState.medicalRecordTimeline;
+  if (!force && isSameTimeline) {
+    return integrationState.medicalRecordTimeline;
+  }
+  try {
+    const timeline = await backendClient.getMedicalRecordTimeline(visitId);
+    integrationState.medicalRecordTimeline = timeline;
+    integrationState.lastMedicalRecordVisitId = visitId;
+    integrationState.lastMedicalRecordSummaryKey = summaryKey;
+    return timeline;
+  } catch (_error) {
+    integrationState.medicalRecordTimeline = null;
+    integrationState.lastMedicalRecordVisitId = visitId;
+    integrationState.lastMedicalRecordSummaryKey = summaryKey;
+    return null;
+  }
+}
+
+function inferCheckoutDisposition() {
+  const entries = integrationState.medicalRecordTimeline?.entries || [];
+  const latestEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+  const prescriptions = latestEntry?.content?.prescriptions;
+  if (Array.isArray(prescriptions) && prescriptions.length > 0) {
+    return "choose_pharmacy";
+  }
+  return "choose_outpatient_treatment";
+}
+
+function getLatestMedicationList() {
+  const entries = integrationState.medicalRecordTimeline?.entries || [];
+  const latestEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+  const content = latestEntry?.content || {};
+  const prescriptions = Array.isArray(content.prescriptions) ? content.prescriptions : [];
+  if (prescriptions.length > 0) {
+    return prescriptions.map((item) => String(item).trim()).filter(Boolean);
+  }
+  const actions = Array.isArray(content.medication_or_action) ? content.medication_or_action : [];
+  return actions.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function buildRuntimeStatsText() {
+  const snapshot = integrationState.hospitalRuntime;
+  if (!snapshot) return "No runtime stats yet.";
+
+  const phaseCounts = {
+    triage: 0,
+    queue: 0,
+    consult1: 0,
+    testing: 0,
+    consult2: 0,
+    payment: 0,
+    pharmacy: 0,
+    unknown: 0,
+  };
+
+  for (const node of snapshot.nodes || []) {
+    for (const patient of node.patients || []) {
+      const visitState = String(patient.visit_state || "");
+      if (["arrived", "triaging", "waiting_followup", "triaged"].includes(visitState)) phaseCounts.triage += 1;
+      else if (["registered", "waiting_consultation"].includes(visitState)) phaseCounts.queue += 1;
+      else if (visitState === "in_consultation") phaseCounts.consult1 += 1;
+      else if (["waiting_test", "waiting_test_payment", "test_payment_completed", "in_test", "waiting_return_consultation", "results_ready"].includes(visitState)) phaseCounts.testing += 1;
+      else if (visitState === "in_second_consultation") phaseCounts.consult2 += 1;
+      else if (["diagnosis_finalized", "waiting_payment", "medical_payment_completed"].includes(visitState)) phaseCounts.payment += 1;
+      else if (visitState === "waiting_pharmacy") phaseCounts.pharmacy += 1;
+      else phaseCounts.unknown += 1;
+    }
+  }
+
+  const roomCounts = {};
+  for (const detail of buildRuntimePatientDetails(snapshot)) {
+    roomCounts[detail.roomKind] = (roomCounts[detail.roomKind] || 0) + 1;
+  }
+  const patientDetails = buildRuntimePatientDetails(snapshot);
+
+  const lines = [
+    `running: ${snapshot.running}`,
+    `mode: ${snapshot.mode}`,
+    `historical total spawned: ${snapshot.total_spawned ?? 0}`,
+    `current active total: ${snapshot.active_count ?? 0}`,
+    `dispatch count: ${snapshot.dispatch_count ?? 0}`,
+    `blocked count: ${snapshot.blocked_count ?? 0}`,
+    `last spawn: ${snapshot.last_spawn_at || "-"}`,
+    `last tick: ${snapshot.last_tick_at || "-"}`,
+    "",
+    "phase states:",
+    `triage=${phaseCounts.triage} | queue=${phaseCounts.queue} | consult1=${phaseCounts.consult1}`,
+    `testing=${phaseCounts.testing} | consult2=${phaseCounts.consult2} | payment=${phaseCounts.payment}`,
+    `pharmacy=${phaseCounts.pharmacy} | completed=${phaseCounts.completed || 0} | unknown=${phaseCounts.unknown}`,
+    "",
+    "room occupancy:",
+    Object.keys(roomCounts).length
+      ? Object.entries(roomCounts).map(([roomKind, count]) => `${roomKind}=${count}`).join(" | ")
+      : "none",
+    "",
+    "node states:",
+  ];
+
+  for (const node of snapshot.nodes || []) {
+    const summary = node.summary || {};
+    lines.push(
+      `${node.node.name}: active=${summary.active_count ?? 0} waiting=${summary.waiting_count ?? 0} called=${summary.called_count ?? 0} consult=${summary.in_consultation_count ?? 0} test=${summary.in_test_count ?? 0} finished=${summary.finished_count ?? 0}`
+    );
+  }
+
+  lines.push("", "department states:");
+  for (const department of snapshot.departments || []) {
+    const summary = department.summary || {};
+    lines.push(
+      `${department.department_name}: active=${summary.active_count ?? 0} pending_reg=${summary.pending_registration_count ?? 0} wait1=${summary.waiting_round1_count ?? 0} wait2=${summary.waiting_round2_count ?? 0} consult1=${summary.in_consultation_round1_count ?? 0} consult2=${summary.in_consultation_round2_count ?? 0} test=${summary.in_test_count ?? 0} finished=${summary.finished_count ?? 0}`
+    );
+  }
+
+  lines.push("", "patient details:");
+  if (!patientDetails.length) {
+    lines.push("none");
+  } else {
+    for (const patient of patientDetails.slice(0, 24)) {
+      lines.push(
+        `${patient.label}: room=${patient.roomKind} | stage=${patient.stage} | visit=${patient.visitState || "-"} | node=${patient.currentNodeId || "-"} -> ${patient.targetNodeId || "-"} | last=${patient.lastAction}`
+      );
+    }
+    if (patientDetails.length > 24) {
+      lines.push(`... ${patientDetails.length - 24} more patients`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function updateRuntimeStatsPanel() {
+  if (!hudRuntimeStatsContent) return;
+  const snapshot = integrationState.hospitalRuntime;
+  hudRuntimeStatsContent.innerHTML = "";
+  if (!snapshot) {
+    hudRuntimeStatsContent.textContent = "No runtime stats yet.";
+    return;
+  }
+
+  const phaseCounts = {
+    triage: 0,
+    queue: 0,
+    consult1: 0,
+    testing: 0,
+    consult2: 0,
+    payment: 0,
+    pharmacy: 0,
+    completed: 0,
+    unknown: 0,
+  };
+  for (const detail of buildRuntimePatientDetails(snapshot)) {
+    phaseCounts[detail.stage] = (phaseCounts[detail.stage] || 0) + 1;
+  }
+
+  const roomCounts = {};
+  const patientDetails = buildRuntimePatientDetails(snapshot);
+  for (const detail of patientDetails) {
+    roomCounts[detail.roomKind] = (roomCounts[detail.roomKind] || 0) + 1;
+  }
+
+  hudRuntimeStatsContent.appendChild(createRuntimeStatsBlock("Overview", [
+    `running: ${snapshot.running}`,
+    `mode: ${snapshot.mode}`,
+    `historical total spawned: ${snapshot.total_spawned ?? 0}`,
+    `current active total: ${snapshot.active_count ?? 0}`,
+    `dispatch count: ${snapshot.dispatch_count ?? 0}`,
+    `blocked count: ${snapshot.blocked_count ?? 0}`,
+    `last spawn: ${snapshot.last_spawn_at || "-"}`,
+    `last tick: ${snapshot.last_tick_at || "-"}`,
+  ]));
+
+  hudRuntimeStatsContent.appendChild(createRuntimeStatsBlock("Phase States", [
+    `triage=${phaseCounts.triage} | queue=${phaseCounts.queue} | consult1=${phaseCounts.consult1}`,
+    `testing=${phaseCounts.testing} | consult2=${phaseCounts.consult2} | payment=${phaseCounts.payment}`,
+    `pharmacy=${phaseCounts.pharmacy} | completed=${phaseCounts.completed} | unknown=${phaseCounts.unknown}`,
+  ]));
+
+  hudRuntimeStatsContent.appendChild(createRuntimeStatsBlock("Room Occupancy", [
+    Object.keys(roomCounts).length
+      ? Object.entries(roomCounts).map(([roomKind, count]) => `${roomKind}=${count}`).join(" | ")
+      : "none",
+  ]));
+
+  hudRuntimeStatsContent.appendChild(createRuntimeStatsBlock("Node States", (snapshot.nodes || []).map((node) => {
+    const summary = node.summary || {};
+    return `${node.node.name}: active=${summary.active_count ?? 0} waiting=${summary.waiting_count ?? 0} called=${summary.called_count ?? 0} consult=${summary.in_consultation_count ?? 0} test=${summary.in_test_count ?? 0} finished=${summary.finished_count ?? 0}`;
+  })));
+
+  hudRuntimeStatsContent.appendChild(createRuntimeStatsBlock("Department States", (snapshot.departments || []).map((department) => {
+    const summary = department.summary || {};
+    return `${department.department_name}: active=${summary.active_count ?? 0} pending_reg=${summary.pending_registration_count ?? 0} wait1=${summary.waiting_round1_count ?? 0} wait2=${summary.waiting_round2_count ?? 0} consult1=${summary.in_consultation_round1_count ?? 0} consult2=${summary.in_consultation_round2_count ?? 0} test=${summary.in_test_count ?? 0} finished=${summary.finished_count ?? 0}`;
+  })));
+
+  const patientBlock = document.createElement("div");
+  patientBlock.className = "hud__runtime-stats-block";
+  const patientTitle = document.createElement("div");
+  patientTitle.className = "hud__runtime-stats-title";
+  patientTitle.textContent = "Patient Details";
+  patientBlock.appendChild(patientTitle);
+
+  const patientList = document.createElement("div");
+  patientList.className = "hud__runtime-patient-list";
+  if (!patientDetails.length) {
+    const empty = document.createElement("div");
+    empty.className = "hud__runtime-stats-line";
+    empty.textContent = "none";
+    patientList.appendChild(empty);
+  } else {
+    for (const patient of patientDetails.slice(0, 24)) {
+      const card = document.createElement("div");
+      card.className = "hud__runtime-patient";
+
+      const topLine = document.createElement("div");
+      topLine.className = "hud__runtime-patient-topline";
+
+      const name = document.createElement("span");
+      name.className = "hud__runtime-patient-name";
+      name.textContent = patient.label;
+      topLine.appendChild(name);
+
+      const badge = document.createElement("span");
+      badge.className = `hud__runtime-stage ${runtimeStageClass(patient.stage)}`;
+      badge.textContent = patient.stage;
+      topLine.appendChild(badge);
+
+      card.appendChild(topLine);
+
+      const detail1 = document.createElement("div");
+      detail1.className = "hud__runtime-patient-detail";
+      detail1.textContent = `room=${patient.roomKind} | visit=${patient.visitState || "-"} | node=${patient.currentNodeId || "-"}`;
+      card.appendChild(detail1);
+
+      const detail2 = document.createElement("div");
+      detail2.className = "hud__runtime-patient-detail";
+      detail2.textContent = `target=${patient.targetNodeId || "-"} | last=${patient.lastAction} | dept=${patient.departmentStatus}`;
+      card.appendChild(detail2);
+
+      patientList.appendChild(card);
+    }
+    if (patientDetails.length > 24) {
+      const more = document.createElement("div");
+      more.className = "hud__runtime-stats-line";
+      more.textContent = `... ${patientDetails.length - 24} more patients`;
+      patientList.appendChild(more);
+    }
+  }
+  patientBlock.appendChild(patientList);
+  hudRuntimeStatsContent.appendChild(patientBlock);
+}
+
+async function refreshIntegrationRuntime(force = false) {
+  const now = performance.now();
+  if (!force && now - integrationState.lastRuntimeRefreshAt < 500) {
+    return integrationState;
+  }
+  integrationState.lastRuntimeRefreshAt = now;
+
+  const results = await Promise.allSettled([
+    backendClient.getHospitalRuntimeSnapshot(),
+    backendClient.getDepartmentRuntimeSnapshot(),
+    backendClient.listDepartments(),
+    backendClient.getOpenEmrHealth(),
+    backendClient.listIcuPatients(),
+  ]);
+
+  if (results[0].status === "fulfilled") integrationState.hospitalRuntime = results[0].value;
+  if (results[1].status === "fulfilled") integrationState.departmentRuntime = results[1].value;
+  if (results[2].status === "fulfilled") integrationState.departments = results[2].value;
+  if (results[3].status === "fulfilled") integrationState.openEmrHealth = results[3].value;
+  if (results[4].status === "fulfilled") integrationState.icuPatients = results[4].value;
+  updateRuntimeHudStatus();
+  updateRuntimeStatsPanel();
+  npcRuntime?.syncHospitalPatients?.(buildHospitalScenePatients());
+  return integrationState;
+}
+
+async function controlHospitalRuntime(action) {
+  if (integrationState.runtimeControlBusy) return;
+  integrationState.runtimeControlBusy = true;
+  updateRuntimeHudStatus();
+  try {
+    if (action === "start") {
+      integrationState.hospitalRuntime = await backendClient.startHospitalRuntime(getRuntimeStartPayloadFromHud());
+    } else if (action === "stop") {
+      integrationState.hospitalRuntime = await backendClient.stopHospitalRuntime();
+    } else if (action === "reset") {
+      integrationState.hospitalRuntime = await backendClient.resetHospitalRuntime();
+    }
+    if (action === "start" || action === "reset") {
+      runtimeDraftState.dirty = false;
+    }
+    pushStatusHint(`Hospital runtime ${action} request completed.`);
+    await refreshIntegrationRuntime(true);
+    taskBoardPresenter.syncIntegratedView({
+      snapshot: getCurrentSceneSnapshot(),
+      medicalRecordTimeline: integrationState.medicalRecordTimeline,
+      hospitalRuntime: integrationState.hospitalRuntime,
+      departmentRuntime: integrationState.departmentRuntime,
+      departments: integrationState.departments,
+      openEmrHealth: integrationState.openEmrHealth,
+      icuPatients: integrationState.icuPatients,
+    });
+  } catch (error) {
+    backendState.lastError = error?.message || `hospital runtime ${action} failed`;
+    pushStatusHint(`Hospital runtime ${action} failed: ${backendState.lastError}`);
+  } finally {
+    integrationState.runtimeControlBusy = false;
+    updateRuntimeHudStatus();
+  }
+}
+
+async function applyHospitalRuntimeConfig() {
+  runtimeDraftState.dirty = false;
+  updateRuntimeHudStatus();
+  pushStatusHint("Runtime draft config saved. Use Restart to apply it to a new run.");
+}
+
+async function performFullRestart() {
+  if (integrationState.runtimeControlBusy || backendState.submitting) return;
+  integrationState.runtimeControlBusy = true;
+  backendState.submitting = true;
+  updateRuntimeHudStatus();
+  try {
+    await backendClient.resetHospitalRuntime();
+    integrationState.hospitalRuntime = await backendClient.startHospitalRuntime(getRuntimeStartPayloadFromHud());
+    runtimeDraftState.dirty = false;
+    integrationState.medicalRecordTimeline = null;
+    integrationState.lastMedicalRecordVisitId = null;
+    integrationState.lastMedicalRecordSummaryKey = "";
+    integrationState.departmentRuntime = null;
+    integrationState.icuPatients = null;
+    integrationState.openEmrHealth = null;
+    integrationState.lastRuntimeRefreshAt = 0;
+    latestSceneSnapshot = null;
+    visitSessionState.visit = null;
+    agentStore.lastPatient = null;
+    agentStore.lastSceneSnapshot = null;
+    triageConversationState.visitId = null;
+    triageConversationState.sessionId = null;
+    doctorConversationState.visitId = null;
+    doctorConversationState.sessionId = null;
+    localStorage.setItem(SESSION_STORAGE_KEYS.lastClientId, localStorage.getItem(SESSION_STORAGE_KEYS.activeClientId) || "");
+    localStorage.setItem(SESSION_STORAGE_KEYS.activeClientId, crypto.randomUUID());
+    pushStatusHint("Restarted hospital runtime and player session.");
+    window.location.search = "?fresh=1";
+  } catch (error) {
+    backendState.lastError = error?.message || "restart failed";
+    pushStatusHint(`Restart failed: ${backendState.lastError}`);
+  } finally {
+    integrationState.runtimeControlBusy = false;
+    backendState.submitting = false;
+    updateRuntimeHudStatus();
+  }
 }
 
 async function submitRegistrationRequest(registrationPayload) {
@@ -3111,10 +4243,110 @@ async function submitCompleteAuxiliaryTestRequest() {
   }
 }
 
+async function submitReadyPaymentRequest() {
+  if (backendState.submitting) return;
+  const visitId = getCurrentVisit()?.id || triageConversationState.visitId;
+  if (!visitId) {
+    pushStatusHint("Payment step unavailable: visit session is missing.");
+    return;
+  }
+
+  backendState.submitting = true;
+  try {
+    const visitState = getCurrentVisit()?.state || getCurrentSelfPatient()?.visit_state || "";
+    if (visitState === "diagnosis_finalized") {
+      await backendClient.readyPayment(visitId);
+      pushStatusHint("Medical payment requested. Proceed to checkout.");
+    } else if (visitState === "waiting_payment") {
+      await triggerEncounterEvent("pay_medical", { source: "scene.registration.payment_e_key" });
+      await triggerEncounterEvent("plan_disposition", { source: "scene.registration.payment_e_key" });
+      const dispositionEvent = inferCheckoutDisposition();
+      await triggerEncounterEvent(dispositionEvent, { source: "scene.registration.payment_e_key" });
+      await triggerEncounterEvent("complete_visit", { source: "scene.registration.payment_e_key" });
+      pushStatusHint(dispositionEvent === "choose_pharmacy" ? "Checkout completed. Prescription pickup recorded." : "Checkout completed.");
+    } else {
+      pushStatusHint("Payment is unavailable in the current visit state.");
+      return;
+    }
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.lastError = error?.message || "payment transition failed";
+    pushStatusHint(`Payment transition failed: ${backendState.lastError}`);
+  } finally {
+    backendState.submitting = false;
+  }
+}
+
+async function submitPharmacyPickupRequest() {
+  if (backendState.submitting || !canInteractWithPharmacyPickup()) return;
+  const visitState = getCurrentVisit()?.state || getCurrentSelfPatient()?.visit_state || "";
+  if (visitState !== "waiting_pharmacy") {
+    pushStatusHint("Pharmacy pickup is unavailable in the current visit state.");
+    return;
+  }
+
+  if (!pharmacyPickupUi.reviewed) {
+    openPharmacyPickupModal();
+    return;
+  }
+
+  backendState.submitting = true;
+  try {
+    await triggerEncounterEvent("complete_visit", { source: "scene.pharmacy_pickup.e_key" });
+    pushStatusHint("Medication dispensed. Visit completed.");
+    closePharmacyPickupModal();
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.lastError = error?.message || "pharmacy pickup failed";
+    pushStatusHint(`Pharmacy pickup failed: ${backendState.lastError}`);
+  } finally {
+    backendState.submitting = false;
+  }
+}
+
+async function submitCreateIcuSessionRequest() {
+  if (backendState.submitting || doctorConversationState.sending) return;
+  const selfPatient = getCurrentSelfPatient();
+  if (!selfPatient) {
+    pushStatusHint("ICU consultation cannot start: patient context is missing.");
+    return;
+  }
+
+  backendState.submitting = true;
+  try {
+    const data = await backendClient.createIcuSession({
+      patient_id: selfPatient.id,
+      name: selfPatient.name || "You (Player)",
+      symptoms: selfPatient?.triage?.note || "High risk ICU referral",
+      chief_complaint: selfPatient?.triage?.note || "High risk ICU referral",
+      location: "ICU",
+      floor: 1,
+    });
+    doctorConversationState.sessionId = data.session_id || doctorConversationState.sessionId;
+    doctorConversationState.activeAgentType = "icu";
+    if (data?.patient) {
+      agentStore.syncPatient(data.patient);
+    }
+    openDoctorDialogue(buildIcuDialoguePayloadFromPatient(data?.patient || selfPatient, data?.session_id || null));
+    pushStatusHint("ICU consultation started.");
+    await pollBackendStatuses(true);
+  } catch (error) {
+    backendState.lastError = error?.message || "icu consultation create failed";
+    pushStatusHint(`ICU consultation failed: ${backendState.lastError}`);
+  } finally {
+    backendState.submitting = false;
+  }
+}
+
 async function submitCreateDoctorSessionRequest() {
   if (backendState.submitting || doctorConversationState.sending) return;
   const selfPatient = getCurrentSelfPatient();
   const visit = getCurrentVisit();
+  const visitState = visit?.state || selfPatient?.visit_state || "";
+  if (visitState === "in_icu_rescue") {
+    await submitCreateIcuSessionRequest();
+    return;
+  }
   const visitId = visit?.id || selfPatient?.visit_id || doctorConversationState.visitId;
   if (!visitId) {
     pushStatusHint("Doctor consultation cannot start: visit session is missing.");
@@ -3123,8 +4355,8 @@ async function submitCreateDoctorSessionRequest() {
 
   backendState.submitting = true;
   try {
-    const visitState = visit?.state || selfPatient?.visit_state || "";
     const round = visitState === "in_second_consultation" ? 2 : 1;
+    doctorConversationState.activeAgentType = "internal_medicine";
     const data = await backendClient.createInternalMedicineSession({
       patient_id: doctorConversationState.patientId,
       name: "You (Player)",
@@ -3163,16 +4395,41 @@ function submitEActionRequest() {
     return;
   }
 
-  if (microScene.mode === "registration_room") {
+  if (microScene.mode === "indoor_room") {
     if (canInteractWithRegistrationRoomExit()) {
       leaveRegistrationRoom();
       return;
     }
-    if (canInteractWithRegistrationRoomDesk()) {
+    const activeIndoorRoom = microScene.indoor.activeRoomKind;
+    if (activeIndoorRoom === "registration" && canInteractWithRegistrationRoomDesk()) {
       openRegistrationModal();
-    } else {
-      pushStatusHint("Move closer to the registration desk or exit door.");
+      return;
     }
+    if (activeIndoorRoom === "triage" && canInteractWithTriageDesk()) {
+      if (hasStartedTriageConversation()) openExistingTriageDialogue();
+      else openTriageModal();
+      return;
+    }
+    if (activeIndoorRoom === "doctor_entry" && canInteractWithDoctorEntry()) {
+      const selfPatient = getCurrentSelfPatient();
+      const visit = getCurrentVisit();
+      if (hasStartedDoctorConversation(selfPatient, visit)) openExistingDoctorDialogue();
+      else submitCreateDoctorSessionRequest();
+      return;
+    }
+    if (activeIndoorRoom === "lab" && canInteractWithLab()) {
+      submitCompleteAuxiliaryTestRequest();
+      return;
+    }
+    if (activeIndoorRoom === "pharmacy_pickup" && canInteractWithPharmacyPickup()) {
+      submitPharmacyPickupRequest();
+      return;
+    }
+    if (activeIndoorRoom === "icu" && canInteractWithDoctorEntry()) {
+      submitCreateDoctorSessionRequest();
+      return;
+    }
+    pushStatusHint("Move closer to the room workstation or exit door.");
     return;
   }
 
@@ -3204,16 +4461,31 @@ function submitEActionRequest() {
   if (canInteractWithRegistrationDesk()) {
     const selfPatient = getCurrentSelfPatient();
     const visitState = getCurrentVisit()?.state || selfPatient?.visit_state || "";
+    if (visitState === "diagnosis_finalized" || visitState === "waiting_payment") {
+      submitReadyPaymentRequest();
+      return;
+    }
     if (visitState !== "triaged") {
       pushStatusHint("Finish triage before entering registration.");
       return;
     }
-    enterRegistrationRoom();
+    enterIndoorRoom("registration");
+    return;
+  }
+
+  const nearbyDoor = nearestDoor();
+  if (nearbyDoor && nearbyDoor.roomKind && indoorRoomTemplates[nearbyDoor.roomKind]) {
+    enterIndoorRoom(nearbyDoor.roomKind);
     return;
   }
 
   if (canInteractWithLab()) {
     submitCompleteAuxiliaryTestRequest();
+    return;
+  }
+
+  if (canInteractWithPharmacyPickup()) {
+    submitPharmacyPickupRequest();
     return;
   }
 
@@ -3234,6 +4506,10 @@ function submitEActionRequest() {
 
     if (visitState === "waiting_payment" || visitState === "diagnosis_finalized") {
       pushStatusHint("Consultation already completed. Proceed to payment.");
+      return;
+    }
+    if (visitState === "waiting_pharmacy") {
+      pushStatusHint("Proceed to the pharmacy pickup room.");
       return;
     }
     if (visitState === "waiting_second_consultation") {
@@ -3320,6 +4596,20 @@ async function pollBackendStatuses(force = false) {
         // keep polling resilient when progress endpoint is temporarily unavailable
       }
     }
+
+    await Promise.all([
+      refreshMedicalRecordTimeline(force, snapshot),
+      refreshIntegrationRuntime(force),
+    ]);
+    taskBoardPresenter.syncIntegratedView({
+      snapshot,
+      medicalRecordTimeline: integrationState.medicalRecordTimeline,
+      hospitalRuntime: integrationState.hospitalRuntime,
+      departmentRuntime: integrationState.departmentRuntime,
+      departments: integrationState.departments,
+      openEmrHealth: integrationState.openEmrHealth,
+      icuPatients: integrationState.icuPatients,
+    });
 
     backendState.connected = true;
     backendState.lastError = "";
@@ -3433,18 +4723,30 @@ async function submitDoctorDialogueReply() {
   doctorConversationState.sending = true;
   if (doctorDialogueUi.sendBtn) doctorDialogueUi.sendBtn.disabled = true;
   try {
-    const data = await backendClient.sendInternalMedicineMessage(doctorConversationState.sessionId, {
-      patient_id: doctorConversationState.patientId,
-      name: "You (Player)",
-      visit_id: doctorConversationState.visitId || getCurrentVisit()?.id || null,
-      message,
-    });
+    const selfPatient = getCurrentSelfPatient();
+    const visitState = getCurrentVisit()?.state || selfPatient?.visit_state || "";
+    const data = visitState === "in_icu_rescue"
+      ? await backendClient.sendIcuMessage(doctorConversationState.sessionId, {
+        patient_id: doctorConversationState.patientId,
+        name: "You (Player)",
+        message,
+      })
+      : await backendClient.sendInternalMedicineMessage(doctorConversationState.sessionId, {
+        patient_id: doctorConversationState.patientId,
+        name: "You (Player)",
+        visit_id: doctorConversationState.visitId || getCurrentVisit()?.id || null,
+        message,
+      });
     doctorDialogueUi.input.value = "";
     doctorConversationState.visitId = data.visit_id || doctorConversationState.visitId;
     if (data.patient) {
       agentStore.syncPatient(data.patient);
     }
-    syncDoctorDialogue(data);
+    syncDoctorDialogue(
+      visitState === "in_icu_rescue"
+        ? buildIcuDialoguePayloadFromPatient(data.patient, data.session_id || doctorConversationState.sessionId)
+        : data
+    );
     await pollBackendStatuses(true);
   } catch (error) {
     backendState.lastError = error?.message || "doctor dialogue failed";
@@ -3456,7 +4758,7 @@ async function submitDoctorDialogueReply() {
     if (doctorDialogueUi.sendBtn) {
       const patient = getCurrentSelfPatient();
       const visitState = getCurrentVisit()?.state || patient?.visit_state;
-      const isClosed = !(isInitialConsultationState(visitState) || isSecondConsultationState(visitState));
+      const isClosed = !(visitState === "in_icu_rescue" || isInitialConsultationState(visitState) || isSecondConsultationState(visitState));
       doctorDialogueUi.sendBtn.disabled = isClosed;
     }
   }
@@ -3491,6 +4793,7 @@ const npcRuntime = createNpcRuntime({
   canMoveTo,
   canPathfindTo: canMoveTo,
   project,
+  gatePoint: mainGatePoint,
   constants: {
     CHARACTER_BODY_HEIGHT,
     CHARACTER_FOOT_RADIUS,
@@ -3513,7 +4816,9 @@ update = function modulePatchedUpdate(delta, nowMs) {
 const __moduleRender = render;
 render = function modulePatchedRender() {
   __moduleRender();
-  queueRuntime.draw(ctx, canvas);
+  if (overlayState.queueOpen) {
+    queueRuntime.draw(ctx, canvas);
+  }
 };
 
 let lastTime = performance.now();
@@ -3600,6 +4905,14 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (pharmacyPickupUi.open) {
+    if (event.code === "Escape" && !event.repeat) {
+      closePharmacyPickupModal();
+      event.preventDefault();
+    }
+    return;
+  }
+
   if (triageDialogueUi.open) {
     if (event.code === "Escape" && !event.repeat) {
       closeTriageDialogue();
@@ -3635,7 +4948,7 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     return;
   }
-  if (event.code === "KeyQ" && !event.repeat && microScene.mode === "registration_room") {
+  if (event.code === "KeyQ" && !event.repeat && microScene.mode === "indoor_room") {
     leaveRegistrationRoom();
     event.preventDefault();
   }
@@ -3711,7 +5024,7 @@ if (registrationUi.modal) {
 if (restartConfirmUi.okBtn) {
   restartConfirmUi.okBtn.addEventListener("click", () => {
     closeRestartConfirmModal();
-    window.location.search = "?fresh=1";
+    performFullRestart();
   });
 }
 
@@ -3777,6 +5090,24 @@ if (testReportUi.modal) {
   });
 }
 
+if (pharmacyPickupUi.closeBtn) {
+  pharmacyPickupUi.closeBtn.addEventListener("click", () => {
+    closePharmacyPickupModal();
+  });
+}
+
+if (pharmacyPickupUi.confirmBtn) {
+  pharmacyPickupUi.confirmBtn.addEventListener("click", () => {
+    submitPharmacyPickupRequest();
+  });
+}
+
+if (pharmacyPickupUi.modal) {
+  pharmacyPickupUi.modal.addEventListener("click", (event) => {
+    if (event.target === pharmacyPickupUi.modal) closePharmacyPickupModal();
+  });
+}
+
 if (npcDialogueUi.closeBtn) {
   npcDialogueUi.closeBtn.addEventListener("click", () => {
     closeNpcDialogueModal();
@@ -3815,6 +5146,8 @@ if (triageUi.fields.pain && triageUi.painDisplay) {
 }
 
 bindHudControls();
+bindRuntimePanelDrag();
+bindRuntimeStatsPanelDrag();
 updateFloorHud();
 eventSubscriber.connect();
 pollBackendStatuses(true);

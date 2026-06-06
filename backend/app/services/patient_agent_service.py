@@ -26,9 +26,10 @@ class PatientAgentService:
         patient_id: str,
         visit_id: str | None = None,
         seed: str | None = None,
+        department_id: str | None = None,
         mode: str = "intelligent_agent",
     ) -> tuple[dict, PatientCaseCard]:
-        case_card = self.agent.generate_case(seed=seed)
+        case_card = self.agent.generate_case(seed=seed, department_id=department_id)
         row = self.case_repo.create(
             patient_id=patient_id,
             visit_id=visit_id,

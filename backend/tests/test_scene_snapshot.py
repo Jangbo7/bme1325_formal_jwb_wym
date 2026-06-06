@@ -110,7 +110,7 @@ def test_scene_snapshot_reflects_triage_registration_and_queue_wait(tmp_path, mo
     assert registered_snapshot["active_queue_ticket"]["status"] == "waiting"
     assert registered_snapshot["ui_flags"]["can_progress_visit"] is False
     assert 0 <= registered_snapshot["timers"]["queue_wait_seconds_remaining"] <= 10
-    assert any(queue["department_name"] == "General Medicine" for queue in registered_snapshot["queues"])
+    assert any(queue["department_name"] == "Internal Medicine" for queue in registered_snapshot["queues"])
 
     visit_repo = client.app.state.container["visit_repo"]
     visit_row = visit_repo.get(visit_id)

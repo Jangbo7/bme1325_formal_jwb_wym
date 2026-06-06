@@ -37,6 +37,7 @@ from app.services.consultation_registry import (
     list_consultation_agents,
     resolve_consultation_agent_for_visit,
 )
+from app.services.debug_department_policy import resolve_locked_debug_department
 
 
 def now_iso() -> str:
@@ -819,11 +820,14 @@ class TriageService:
         visit_for_assignment = self.visit_repo.get(visit_id) if visit_id else None
         preassigned_id = (visit_for_assignment or {}).get("assigned_department_id")
         preassigned_name = (visit_for_assignment or {}).get("assigned_department_name")
+        locked_department = resolve_locked_debug_department(visit_for_assignment)
         if missing_fields:
             assigned_department = {
                 "id": preassigned_id,
                 "label": preassigned_name,
             } if preassigned_id and preassigned_name else None
+        elif locked_department is not None:
+            assigned_department = locked_department
         elif preassigned_id and preassigned_name and preassigned_id == resolve_department(
             triage_result.get("department"),
             triage_result.get("priority", "M"),

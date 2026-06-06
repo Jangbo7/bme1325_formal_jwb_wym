@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.api.routes.department_runtime_debug import _render_initial_department_snapshot
 
 
 def create_test_client(tmp_path, monkeypatch):
@@ -58,6 +59,35 @@ def get_patient(snapshot: dict, patient_id: str) -> dict:
     raise AssertionError(f"patient {patient_id} not found in runtime snapshot")
 
 
+def seed_surgery_patient_runtime(client: TestClient, patient_id: str, *, visit_state: str, patient_state: str) -> str:
+    container = client.app.state.container
+    encounter = container["encounter_orchestration_service"].create_or_get_encounter(
+        patient_id=patient_id,
+        patient_name="Surgery Player",
+    )
+    visit_id = encounter["id"]
+    container["visit_repo"].update_visit(
+        visit_id,
+        state=visit_state,
+        assigned_department_id="surgery",
+        assigned_department_name="Surgery",
+        active_agent_type="surgery",
+        current_department="Surgery",
+    )
+    container["patient_repo"].update_patient(
+        patient_id,
+        name="Surgery Player",
+        lifecycle_state=patient_state,
+        location="Surgery",
+        visit_id=visit_id,
+    )
+    container["department_runtime_service"].sync_patient_runtime(
+        patient_id=patient_id,
+        visit_id=visit_id,
+    )
+    return visit_id
+
+
 def test_department_runtime_debug_page_is_available(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     response = client.get("/department-runtime-debug")
@@ -65,6 +95,74 @@ def test_department_runtime_debug_page_is_available(tmp_path, monkeypatch):
     assert "Department Runtime Debug" in response.text
     assert "legacy_probabilistic_llm" in response.text
     assert "LLM Probability" in response.text
+
+
+def test_department_runtime_page_renders_nested_patient_details():
+    stats_html, departments_html, unassigned_html, _display = _render_initial_department_snapshot(
+        {
+            "running": False,
+            "mode": "legacy_template",
+            "active_count": 1,
+            "total_spawned": 1,
+            "llm_probability": None,
+            "dispatch_count": 0,
+            "blocked_count": 0,
+            "last_spawn_at": None,
+            "last_tick_at": None,
+            "departments": [
+                {
+                    "department_id": "internal",
+                    "department_name": "Internal Medicine",
+                    "department_agent_enabled": True,
+                    "department_capability_class": "agent_enabled",
+                    "summary": {
+                        "active_count": 1,
+                        "pending_registration_count": 0,
+                        "waiting_round1_count": 1,
+                        "waiting_round2_count": 0,
+                        "called_round1_count": 0,
+                        "called_round2_count": 0,
+                        "in_consultation_round1_count": 0,
+                        "in_consultation_round2_count": 0,
+                        "in_test_count": 0,
+                        "finished_count": 0,
+                        "updated_at": "2026-06-06T00:00:00+00:00",
+                    },
+                    "doctor_slots": [],
+                    "rooms": [],
+                    "patients": [
+                        {
+                            "patient_id": "P-TEST-001",
+                            "visit_id": "V-TEST-001",
+                            "npc_id": "npc-test-001",
+                            "visit_state": "in_consultation",
+                            "department_status": "in_consultation_round1",
+                            "department_flow_status": "in_consultation_round1",
+                            "execution_runner_kind": "legacy",
+                            "department_capability_class": "script_only",
+                            "current_room_name": "Internal Room 1",
+                            "current_room_node_id": "internal_room_1",
+                            "queue_kind": "initial_consultation",
+                            "current_counterparty": "doctor",
+                            "current_dialogue": {
+                                "speaker": "patient",
+                                "message": "I still have cough.",
+                                "direction": "outbound",
+                            },
+                            "updated_at": "2026-06-06T00:00:01+00:00",
+                        }
+                    ],
+                }
+            ],
+            "unassigned_patients": [],
+        }
+    )
+
+    assert "Patient Details" in departments_html
+    assert 'data-detail-id="patient-V-TEST-001"' in departments_html
+    assert "I still have cough." in departments_html
+    assert stats_html
+    assert unassigned_html == ""
 
 
 def test_department_runtime_debug_start_stop_reset_routes(tmp_path, monkeypatch):
@@ -132,7 +230,7 @@ def test_department_runtime_snapshot_tracks_initial_and_return_queue(tmp_path, m
     assert visit_after_triage_resp.status_code == 200
     visit_after_triage = get_data(visit_after_triage_resp)["visit"]
     assert visit_after_triage["assigned_department_id"] == "internal"
-    assert visit_after_triage["assigned_department_name"] == "General Medicine"
+    assert visit_after_triage["assigned_department_name"] == "Internal Medicine"
 
     triage_snapshot = get_data(client.get("/api/v1/department-runtime-debug/snapshot", headers=api_headers()))
     internal_after_triage = get_department(triage_snapshot, "internal")
@@ -240,3 +338,53 @@ def test_department_runtime_snapshot_tracks_initial_and_return_queue(tmp_path, m
     assert round2_patient["department_flow_status"] == "in_consultation_round2"
     assert round2_patient["department_status"] == "in_consultation_round2"
     assert round2_patient["department_round"] == "round2"
+
+
+def test_department_runtime_snapshot_assigns_surgery_doctor_slot_and_consult_room(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    patient_id = "P-SURGERY-001"
+    seed_surgery_patient_runtime(
+        client,
+        patient_id,
+        visit_state="in_consultation",
+        patient_state="in_consultation",
+    )
+
+    snapshot = get_data(client.get("/api/v1/department-runtime-debug/snapshot", headers=api_headers()))
+    surgery_department = get_department(snapshot, "surgery")
+    patient = get_patient(snapshot, patient_id)
+
+    assert patient["assigned_department_id"] == "surgery"
+    assert patient["assigned_doctor_slot_id"] in {"surgery_doctor_slot_1", "surgery_doctor_slot_2"}
+    assert patient["assigned_doctor_slot_name"] in {"Surgery Doctor Slot 1", "Surgery Doctor Slot 2"}
+    assert patient["current_room_node_id"] in {"surgery_consult_room_1", "surgery_consult_room_2"}
+    assert patient["room_type"] == "consultation"
+    assert surgery_department["doctor_slots"]
+    assert surgery_department["rooms"]
+    assert any(item["active_count"] == 1 for item in surgery_department["doctor_slots"])
+    assert any(item["active_count"] == 1 for item in surgery_department["rooms"] if item["room_type"] == "consultation")
+
+
+def test_department_runtime_snapshot_maps_surgery_procedure_stage_to_department_room(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    patient_id = "P-SURGERY-002"
+    visit_id = seed_surgery_patient_runtime(
+        client,
+        patient_id,
+        visit_state="waiting_outpatient_procedure",
+        patient_state="in_test",
+    )
+
+    snapshot = get_data(client.get("/api/v1/department-runtime-debug/snapshot", headers=api_headers()))
+    surgery_department = get_department(snapshot, "surgery")
+    patient = get_patient(snapshot, patient_id)
+
+    assert patient["visit_id"] == visit_id
+    assert patient["assigned_department_id"] == "surgery"
+    assert patient["current_room_node_id"] == "surgery_outpatient_procedure_room"
+    assert patient["current_room_name"] == "Surgery Outpatient Procedure Room"
+    assert patient["room_type"] == "outpatient_procedure"
+    assert any(
+        item["node_id"] == "surgery_outpatient_procedure_room" and item["active_count"] == 1
+        for item in surgery_department["rooms"]
+    )

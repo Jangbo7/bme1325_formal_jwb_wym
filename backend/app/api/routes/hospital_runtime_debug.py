@@ -72,12 +72,14 @@ def hospital_runtime_debug_page():
       document.getElementById("nodes").innerHTML = (s.nodes||[]).map(n=>`
         <div class="card">
           <div><strong>${n.node.name}</strong> <span class="small">(${n.node.node_id})</span></div>
+          <div class="small">type=${n.node.node_type} dept=${n.node.department_id || "-"} room_type=${n.node.room_type || "-"} capacity=${n.node.capacity ?? "-"}</div>
           <div class="small">active=${n.summary.active_count} waiting=${n.summary.waiting_count} called=${n.summary.called_count} consult=${n.summary.in_consultation_count} test=${n.summary.in_test_count} finished=${n.summary.finished_count}</div>
           <div class="small">patients=${n.patients.length}</div>
         </div>`).join("");
       document.getElementById("departments").innerHTML = (s.departments||[]).map(d=>`
         <div class="card">
           <div><strong>${d.department_name}</strong></div>
+          <div class="small">capability=${d.department_capability_class || "-"} agent=${d.department_agent_enabled}</div>
           <div class="small">active=${d.summary.active_count} wait1=${d.summary.waiting_round1_count} wait2=${d.summary.waiting_round2_count} consult1=${d.summary.in_consultation_round1_count} consult2=${d.summary.in_consultation_round2_count} test=${d.summary.in_test_count} finished=${d.summary.finished_count}</div>
           <div class="small">patients=${d.patients.length}</div>
         </div>`).join("");

@@ -46,7 +46,7 @@ _PROFILES = {
         chronic_conditions=[],
         vitals={"heart_rate": 92, "temp_c": 37.8, "pain_score": 3},
         target_department_id="internal",
-        target_department_name="General Medicine",
+        target_department_name="Internal Medicine",
         triage_answers={
             "chief_complaint": "My main problem is cough with a mild fever.",
             "symptoms": "I have cough, sore throat, and a runny nose.",

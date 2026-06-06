@@ -8,6 +8,11 @@ class DepartmentPatientState(BaseModel):
     visit_id: str
     assigned_department_id: str
     assigned_department_name: str
+    execution_runner_kind: str | None = None
+    department_agent_enabled: bool = False
+    department_capability_class: str | None = None
+    assigned_doctor_slot_id: str | None = None
+    assigned_doctor_slot_name: str | None = None
     queue_kind: str | None = None
     department_status: str
     department_round: str = "none"
@@ -19,6 +24,9 @@ class DepartmentPatientState(BaseModel):
     active_agent_type: str | None = None
     current_node: str | None = None
     current_node_id: str | None = None
+    current_room_node_id: str | None = None
+    current_room_name: str | None = None
+    room_type: str | None = None
     target_node_id: str | None = None
     last_transition_action: str | None = None
     transition_version: str | None = None
@@ -62,10 +70,31 @@ class DepartmentRuntimeSummaryView(DepartmentRuntimeState):
     pass
 
 
+class DepartmentDoctorSlotRuntimeView(BaseModel):
+    slot_id: str
+    label: str
+    capacity: int
+    active_count: int
+    patient_ids: list[str] = Field(default_factory=list)
+
+
+class DepartmentRoomRuntimeView(BaseModel):
+    node_id: str
+    name: str
+    room_type: str
+    capacity: int
+    active_count: int
+    patient_ids: list[str] = Field(default_factory=list)
+
+
 class DepartmentRuntimeDepartmentView(BaseModel):
     department_id: str
     department_name: str
+    department_agent_enabled: bool = False
+    department_capability_class: str = "script_only"
     summary: DepartmentRuntimeSummaryView
+    doctor_slots: list[DepartmentDoctorSlotRuntimeView] = Field(default_factory=list)
+    rooms: list[DepartmentRoomRuntimeView] = Field(default_factory=list)
     patients: list[DepartmentRuntimePatientView] = Field(default_factory=list)
 
 

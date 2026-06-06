@@ -443,9 +443,10 @@ function buildPathWaypoints(startPoint, targetStop, canPathfindTo) {
   return waypoints;
 }
 
-export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathfindTo, project, constants }) {
+export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathfindTo, project, constants, gatePoint }) {
   const { CHARACTER_FOOT_RADIUS } = constants;
   const graph = createRoomGraph(rooms, roomBounds, doors);
+  const runtimeGatePoint = gatePoint || { x: 14 * 32, y: 18 * 32, floor: 1 };
   const roomDoorsById = new Map();
   for (const door of doors) {
     const room = rooms[door.roomIndex];
@@ -531,6 +532,39 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
     };
 
     if (!targetRoom) {
+      if (currentState.room) {
+        const exitDoor = chooseDoorForRoom(currentState.room, targetStop);
+        const exitTransit = exitDoor ? buildDoorTransitPoints(exitDoor, currentState.room) : null;
+        if (exitTransit) {
+          const route = [];
+          appendWaypoints(route, buildPathWaypoints(startPoint, {
+            x: exitTransit.inside.x,
+            y: exitTransit.inside.y,
+            floor: currentState.room.floor,
+            roomId: currentState.roomId,
+            roomKind: currentState.roomKind,
+            mode: "door_approach",
+            doorId: exitDoor.id,
+          }, pathfinder));
+          appendWaypoint(route, {
+            x: exitTransit.outside.x,
+            y: exitTransit.outside.y,
+            floor: currentState.room.floor,
+            roomId: groundRoomId(currentState.room.floor),
+            roomKind: "grounds",
+            mode: "door_exit",
+            doorId: exitDoor.id,
+          });
+          appendWaypoints(route, buildPathWaypoints({
+            x: exitTransit.outside.x,
+            y: exitTransit.outside.y,
+            floor: currentState.room.floor,
+            roomId: groundRoomId(currentState.room.floor),
+            roomKind: "grounds",
+          }, targetStop, pathfinder));
+          return route;
+        }
+      }
       return buildPathWaypoints(startPoint, targetStop, pathfinder);
     }
 
@@ -670,6 +704,131 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
   }
 
   const npcs = Array.from({ length: 9 }, (_, index) => createNpc(index));
+  const hospitalNpcs = new Map();
+  let hospitalSpawnSequence = 0;
+
+  function allNpcs() {
+    return [...npcs, ...hospitalNpcs.values()];
+  }
+
+  function createHospitalNpc(patient) {
+    const spawnOffsets = [
+      { x: 0, y: 0 },
+      { x: 18, y: 12 },
+      { x: -18, y: 14 },
+      { x: 24, y: -8 },
+      { x: -24, y: -6 },
+    ];
+    const offset = spawnOffsets[hospitalSpawnSequence % spawnOffsets.length];
+    hospitalSpawnSequence += 1;
+    const candidate = {
+      x: runtimeGatePoint.x + offset.x,
+      y: runtimeGatePoint.y + offset.y,
+    };
+    const safe = findNearbyWalkablePoint(candidate, runtimeGatePoint.floor);
+    const roomState = detectRoomState(safe.x, safe.y, runtimeGatePoint.floor, rooms, roomBounds);
+    return {
+      id: `hospital-${patient.patientId}`,
+      patientId: patient.patientId,
+      floor: runtimeGatePoint.floor,
+      x: safe.x,
+      y: safe.y,
+      currentRoomId: roomState.roomId,
+      routePattern: [],
+      routeStep: 0,
+      path: [],
+      state: "idle",
+      stateTimerMs: 0,
+      speed: 48,
+      roomKind: roomState.roomKind,
+      bodyColor: patient.priority === "H" ? "#d85e5e" : patient.priority === "L" ? "#76c59d" : "#8db1e8",
+      accentColor: patient.priority === "H" ? "#ffd6d6" : patient.priority === "L" ? "#bdeccf" : "#cddcff",
+      headColor: "#f0c9b7",
+      hairColor: "#5d4128",
+      facing: "right",
+      waitLabel: patient.displayLabel || "Patient",
+      isGuideNpc: false,
+      isHospitalNpc: true,
+      targetRoomId: null,
+      targetRoomKind: null,
+      blockedMs: 0,
+      removeOnArrival: false,
+      statusSummary: "",
+      backendTargetKey: "",
+    };
+  }
+
+  function assignDestinationToPoint(npc, point, { roomKind = "grounds", removeOnArrival = false } = {}) {
+    const targetRoom = roomKind && roomKind !== "grounds" ? resolveRoomByKind(roomKind, graph) : null;
+    const targetStop = {
+      x: point.x,
+      y: point.y,
+      floor: point.floor,
+      roomId: targetRoom ? roomId(targetRoom) : groundRoomId(point.floor),
+      roomKind,
+      room: targetRoom,
+      bounds: targetRoom ? (graph.boundsById.get(roomId(targetRoom)) || roomBounds(targetRoom)) : null,
+    };
+    npc.path = buildDoorAwareRoute(npc, targetRoom, targetStop);
+    npc.state = npc.path.length ? "walking" : "idle";
+    npc.targetRoomId = targetStop.roomId;
+    npc.targetRoomKind = roomKind;
+    npc.removeOnArrival = removeOnArrival;
+    npc.blockedMs = 0;
+  }
+
+  function assignHospitalNpcDestination(npc, patient) {
+    npc.waitLabel = patient.displayLabel || npc.waitLabel;
+    npc.speed = patient.finished ? 62 : 48;
+    npc.statusSummary = patient.statusSummary || "";
+    const nextTargetKey = `${patient.roomKind}|${patient.finished ? "finished" : "active"}|${patient.visitState}|${patient.currentNodeId || ""}|${patient.targetNodeId || ""}`;
+    if (npc.backendTargetKey === nextTargetKey) return;
+    npc.backendTargetKey = nextTargetKey;
+    if (patient.finished) {
+      assignDestinationToPoint(
+        npc,
+        { x: runtimeGatePoint.x, y: runtimeGatePoint.y, floor: runtimeGatePoint.floor },
+        { roomKind: "grounds", removeOnArrival: true }
+      );
+      return;
+    }
+    const targetRoom = resolveRoomByKind(patient.roomKind, graph);
+    if (!targetRoom) return;
+    const targetBounds = graph.boundsById.get(roomId(targetRoom)) || roomBounds(targetRoom);
+    const targetStop = createRoomStop(targetRoom, targetBounds, canMoveTo);
+    npc.path = buildDoorAwareRoute(npc, targetRoom, targetStop);
+    npc.state = npc.path.length ? "walking" : "idle";
+    npc.targetRoomId = roomId(targetRoom);
+    npc.targetRoomKind = patient.roomKind;
+    npc.removeOnArrival = false;
+    npc.blockedMs = 0;
+  }
+
+  function syncHospitalPatients(scenePatients = []) {
+    const seen = new Set();
+    for (const patient of scenePatients) {
+      const patientId = String(patient.patientId || "");
+      if (!patientId) continue;
+      seen.add(patientId);
+      let npc = hospitalNpcs.get(patientId);
+      if (!npc) {
+        npc = createHospitalNpc(patient);
+        hospitalNpcs.set(patientId, npc);
+      }
+      assignHospitalNpcDestination(npc, patient);
+    }
+
+    for (const [patientId, npc] of hospitalNpcs.entries()) {
+      if (seen.has(patientId)) continue;
+      if (!npc.removeOnArrival) {
+        assignDestinationToPoint(
+          npc,
+          { x: runtimeGatePoint.x, y: runtimeGatePoint.y, floor: runtimeGatePoint.floor },
+          { roomKind: "grounds", removeOnArrival: true }
+        );
+      }
+    }
+  }
 
   function assignNextDestination(npc) {
     if (!npc.routePattern.length) return;
@@ -701,6 +860,10 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
 
   function arriveAtWaypoint(npc) {
     if (!npc.path.length) {
+      if (npc.isHospitalNpc && npc.removeOnArrival) {
+        hospitalNpcs.delete(npc.patientId);
+        return;
+      }
       npc.state = "pausing";
       npc.stateTimerMs = 1200 + Math.random() * 2200;
       npc.waitLabel = npc.isGuideNpc ? `At ${npc.roomKind}` : npc.roomKind === "hall" ? "Waiting" : "Check-in";
@@ -714,17 +877,24 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
     npc.currentRoomId = waypoint.roomId || roomState.roomId || npc.currentRoomId;
     npc.roomKind = waypoint.roomKind || roomState.roomKind || npc.roomKind;
     if (!npc.path.length) {
+      if (npc.isHospitalNpc && npc.removeOnArrival) {
+        hospitalNpcs.delete(npc.patientId);
+        return;
+      }
       npc.state = "pausing";
       npc.stateTimerMs = 1200 + Math.random() * 2200;
       npc.waitLabel = npc.isGuideNpc ? `At ${npc.roomKind}` : npc.roomKind === "hall" ? "Waiting" : "Check-in";
       npc.targetRoomId = null;
-        npc.targetRoomKind = null;
-        npc.blockedMs = 0;
-      }
+      npc.targetRoomKind = null;
+      npc.blockedMs = 0;
+    }
   }
 
   function update(delta) {
-    for (const npc of npcs) {
+    for (const npc of allNpcs()) {
+      if (npc.isHospitalNpc && npc.state === "idle") {
+        continue;
+      }
       if (npc.state === "pausing") {
         npc.stateTimerMs -= delta * 1000;
         if (npc.stateTimerMs <= 0) {
@@ -793,7 +963,7 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
   }
 
   function draw(ctx, floor, alpha = 1) {
-    for (const npc of npcs) {
+    for (const npc of allNpcs()) {
       if (npc.floor !== floor) continue;
       const base = project(npc.x, npc.y, 0, npc.floor);
       const px = Math.round(base.x);
@@ -853,11 +1023,24 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
         }
       }
 
-      if (npc.state === "pausing") {
+      if (npc.state === "pausing" || npc.state === "idle") {
         ctx.fillStyle = npc.isGuideNpc ? "#fff1a8" : "#ffe99c";
         ctx.font = "600 10px 'Trebuchet MS'";
         ctx.textAlign = "center";
         ctx.fillText(npc.waitLabel, px, py - 34);
+      }
+
+      if (npc.isHospitalNpc && npc.statusSummary) {
+        const width = 92;
+        const height = 14;
+        ctx.fillStyle = "rgba(47, 31, 20, 0.88)";
+        ctx.fillRect(px - width / 2, py - 52, width, height);
+        ctx.strokeStyle = "rgba(255, 241, 184, 0.6)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px - width / 2, py - 52, width, height);
+        ctx.fillStyle = "#fff6de";
+        ctx.font = "600 8px 'Trebuchet MS'";
+        ctx.fillText(npc.statusSummary, px, py - 42);
       }
 
       if (npc.isGuideNpc) {
@@ -889,6 +1072,7 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
       }
       return routed;
     },
-    getNpcs: () => npcs,
+    syncHospitalPatients,
+    getNpcs: () => allNpcs(),
   };
 }
