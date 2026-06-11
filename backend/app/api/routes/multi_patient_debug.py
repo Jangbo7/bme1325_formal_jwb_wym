@@ -205,6 +205,22 @@ def multi_patient_debug_page():
       return payload.data;
     }
 
+    function stageSummary(patient) {
+      const round = patient.consultation_round != null ? ` / round ${patient.consultation_round}` : "";
+      return `${patient.display_stage || "-"} / ${patient.dispatch_state || "-"}${round}`;
+    }
+
+    function blockingSummary(patient) {
+      const blocking = patient.blocking;
+      if (!blocking) return "-";
+      return [
+        blocking.kind,
+        blocking.resource_kind,
+        blocking.resource_id,
+        blocking.message,
+      ].filter(Boolean).join(" | ");
+    }
+
     function render(snapshot) {
       if (!snapshot) {
         statsEl.innerHTML = "<div class='muted'>No data.</div>";
@@ -310,6 +326,13 @@ def multi_patient_debug_page():
             response_source: p.latest_consultation_response_source,
             llm_error: p.latest_consultation_llm_error,
           },
+          projection: {
+            display_stage: p.display_stage,
+            dispatch_state: p.dispatch_state,
+            consultation_round: p.consultation_round,
+            blocking: p.blocking,
+            resource_assignment: p.resource_assignment,
+          },
           dialogue: p.current_dialogue,
           case_summary: p.case_summary,
           last_error: p.last_error,
@@ -325,6 +348,8 @@ def multi_patient_debug_page():
             <div class="row">encounter: ${p.encounter_id || "-"}</div>
             <div class="row">visit: ${p.visit_state || "-"}</div>
             <div class="row">lifecycle: ${p.patient_lifecycle_state || "-"}</div>
+            <div class="row">stage/dispatch: ${stageSummary(p)}</div>
+            <div class="row">blocking: ${blockingSummary(p)}</div>
             <div class="row">phase/status: ${p.phase} / ${p.status}</div>
             <div class="row">llm/source: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
             <div class="row">doctor llm: ${p.latest_consultation_response_source || "-"} / ${p.latest_consultation_llm_error || "-"}</div>

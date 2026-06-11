@@ -3,6 +3,29 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class RuntimeBlockingView(BaseModel):
+    kind: str
+    resource_kind: str | None = None
+    resource_id: str | None = None
+    resource_name: str | None = None
+    message: str | None = None
+
+
+class RuntimeResourceAssignmentView(BaseModel):
+    department_id: str | None = None
+    department_name: str | None = None
+    department_gate_id: str | None = None
+    department_gate_name: str | None = None
+    doctor_slot_id: str | None = None
+    doctor_slot_name: str | None = None
+    consultation_room_id: str | None = None
+    consultation_room_name: str | None = None
+    consultation_room_type: str | None = None
+    current_node_id: str | None = None
+    target_node_id: str | None = None
+    target_resource_kind: str | None = None
+
+
 class DepartmentPatientState(BaseModel):
     patient_id: str
     visit_id: str
@@ -31,6 +54,11 @@ class DepartmentPatientState(BaseModel):
     current_room_name: str | None = None
     room_type: str | None = None
     target_node_id: str | None = None
+    display_stage: str | None = None
+    dispatch_state: str | None = None
+    consultation_round: int | None = None
+    blocking: RuntimeBlockingView | None = None
+    resource_assignment: RuntimeResourceAssignmentView | None = None
     latest_consultation_response_source: str | None = None
     latest_consultation_llm_error: str | None = None
     last_transition_action: str | None = None

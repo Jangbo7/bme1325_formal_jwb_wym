@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.department_runtime import RuntimeBlockingView, RuntimeResourceAssignmentView
 from app.schemas.npc_debug import CounterpartyType, NpcDebugCurrentDialogue
 
 
@@ -52,6 +53,11 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     current_room_name: str | None = None
     room_type: str | None = None
     target_node_id: str | None = None
+    display_stage: str | None = None
+    dispatch_state: str | None = None
+    consultation_round: int | None = None
+    blocking: RuntimeBlockingView | None = None
+    resource_assignment: RuntimeResourceAssignmentView | None = None
     latest_consultation_response_source: Literal["llm_then_validated", "fallback"] | None = None
     latest_consultation_llm_error: str | None = None
     next_step_at: str | None = None

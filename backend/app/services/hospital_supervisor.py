@@ -31,6 +31,7 @@ from app.services.department_resources import (
     stable_doctor_slot_for_patient,
 )
 from app.services.patient_flow_engine import FlowDecisionEngine, FlowExecutor
+from app.services.runtime_projection import derive_runtime_projection
 
 
 def now_utc() -> datetime:
@@ -522,6 +523,14 @@ class HospitalSupervisor:
     def _to_patient_snapshot(self, slot: _PatientSlot) -> MultiPatientDebugPatientSnapshot:
         profile_id = slot.profile.profile_id if slot.profile else None
         case_summary = slot.state.case_summary if isinstance(slot.state, PatientAgentDebugState) else None
+        runtime_row = (
+            self._department_runtime_service.runtime_repo.get_patient_runtime(
+                slot.state.patient_id,
+                slot.state.encounter_id,
+            )
+            if self._department_runtime_service and slot.state.patient_id and slot.state.encounter_id
+            else None
+        )
         consultation_observability = (
             self._department_runtime_service.get_latest_consultation_observability(
                 patient_id=slot.state.patient_id,
@@ -541,6 +550,25 @@ class HospitalSupervisor:
                 "chief_complaint": slot.profile.chief_complaint,
                 "symptoms": slot.profile.symptoms,
             }
+        projection = derive_runtime_projection(
+            assigned_department_id=slot.assigned_department_id,
+            assigned_department_name=slot.assigned_department_name,
+            assigned_doctor_slot_id=slot.assigned_doctor_slot_id,
+            assigned_doctor_slot_name=slot.assigned_doctor_slot_name,
+            current_node_id=slot.current_node_id,
+            current_room_node_id=slot.current_room_node_id,
+            current_room_name=slot.current_room_name,
+            room_type=slot.room_type,
+            target_node_id=slot.target_node_id,
+            visit_state=slot.state.visit_state,
+            patient_lifecycle_state=slot.state.patient_lifecycle_state,
+            department_status=(runtime_row or {}).get("department_status") or (runtime_row or {}).get("department_flow_status"),
+            department_round=(runtime_row or {}).get("department_round"),
+            phase=slot.state.phase,
+            status=slot.state.status,
+            finished=slot.state.finished,
+            last_error=slot.state.last_error,
+        )
         return MultiPatientDebugPatientSnapshot(
             npc_id=slot.npc_id,
             mode=slot.mode,
@@ -575,6 +603,11 @@ class HospitalSupervisor:
             current_room_name=slot.current_room_name,
             room_type=slot.room_type,
             target_node_id=slot.target_node_id,
+            display_stage=projection["display_stage"],
+            dispatch_state=projection["dispatch_state"],
+            consultation_round=projection["consultation_round"],
+            blocking=projection["blocking"],
+            resource_assignment=projection["resource_assignment"],
             latest_consultation_response_source=consultation_observability["latest_consultation_response_source"],
             latest_consultation_llm_error=consultation_observability["latest_consultation_llm_error"],
             next_step_at=slot.next_step_at.isoformat(),

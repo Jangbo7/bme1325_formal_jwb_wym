@@ -24,6 +24,7 @@ from app.services.department_resources import (
     stable_doctor_slot_for_patient,
 )
 from app.services.hospital_nodes import list_hospital_nodes
+from app.services.runtime_projection import derive_runtime_projection
 
 
 def now_iso() -> str:
@@ -324,6 +325,9 @@ class DepartmentRuntimeService:
                 merged["target_node_id"] = overlay.get("target_node_id") or merged.get("target_node_id")
                 merged["current_counterparty"] = overlay.get("current_counterparty") or merged.get("current_counterparty")
                 merged["current_dialogue"] = overlay.get("current_dialogue")
+                merged["phase"] = overlay.get("phase") or merged.get("phase")
+                merged["status"] = overlay.get("status") or merged.get("status")
+                merged["last_error"] = overlay.get("last_error") or merged.get("last_error")
                 merged["latest_consultation_response_source"] = (
                     overlay.get("latest_consultation_response_source")
                     or merged.get("latest_consultation_response_source")
@@ -341,6 +345,27 @@ class DepartmentRuntimeService:
                 self.get_latest_consultation_observability(
                     patient_id=row.patient_id,
                     visit_id=row.visit_id,
+                )
+            )
+            merged.update(
+                derive_runtime_projection(
+                    assigned_department_id=merged.get("assigned_department_id"),
+                    assigned_department_name=merged.get("assigned_department_name"),
+                    assigned_doctor_slot_id=merged.get("assigned_doctor_slot_id"),
+                    assigned_doctor_slot_name=merged.get("assigned_doctor_slot_name"),
+                    current_node_id=merged.get("current_node_id"),
+                    current_room_node_id=merged.get("current_room_node_id"),
+                    current_room_name=merged.get("current_room_name"),
+                    room_type=merged.get("room_type"),
+                    target_node_id=merged.get("target_node_id"),
+                    visit_state=merged.get("visit_state"),
+                    patient_lifecycle_state=merged.get("patient_lifecycle_state"),
+                    department_status=merged.get("department_status") or merged.get("department_flow_status"),
+                    department_round=merged.get("department_round"),
+                    phase=merged.get("phase"),
+                    status=merged.get("status"),
+                    finished=bool(merged.get("finished")),
+                    last_error=merged.get("last_error"),
                 )
             )
             patient_view = DepartmentRuntimePatientView(**merged)
@@ -396,6 +421,25 @@ class DepartmentRuntimeService:
                 continue
             if any(patient_id == row.patient_id for department in departments for row in department.patients):
                 continue
+            projection = derive_runtime_projection(
+                assigned_department_id=None,
+                assigned_department_name=None,
+                assigned_doctor_slot_id=None,
+                assigned_doctor_slot_name=None,
+                current_node_id=overlay.get("current_node_id"),
+                current_room_node_id=overlay.get("current_room_node_id"),
+                current_room_name=overlay.get("current_room_name"),
+                room_type=overlay.get("room_type"),
+                target_node_id=overlay.get("target_node_id"),
+                visit_state=overlay.get("visit_state"),
+                patient_lifecycle_state=overlay.get("patient_lifecycle_state"),
+                department_status="unassigned",
+                department_round="none",
+                phase=overlay.get("phase"),
+                status=overlay.get("status"),
+                finished=bool(overlay.get("finished", False)),
+                last_error=overlay.get("last_error"),
+            )
             unassigned.append(
                 DepartmentRuntimePatientView(
                     patient_id=patient_id,
@@ -419,6 +463,11 @@ class DepartmentRuntimeService:
                     current_node=None,
                     current_node_id=overlay.get("current_node_id"),
                     target_node_id=overlay.get("target_node_id"),
+                    display_stage=projection["display_stage"],
+                    dispatch_state=projection["dispatch_state"],
+                    consultation_round=projection["consultation_round"],
+                    blocking=projection["blocking"],
+                    resource_assignment=projection["resource_assignment"],
                     latest_consultation_response_source=overlay.get("latest_consultation_response_source"),
                     latest_consultation_llm_error=overlay.get("latest_consultation_llm_error"),
                     last_transition_action=overlay.get("last_action"),

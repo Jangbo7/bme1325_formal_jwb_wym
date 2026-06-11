@@ -31,6 +31,28 @@ def _text(value) -> str:
     return text if text else "-"
 
 
+def _projection_text(patient: dict) -> str:
+    round_value = patient.get("consultation_round")
+    round_suffix = f" / round {round_value}" if round_value is not None else ""
+    return f'{_text(patient.get("display_stage"))} / {_text(patient.get("dispatch_state"))}{round_suffix}'
+
+
+def _blocking_text(patient: dict) -> str:
+    blocking = patient.get("blocking") or {}
+    if not blocking:
+        return "-"
+    return " | ".join(
+        _text(value)
+        for value in [
+            blocking.get("kind"),
+            blocking.get("resource_kind"),
+            blocking.get("resource_id"),
+            blocking.get("message"),
+        ]
+        if value not in {None, ""}
+    )
+
+
 def _render_patient_dialogue(patient: dict) -> str:
     dialogue = patient.get("current_dialogue") or {}
     if not dialogue:
@@ -55,6 +77,8 @@ def _render_patient_card(patient: dict) -> str:
         f'<div class="row">visit: {escape(_text(patient.get("visit_id")))}</div>',
         f'<div class="row">source: {escape(_text(patient.get("patient_source")))}</div>',
         f'<div class="row">generation hint: {escape(_text(patient.get("generation_hint_department_name")))} ({escape(_text(patient.get("generation_hint_department_id")))})</div>',
+        f'<div class="row">stage/dispatch: {escape(_projection_text(patient))}</div>',
+        f'<div class="row">blocking: {escape(_blocking_text(patient))}</div>',
         f'<div class="row">encounter node: {escape(_text(patient.get("current_node_id") or patient.get("current_node")))}</div>',
         f'<div class="row">target node: {escape(_text(patient.get("target_node_id")))}</div>',
         f'<div class="row">queue: {escape(_text(patient.get("queue_kind")))}</div>',
@@ -62,6 +86,7 @@ def _render_patient_card(patient: dict) -> str:
         f'<div class="row">doctor llm error: {escape(_text(patient.get("latest_consultation_llm_error")))}</div>',
         f'<div class="row">doctor slot: {escape(_text(patient.get("assigned_doctor_slot_name")))} ({escape(_text(patient.get("assigned_doctor_slot_id")))})</div>',
         f'<div class="row">room: {escape(_text(patient.get("current_room_name")))} ({escape(_text(patient.get("current_room_node_id")))}) / {escape(_text(patient.get("room_type")))}</div>',
+        f'<div class="row">resource assignment: {escape(_text((patient.get("resource_assignment") or {}).get("target_resource_kind")))} / {escape(_text((patient.get("resource_assignment") or {}).get("target_node_id")))}</div>',
         f'<div class="row">counterparty: {escape(_text(patient.get("current_counterparty")))}</div>',
         f'<div class="row">active agent: {escape(_text(patient.get("active_agent_type")))}</div>',
         f'<div class="row">last action: {escape(_text(patient.get("last_action") or patient.get("last_transition_action")))}</div>',
@@ -74,6 +99,7 @@ def _render_patient_card(patient: dict) -> str:
         f'<div><strong>{escape(_text(patient_label))}</strong>'
         f'<span class="badge">{escape(_text(patient.get("department_status") or patient.get("department_flow_status")))}</span></div>'
         f'<div class="row">visit_state: {escape(_text(patient.get("visit_state")))}</div>'
+        f'<div class="row">stage/dispatch: {escape(_projection_text(patient))}</div>'
         f'<div class="row">runner/source: {escape(_text(patient.get("execution_runner_kind")))} / {escape(_text(patient.get("patient_source")))}</div>'
         f'<div class="row">hint: {escape(_text(patient.get("generation_hint_department_name")))} ({escape(_text(patient.get("generation_hint_department_id")))})</div>'
         f'<div class="row">capability: {escape(_text(patient.get("department_capability_class")))}</div>'
