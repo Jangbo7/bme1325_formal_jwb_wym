@@ -53,6 +53,8 @@ def _render_patient_card(patient: dict) -> str:
     detail_rows = [
         f'<div class="row">patient: {escape(_text(patient.get("patient_id")))}</div>',
         f'<div class="row">visit: {escape(_text(patient.get("visit_id")))}</div>',
+        f'<div class="row">source: {escape(_text(patient.get("patient_source")))}</div>',
+        f'<div class="row">generation hint: {escape(_text(patient.get("generation_hint_department_name")))} ({escape(_text(patient.get("generation_hint_department_id")))})</div>',
         f'<div class="row">encounter node: {escape(_text(patient.get("current_node_id") or patient.get("current_node")))}</div>',
         f'<div class="row">target node: {escape(_text(patient.get("target_node_id")))}</div>',
         f'<div class="row">queue: {escape(_text(patient.get("queue_kind")))}</div>',
@@ -70,7 +72,9 @@ def _render_patient_card(patient: dict) -> str:
         f'<div><strong>{escape(_text(patient_label))}</strong>'
         f'<span class="badge">{escape(_text(patient.get("department_status") or patient.get("department_flow_status")))}</span></div>'
         f'<div class="row">visit_state: {escape(_text(patient.get("visit_state")))}</div>'
-        f'<div class="row">runner: {escape(_text(patient.get("execution_runner_kind")))} / capability: {escape(_text(patient.get("department_capability_class")))}</div>'
+        f'<div class="row">runner/source: {escape(_text(patient.get("execution_runner_kind")))} / {escape(_text(patient.get("patient_source")))}</div>'
+        f'<div class="row">hint: {escape(_text(patient.get("generation_hint_department_name")))} ({escape(_text(patient.get("generation_hint_department_id")))})</div>'
+        f'<div class="row">capability: {escape(_text(patient.get("department_capability_class")))}</div>'
         f'<div class="row">room: {escape(_text(patient.get("current_room_name")))} ({escape(_text(patient.get("current_room_node_id")))})</div>'
         f'<details data-detail-id="{escape(patient_detail_id)}">'
         '<summary>Patient Details</summary>'
@@ -92,7 +96,7 @@ def _render_initial_department_snapshot(snapshot: dict) -> tuple[str, str, str, 
             f'<div class="stat"><strong>mode</strong><div>{escape(_text(snapshot.get("mode")))}</div></div>',
             f'<div class="stat"><strong>active_count</strong><div>{escape(_text(snapshot.get("active_count")))}</div></div>',
             f'<div class="stat"><strong>spawned</strong><div>{escape(_text(snapshot.get("total_spawned")))}</div></div>',
-            f'<div class="stat"><strong>llm probability</strong><div>{escape(_text(snapshot.get("llm_probability")))}</div></div>',
+            f'<div class="stat"><strong>probability</strong><div>{escape(_text(snapshot.get("llm_probability")))}</div></div>',
             f'<div class="stat"><strong>dept with patients</strong><div>{departments_with_patients}</div></div>',
             f'<div class="stat"><strong>finished patients</strong><div>{finished_patients}</div></div>',
             f'<div class="stat"><strong>dispatch</strong><div>{escape(_text(snapshot.get("dispatch_count")))}</div></div>',
@@ -244,7 +248,7 @@ def _render_department_runtime_page(snapshot: dict, *, status_message: str | Non
 <body>
   <main>
     <h1>Department Runtime Debug</h1>
-    <div class="muted">Department-centric runtime view built on top of the existing multi patient auto-runner, including legacy offline/probabilistic LLM controls. No scene integration in this page.</div>
+    <div class="muted">Department-centric runtime view built on top of the existing multi patient auto-runner. In <code>legacy_probabilistic_llm</code>, probability means generated-patient probability, and coverage means spawn hint or scripted preassignment rather than guaranteed final triage destination.</div>
     <form class="toolbar" method="get" action="/department-runtime-debug">
       <div>
         <label>Mode</label><br />
@@ -268,7 +272,7 @@ def _render_department_runtime_page(snapshot: dict, *, status_message: str | Non
         <input id="maxPatients" name="max_active_patients" type="number" min="1" step="1" value="{escape(max_active_patients)}" />
       </div>
       <div>
-        <label>LLM Probability</label><br />
+        <label>Probability</label><br />
         <input id="llmProbability" name="llm_probability" type="number" min="0" max="1" step="0.1" value="{escape(llm_probability)}" />
       </div>
       <button type="submit" name="action" value="start">Start</button>

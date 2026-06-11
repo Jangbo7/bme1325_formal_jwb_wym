@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.agents.npc_patient.planner import NpcPlanningContext, PlannedNpcAction, plan_next_action
 from app.agents.patient_agent.debug_state import PatientAgentDebugState
+from app.departments.registry import resolve_department
 from app.domain.identifiers import generate_patient_id
 from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICKET_CALLED, QUEUE_TICKET_COMPLETED, QUEUE_TICKET_CREATED
 from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
@@ -74,6 +75,14 @@ class PatientAgentDebugRunner:
             case_summary=self.patient_agent_service.summarize_case_for_debug(case_card),
             last_action="spawn",
         )
+        hint_department = resolve_department(department_id, "M") if department_id else None
+        if state.case_summary is not None:
+            state.case_summary["generation_hint_department_id"] = (
+                hint_department["id"] if hint_department else None
+            )
+            state.case_summary["generation_hint_department_name"] = (
+                hint_department["label"] if hint_department else None
+            )
         self._sync_state(state, preserve_dialogue=False)
         return state
 
@@ -223,6 +232,12 @@ class PatientAgentDebugRunner:
     def _register_visit(self, state: PatientAgentDebugState, planned: PlannedNpcAction) -> None:
         visit_row = self._require_visit_row(state)
         visit_state = VisitLifecycleState(visit_row["state"])
+        if visit_state == VisitLifecycleState.IN_EMERGENCY:
+            state.finished = True
+            state.phase = "finished"
+            state.status = "finished"
+            state.clear_dialogue()
+            return
         if visit_state != VisitLifecycleState.TRIAGED:
             return
         case_card = self.patient_agent_service.get_case_card(patient_id=state.patient_id, visit_id=visit_row["id"])
@@ -568,6 +583,9 @@ class PatientAgentDebugRunner:
         if state.finished:
             state.phase = "finished"
             state.status = "finished"
+        elif state.visit_state == VisitLifecycleState.IN_EMERGENCY.value:
+            state.phase = "finished"
+            state.status = VisitLifecycleState.IN_EMERGENCY.value
         elif state.visit_state:
             state.phase = self._phase_for_visit_state(state.visit_state)
             if not preserve_dialogue:

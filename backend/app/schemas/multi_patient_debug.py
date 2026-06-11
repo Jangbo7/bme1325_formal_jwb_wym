@@ -22,6 +22,7 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     npc_id: str
     mode: MultiPatientMode
     execution_runner_kind: Literal["intelligent", "legacy"]
+    patient_source: Literal["scripted", "generated"] = "scripted"
     department_agent_enabled: bool = False
     department_capability_class: Literal["agent_enabled", "script_only"] = "script_only"
     llm_mode: Literal["offline", "online"] | None = None
@@ -33,6 +34,8 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     patient_lifecycle_state: str | None = None
     assigned_department_id: str | None = None
     assigned_department_name: str | None = None
+    generation_hint_department_id: str | None = None
+    generation_hint_department_name: str | None = None
     assigned_doctor_slot_id: str | None = None
     assigned_doctor_slot_name: str | None = None
     phase: str

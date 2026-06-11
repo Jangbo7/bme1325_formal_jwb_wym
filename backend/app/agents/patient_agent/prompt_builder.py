@@ -2,11 +2,32 @@ from __future__ import annotations
 
 import json
 
+from app.departments.registry import resolve_department
 from app.agents.patient_agent.schemas import PatientCaseCard, PatientPolicyDecision, PatientReplyContext
 
 
-def build_generate_case_messages(*, constraints: str, seed: str | None = None) -> list[dict]:
+def _department_hint_text(department_id: str | None) -> str:
+    normalized = str(department_id or "").strip()
+    if not normalized:
+        return ""
+    resolved = resolve_department(normalized, "M")
+    return (
+        "Use this as a soft department hint only: "
+        f"{resolved['label']} ({resolved['id']}). "
+        "Bias the chief complaint, symptom mix, and present illness toward cases commonly seen there, "
+        "but do not treat this hint as the final routing result. "
+        "The case must still be a general outpatient triageable case that could be routed elsewhere after triage."
+    )
+
+
+def build_generate_case_messages(
+    *,
+    constraints: str,
+    seed: str | None = None,
+    department_id: str | None = None,
+) -> list[dict]:
     seed_text = f"Use this reproducibility hint if helpful: {seed}." if seed else ""
+    department_hint = _department_hint_text(department_id)
     schema_hint = {
         "case_id": "string",
         "patient_profile": {
@@ -46,6 +67,7 @@ def build_generate_case_messages(*, constraints: str, seed: str | None = None) -
                 "Generate one controlled outpatient patient case. "
                 f"{constraints} "
                 f"{seed_text} "
+                f"{department_hint} "
                 "The patient should be common, mild-to-moderate, and suitable for a triage -> consultation -> test -> review loop. "
                 "The hidden diagnosis hint must not be directly stated by the patient in normal dialogue. "
                 "Return JSON matching this shape: "

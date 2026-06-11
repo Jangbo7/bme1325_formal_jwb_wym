@@ -73,6 +73,9 @@ class DepartmentRuntimeService:
         current_node_id: str | None = None,
         target_node_id: str | None = None,
         execution_runner_kind: str | None = None,
+        patient_source: str | None = None,
+        generation_hint_department_id: str | None = None,
+        generation_hint_department_name: str | None = None,
         department_agent_enabled: bool | None = None,
         department_capability_class: str | None = None,
         assigned_doctor_slot_id: str | None = None,
@@ -82,6 +85,7 @@ class DepartmentRuntimeService:
         room_type: str | None = None,
         last_transition_action: str | None = None,
         transition_version: str | None = None,
+        allow_unassigned_department: bool = False,
     ) -> dict | None:
         patient_row = self.patient_repo.get(patient_id)
         if not patient_row:
@@ -96,41 +100,56 @@ class DepartmentRuntimeService:
         assigned_department_id = visit_row.get("assigned_department_id")
         assigned_department_name = visit_row.get("assigned_department_name")
         if not assigned_department_id or not assigned_department_name:
-            resolved = resolve_assigned_department_for_visit(visit_row, patient_row)
-            visit_row = self.visit_repo.update_visit(
-                resolved_visit_id,
-                assigned_department_id=resolved["id"],
-                assigned_department_name=resolved["label"],
-            )
-            assigned_department_id = visit_row.get("assigned_department_id")
-            assigned_department_name = visit_row.get("assigned_department_name")
-            if not assigned_department_id or not assigned_department_name:
-                return None
+            if allow_unassigned_department:
+                assigned_department_id = "unassigned"
+                assigned_department_name = "Unassigned"
+            else:
+                resolved = resolve_assigned_department_for_visit(visit_row, patient_row)
+                visit_row = self.visit_repo.update_visit(
+                    resolved_visit_id,
+                    assigned_department_id=resolved["id"],
+                    assigned_department_name=resolved["label"],
+                )
+                assigned_department_id = visit_row.get("assigned_department_id")
+                assigned_department_name = visit_row.get("assigned_department_name")
+                if not assigned_department_id or not assigned_department_name:
+                    return None
 
         existing = self.runtime_repo.get_patient_runtime(patient_id, resolved_visit_id) or {}
         visit_state = visit_row.get("state")
         capability_info = self._resolve_department_capability_fields(
-            department_id=assigned_department_id,
+            department_id=None if assigned_department_id == "unassigned" else assigned_department_id,
             existing=existing,
             execution_runner_kind=execution_runner_kind,
             department_agent_enabled=department_agent_enabled,
             department_capability_class=department_capability_class,
         )
-        slot_info = self._resolve_doctor_slot_assignment(
-            patient_id=patient_id,
-            department_id=assigned_department_id,
-            existing=existing,
-            assigned_doctor_slot_id=assigned_doctor_slot_id,
-            assigned_doctor_slot_name=assigned_doctor_slot_name,
-        )
-        room_info = self._resolve_room_assignment(
-            department_id=assigned_department_id,
-            visit_state=visit_state,
-            assigned_doctor_slot_id=slot_info["slot_id"],
-            current_room_node_id=current_room_node_id,
-            current_room_name=current_room_name,
-            room_type=room_type,
-        )
+        if assigned_department_id == "unassigned":
+            slot_info = {
+                "slot_id": assigned_doctor_slot_id or existing.get("assigned_doctor_slot_id"),
+                "slot_name": assigned_doctor_slot_name or existing.get("assigned_doctor_slot_name"),
+            }
+            room_info = {
+                "node_id": current_room_node_id or existing.get("current_room_node_id"),
+                "name": current_room_name or existing.get("current_room_name"),
+                "room_type": room_type or existing.get("room_type"),
+            }
+        else:
+            slot_info = self._resolve_doctor_slot_assignment(
+                patient_id=patient_id,
+                department_id=assigned_department_id,
+                existing=existing,
+                assigned_doctor_slot_id=assigned_doctor_slot_id,
+                assigned_doctor_slot_name=assigned_doctor_slot_name,
+            )
+            room_info = self._resolve_room_assignment(
+                department_id=assigned_department_id,
+                visit_state=visit_state,
+                assigned_doctor_slot_id=slot_info["slot_id"],
+                current_room_node_id=current_room_node_id,
+                current_room_name=current_room_name,
+                room_type=room_type,
+            )
         target_queue_kind = None
         if visit_state == VisitLifecycleState.IN_SECOND_CONSULTATION.value:
             target_queue_kind = QueueTicketKind.RETURN_CONSULTATION.value
@@ -163,6 +182,9 @@ class DepartmentRuntimeService:
             "assigned_department_id": assigned_department_id,
             "assigned_department_name": assigned_department_name,
             "execution_runner_kind": capability_info["execution_runner_kind"],
+            "patient_source": patient_source or existing.get("patient_source"),
+            "generation_hint_department_id": generation_hint_department_id or existing.get("generation_hint_department_id"),
+            "generation_hint_department_name": generation_hint_department_name or existing.get("generation_hint_department_name"),
             "department_agent_enabled": capability_info["department_agent_enabled"],
             "department_capability_class": capability_info["department_capability_class"],
             "assigned_doctor_slot_id": slot_info["slot_id"],
@@ -180,7 +202,7 @@ class DepartmentRuntimeService:
             or room_info["node_id"]
             or self._node_for_visit_state(
                 visit_row.get("state"),
-                assigned_department_id,
+                None if assigned_department_id == "unassigned" else assigned_department_id,
                 assigned_doctor_slot_id=slot_info["slot_id"],
             ),
             "current_room_node_id": room_info["node_id"],
@@ -199,7 +221,8 @@ class DepartmentRuntimeService:
             "finished_at": now_iso() if flow_status == DepartmentFlowStatus.FINISHED.value else None,
         }
         runtime_row = self.runtime_repo.upsert_patient_runtime(payload)
-        self.refresh_department_summary(assigned_department_id, assigned_department_name)
+        if assigned_department_id != "unassigned":
+            self.refresh_department_summary(assigned_department_id, assigned_department_name)
         return runtime_row
 
     def refresh_department_summary(self, department_id: str, department_name: str) -> dict:
@@ -281,6 +304,9 @@ class DepartmentRuntimeService:
                 merged["last_action"] = overlay.get("last_action")
                 merged["finished"] = overlay.get("finished", False)
                 merged["execution_runner_kind"] = overlay.get("execution_runner_kind") or merged.get("execution_runner_kind")
+                merged["patient_source"] = overlay.get("patient_source") or merged.get("patient_source")
+                merged["generation_hint_department_id"] = overlay.get("generation_hint_department_id") or merged.get("generation_hint_department_id")
+                merged["generation_hint_department_name"] = overlay.get("generation_hint_department_name") or merged.get("generation_hint_department_name")
                 merged["department_agent_enabled"] = overlay.get("department_agent_enabled", merged.get("department_agent_enabled", False))
                 merged["department_capability_class"] = overlay.get("department_capability_class") or merged.get("department_capability_class")
                 merged["current_node_id"] = overlay.get("current_node_id") or merged.get("current_node_id")
@@ -351,6 +377,9 @@ class DepartmentRuntimeService:
                     assigned_department_id="unassigned",
                     assigned_department_name="Unassigned",
                     execution_runner_kind=overlay.get("execution_runner_kind"),
+                    patient_source=overlay.get("patient_source"),
+                    generation_hint_department_id=overlay.get("generation_hint_department_id"),
+                    generation_hint_department_name=overlay.get("generation_hint_department_name"),
                     department_agent_enabled=overlay.get("department_agent_enabled", False),
                     department_capability_class=overlay.get("department_capability_class"),
                     queue_kind=None,
@@ -385,6 +414,7 @@ class DepartmentRuntimeService:
             spawn_interval_seconds=multi_snapshot.spawn_interval_seconds,
             step_interval_seconds=multi_snapshot.step_interval_seconds,
             max_active_patients=multi_snapshot.max_active_patients,
+            llm_probability=multi_snapshot.llm_probability,
             total_spawned=multi_snapshot.total_spawned,
             active_count=multi_snapshot.active_count,
             last_spawn_at=multi_snapshot.last_spawn_at,
@@ -419,6 +449,11 @@ class DepartmentRuntimeService:
             grouped.setdefault(node_id or "unknown", []).append(row)
 
         node_views: list[HospitalNodeRuntimeView] = []
+        currently_blocked_patients = sum(
+            1
+            for item in multi_snapshot.patients
+            if not item.finished and item.status in {"blocked", "waiting_capacity"}
+        )
         for node in nodes:
             node_rows = sorted(grouped.get(node.node_id, []), key=lambda item: item.updated_at, reverse=True)
             waiting_count = sum(
@@ -479,6 +514,7 @@ class DepartmentRuntimeService:
             spawn_interval_seconds=multi_snapshot.spawn_interval_seconds,
             step_interval_seconds=multi_snapshot.step_interval_seconds,
             max_active_patients=multi_snapshot.max_active_patients,
+            llm_probability=multi_snapshot.llm_probability,
             total_spawned=multi_snapshot.total_spawned,
             active_count=multi_snapshot.active_count,
             last_spawn_at=multi_snapshot.last_spawn_at,
@@ -490,6 +526,10 @@ class DepartmentRuntimeService:
             node_step_delays=multi_snapshot.node_step_delays,
             dispatch_count=multi_snapshot.dispatch_count,
             blocked_count=multi_snapshot.blocked_count,
+            blocked_attempt_count=multi_snapshot.blocked_count,
+            currently_blocked_patients=currently_blocked_patients,
+            department_coverage=multi_snapshot.department_coverage,
+            active_by_department=multi_snapshot.active_by_department,
             nodes=node_views,
             departments=department_snapshot.departments,
             unassigned_patients=department_snapshot.unassigned_patients,
@@ -538,7 +578,15 @@ class DepartmentRuntimeService:
         *,
         assigned_doctor_slot_id: str | None = None,
     ) -> str:
-        department_id = assigned_department_id or "internal"
+        department_id = assigned_department_id or "triage"
+        if assigned_department_id is None and visit_state in {
+            VisitLifecycleState.ARRIVED.value,
+            VisitLifecycleState.TRIAGING.value,
+            VisitLifecycleState.IN_TRIAGE.value,
+            VisitLifecycleState.WAITING_FOLLOWUP.value,
+            VisitLifecycleState.TRIAGED.value,
+        }:
+            return "triage"
         room = resolve_room_for_visit_state(
             department_id,
             visit_state,

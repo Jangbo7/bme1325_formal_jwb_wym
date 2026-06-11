@@ -11,10 +11,17 @@ class PatientCaseGenerator:
         self.request_json = request_json
         self.rag_context = rag_context
 
-    def generate(self, *, seed: str | None = None, retries: int = 2) -> PatientCaseCard:
+    def generate(
+        self,
+        *,
+        seed: str | None = None,
+        department_id: str | None = None,
+        retries: int = 2,
+    ) -> PatientCaseCard:
         messages = build_generate_case_messages(
             constraints=self.rag_context.build_case_constraints(),
             seed=seed,
+            department_id=department_id,
         )
         last_error = "unknown"
         for _ in range(retries + 1):

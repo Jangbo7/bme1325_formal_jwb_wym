@@ -16,11 +16,15 @@ class FlowEngineContext:
 
 
 def _target_node_for_state(visit_state: str | None, assigned_department_id: str | None) -> str | None:
-    department_id = assigned_department_id or "internal"
+    department_id = assigned_department_id or "triage"
     if visit_state in {
         VisitLifecycleState.ARRIVED.value,
         VisitLifecycleState.TRIAGING.value,
         VisitLifecycleState.WAITING_FOLLOWUP.value,
+        VisitLifecycleState.IN_TRIAGE.value,
+    }:
+        return "triage"
+    if visit_state in {
         VisitLifecycleState.TRIAGED.value,
         VisitLifecycleState.REGISTERED.value,
         VisitLifecycleState.WAITING_CONSULTATION.value,
@@ -100,11 +104,11 @@ class FlowDecisionEngine:
             next_action = "enter_round2_consult" if round_number == 2 else "enter_round1_consult"
             return FlowDecision(next_action=next_action, target_node=context.assigned_department_id, reason="consultation dialogue turn", payload=planned.payload)
         if planned.action == "create_triage_session":
-            return FlowDecision(next_action="enqueue_round1", target_node=context.assigned_department_id, reason="create triage session")
+            return FlowDecision(next_action="enqueue_round1", target_node=target_node, reason="create triage session")
         if planned.action == "reply_triage":
-            return FlowDecision(next_action="enqueue_round1", target_node=context.assigned_department_id, reason="triage follow-up turn")
+            return FlowDecision(next_action="enqueue_round1", target_node=target_node, reason="triage follow-up turn")
         if planned.action == "create_encounter":
-            return FlowDecision(next_action="register", target_node=context.assigned_department_id, reason="encounter bootstrap")
+            return FlowDecision(next_action="register", target_node=target_node, reason="encounter bootstrap")
         if planned.action == "trigger_encounter_event":
             event = (planned.payload or {}).get("event")
             if event == "queue_second_consultation":

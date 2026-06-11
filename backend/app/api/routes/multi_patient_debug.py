@@ -79,7 +79,7 @@ def multi_patient_debug_page():
 <body>
   <main>
     <h1>Multi Patient Debug</h1>
-    <div class="muted">Engine-driven hospital supervisor with fair scheduling, node capacity limits, per-node step delays, and legacy offline/probabilistic LLM controls.</div>
+    <div class="muted">Engine-driven hospital supervisor with fair scheduling, node capacity limits, per-node step delays, and probabilistic patient-source control for <code>legacy_probabilistic_llm</code>. Coverage reflects spawn hints or scripted preassignment, not always the final triage destination.</div>
     <div class="toolbar">
       <div>
         <label>Mode</label><br />
@@ -103,7 +103,7 @@ def multi_patient_debug_page():
         <input id="maxPatients" type="number" min="1" step="1" value="20" />
       </div>
       <div>
-        <label>LLM Probability</label><br />
+        <label>Probability</label><br />
         <input id="llmProbability" type="number" min="0" max="1" step="0.1" value="0" />
       </div>
       <button id="startBtn">Start</button>
@@ -220,7 +220,7 @@ def multi_patient_debug_page():
         <div class="stat"><strong>spawned</strong><div>${snapshot.total_spawned}</div></div>
         <div class="stat"><strong>spawn interval</strong><div>${snapshot.spawn_interval_seconds}</div></div>
         <div class="stat"><strong>step interval</strong><div>${snapshot.step_interval_seconds}</div></div>
-        <div class="stat"><strong>llm probability</strong><div>${snapshot.llm_probability ?? "-"}</div></div>
+        <div class="stat"><strong>probability</strong><div>${snapshot.llm_probability ?? "-"}</div></div>
         <div class="stat"><strong>dispatch</strong><div>${snapshot.dispatch_count}</div></div>
         <div class="stat"><strong>blocked</strong><div>${snapshot.blocked_count}</div></div>
         <div class="stat"><strong>coverage</strong><div>${coverage}</div></div>
@@ -251,6 +251,9 @@ def multi_patient_debug_page():
             p.encounter_id,
             p.assigned_department_id,
             p.assigned_department_name,
+            p.generation_hint_department_id,
+            p.generation_hint_department_name,
+            p.patient_source,
           ]
             .filter(Boolean)
             .join(" ")
@@ -284,6 +287,10 @@ def multi_patient_debug_page():
             id: p.assigned_department_id,
             name: p.assigned_department_name,
           },
+          generation_hint: {
+            id: p.generation_hint_department_id,
+            name: p.generation_hint_department_name,
+          },
           doctor_slot: {
             id: p.assigned_doctor_slot_id,
             name: p.assigned_doctor_slot_name,
@@ -304,8 +311,9 @@ def multi_patient_debug_page():
         };
         return `
           <article class="card">
-            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.execution_runner_kind}</span> <span class="badge">${p.department_capability_class || "-"}</span></div>
+            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.execution_runner_kind}</span> <span class="badge">${p.patient_source || "-"}</span> <span class="badge">${p.department_capability_class || "-"}</span></div>
             <div class="row">department: ${p.assigned_department_name || "-"} (${p.assigned_department_id || "-"})</div>
+            <div class="row">generation hint: ${p.generation_hint_department_name || "-"} (${p.generation_hint_department_id || "-"})</div>
             <div class="row">agent enabled: ${p.department_agent_enabled}</div>
             <div class="row">doctor slot: ${p.assigned_doctor_slot_name || "-"} (${p.assigned_doctor_slot_id || "-"})</div>
             <div class="row">patient: ${p.patient_id}</div>
@@ -313,7 +321,7 @@ def multi_patient_debug_page():
             <div class="row">visit: ${p.visit_state || "-"}</div>
             <div class="row">lifecycle: ${p.patient_lifecycle_state || "-"}</div>
             <div class="row">phase/status: ${p.phase} / ${p.status}</div>
-            <div class="row">llm: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
+            <div class="row">llm/source: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
             <div class="row">node: ${p.current_node_id || "-" } -> ${p.target_node_id || "-"}</div>
             <div class="row">room: ${p.current_room_name || "-"} (${p.current_room_node_id || "-"}) / ${p.room_type || "-"}</div>
             <div class="row">last action: ${p.last_action || "-"}</div>

@@ -46,13 +46,13 @@ def hospital_runtime_debug_page():
 <body>
   <main>
     <h1>Hospital Runtime Debug</h1>
-    <div class="muted">Engine-driven multi patient simulation with node + department runtime projection, including legacy offline/probabilistic LLM controls.</div>
+    <div class="muted">Engine-driven multi patient simulation with node + department runtime projection. In <code>legacy_probabilistic_llm</code>, probability means generated-patient probability.</div>
     <div class="panel toolbar">
       <div><div class="small">Mode</div><select id="mode"><option value="intelligent_agent">intelligent_agent</option><option value="department_mixed">department_mixed</option><option value="legacy_template">legacy_template</option><option value="legacy_probabilistic_llm">legacy_probabilistic_llm</option></select></div>
       <div><div class="small">Spawn(s)</div><input id="spawn" type="number" min="0" step="0.5" value="4"></div>
       <div><div class="small">Step(s)</div><input id="step" type="number" min="0.1" step="0.5" value="2"></div>
       <div><div class="small">Max</div><input id="max" type="number" min="1" step="1" value="20"></div>
-      <div><div class="small">LLM Probability</div><input id="llmProbability" type="number" min="0" max="1" step="0.1" value="0"></div>
+      <div><div class="small">Probability</div><input id="llmProbability" type="number" min="0" max="1" step="0.1" value="0"></div>
       <button id="start">Start</button><button id="stop">Stop</button><button id="reset">Reset</button><button id="refresh">Refresh</button>
     </div>
     <div class="panel"><div id="stats"></div></div>

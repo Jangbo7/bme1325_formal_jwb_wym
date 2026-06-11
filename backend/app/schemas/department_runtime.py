@@ -9,6 +9,9 @@ class DepartmentPatientState(BaseModel):
     assigned_department_id: str
     assigned_department_name: str
     execution_runner_kind: str | None = None
+    patient_source: str | None = None
+    generation_hint_department_id: str | None = None
+    generation_hint_department_name: str | None = None
     department_agent_enabled: bool = False
     department_capability_class: str | None = None
     assigned_doctor_slot_id: str | None = None
@@ -104,6 +107,7 @@ class DepartmentRuntimeSnapshot(BaseModel):
     spawn_interval_seconds: float
     step_interval_seconds: float
     max_active_patients: int
+    llm_probability: float | None = None
     total_spawned: int
     active_count: int
     last_spawn_at: str | None = None

@@ -49,6 +49,7 @@ class _PatientSlot:
     npc_id: str
     mode: MultiPatientMode
     runner_kind: Literal["legacy", "intelligent"]
+    patient_source: Literal["scripted", "generated"]
     llm_mode: str
     llm_sampled_probability: float | None
     state: StateLike
@@ -59,6 +60,8 @@ class _PatientSlot:
     target_node_id: str | None = None
     assigned_department_id: str | None = None
     assigned_department_name: str | None = None
+    generation_hint_department_id: str | None = None
+    generation_hint_department_name: str | None = None
     department_agent_enabled: bool = False
     department_capability_class: str | None = None
     assigned_doctor_slot_id: str | None = None
@@ -273,12 +276,20 @@ class HospitalSupervisor:
 
         if self._mode == "legacy_probabilistic_llm":
             sampled_probability = float(self._llm_probability or 0.0)
-            llm_mode = "online" if random.random() < sampled_probability else "offline"
+            if random.random() < sampled_probability:
+                return self._spawn_intelligent_slot(
+                    npc_id=npc_id,
+                    slot_mode="legacy_probabilistic_llm",
+                    target_department_id=target_department_id,
+                    now=now,
+                    preassign_department=False,
+                    llm_sampled_probability=sampled_probability,
+                )
             return self._spawn_legacy_slot(
                 npc_id=npc_id,
                 slot_mode="legacy_probabilistic_llm",
                 target_department_id=target_department_id,
-                llm_mode=llm_mode,
+                llm_mode="offline",
                 llm_sampled_probability=sampled_probability,
                 now=now,
             )
@@ -329,13 +340,24 @@ class HospitalSupervisor:
             npc_id=npc_id,
             mode=slot_mode,
             runner_kind="legacy",
+            patient_source="scripted",
             llm_mode=llm_mode,
             llm_sampled_probability=llm_sampled_probability,
             state=state,
             profile=profile,
             next_step_at=now + timedelta(seconds=self._step_interval_seconds),
+            generation_hint_department_id=target_department_id,
+            generation_hint_department_name=self._department_name(target_department_id),
         )
-        self._assign_slot_department(slot, profile.target_department_id, profile.target_department_name)
+        state.mode = slot_mode
+        self._assign_slot_department(
+            slot,
+            profile.target_department_id,
+            profile.target_department_name,
+            increment_coverage=True,
+            update_visit_assignment=True,
+            lock_debug_department=True,
+        )
         return slot
 
     def _spawn_intelligent_slot(
@@ -345,24 +367,39 @@ class HospitalSupervisor:
         slot_mode: MultiPatientMode,
         target_department_id: str,
         now: datetime,
+        preassign_department: bool = True,
+        llm_sampled_probability: float | None = None,
     ) -> _PatientSlot:
         state = self._intelligent_runner.spawn(
             seed=f"{npc_id}-{target_department_id}-{random.randint(1000, 9999)}",
             department_id=target_department_id,
         )
         state.npc_id = npc_id
+        state.mode = slot_mode
         assigned_department_name = self._department_name(target_department_id)
         slot = _PatientSlot(
             npc_id=npc_id,
             mode=slot_mode,
             runner_kind="intelligent",
+            patient_source="generated",
             llm_mode="online",
-            llm_sampled_probability=None,
+            llm_sampled_probability=llm_sampled_probability,
             state=state,
             profile=None,
             next_step_at=now + timedelta(seconds=self._step_interval_seconds),
+            generation_hint_department_id=target_department_id,
+            generation_hint_department_name=assigned_department_name,
         )
-        self._assign_slot_department(slot, target_department_id, assigned_department_name)
+        self._spawned_by_department[target_department_id] = self._spawned_by_department.get(target_department_id, 0) + 1
+        if preassign_department:
+            self._assign_slot_department(
+                slot,
+                target_department_id,
+                assigned_department_name,
+                increment_coverage=False,
+                update_visit_assignment=True,
+                lock_debug_department=False,
+            )
         return slot
 
     def _step_due_patients(self) -> None:
@@ -399,9 +436,8 @@ class HospitalSupervisor:
 
         visit_row = runner._get_visit_row(slot.state)  # noqa: SLF001
         patient_row = runner.patient_repo.get(slot.state.patient_id)
-        assigned_department_id = None
-        if visit_row:
-            assigned_department_id = resolve_assigned_department_for_visit(visit_row, patient_row)["id"]
+        self._refresh_slot_department_from_visit(slot, visit_row)
+        assigned_department_id = self._resolved_assigned_department_id(slot, visit_row, patient_row)
 
         context = runner.build_context(slot.state)
         planned, decision = self._flow_engine.decide_with_plan(
@@ -411,7 +447,7 @@ class HospitalSupervisor:
         target_node = self._resolve_target_node_for_slot(
             slot,
             visit_state=context.visit_state,
-            default_target_node=decision.target_node or assigned_department_id or "internal",
+            default_target_node=decision.target_node or assigned_department_id or "triage",
         )
         slot.target_node_id = target_node
         if not self._can_dispatch_to_node(target_node, dispatch_budget):
@@ -446,6 +482,17 @@ class HospitalSupervisor:
 
         dispatch_budget[target_node] = dispatch_budget.get(target_node, 0) + 1
         self._dispatch_count += 1
+        updated_visit_row = runner._get_visit_row(slot.state)  # noqa: SLF001
+        self._refresh_slot_department_from_visit(slot, updated_visit_row)
+        if (
+            slot.mode == "legacy_probabilistic_llm"
+            and slot.patient_source == "generated"
+            and slot.state.visit_state == "in_emergency"
+        ):
+            slot.state.finished = True
+            slot.state.phase = "finished"
+            slot.state.status = "finished"
+            slot.state.clear_dialogue()
         slot.state.last_error = None
         slot.next_step_at = now + timedelta(seconds=self._next_delay_for_node(target_node))
         return target_node
@@ -481,6 +528,7 @@ class HospitalSupervisor:
             npc_id=slot.npc_id,
             mode=slot.mode,
             execution_runner_kind=slot.runner_kind,
+            patient_source=slot.patient_source,
             department_agent_enabled=slot.department_agent_enabled,
             department_capability_class=slot.department_capability_class or "script_only",
             llm_mode=slot.llm_mode,
@@ -492,6 +540,8 @@ class HospitalSupervisor:
             patient_lifecycle_state=slot.state.patient_lifecycle_state,
             assigned_department_id=slot.assigned_department_id,
             assigned_department_name=slot.assigned_department_name,
+            generation_hint_department_id=slot.generation_hint_department_id,
+            generation_hint_department_name=slot.generation_hint_department_name,
             assigned_doctor_slot_id=slot.assigned_doctor_slot_id,
             assigned_doctor_slot_name=slot.assigned_doctor_slot_name,
             phase=slot.state.phase,
@@ -511,7 +561,16 @@ class HospitalSupervisor:
             next_step_at=slot.next_step_at.isoformat(),
         )
 
-    def _assign_slot_department(self, slot: _PatientSlot, department_id: str, department_name: str) -> None:
+    def _assign_slot_department(
+        self,
+        slot: _PatientSlot,
+        department_id: str,
+        department_name: str,
+        *,
+        increment_coverage: bool,
+        update_visit_assignment: bool,
+        lock_debug_department: bool,
+    ) -> None:
         slot.assigned_department_id = department_id
         slot.assigned_department_name = department_name
         capability = get_department_capability(department_id)
@@ -521,8 +580,12 @@ class HospitalSupervisor:
         if doctor_slot is not None:
             slot.assigned_doctor_slot_id = doctor_slot.slot_id
             slot.assigned_doctor_slot_name = doctor_slot.label
-        self._spawned_by_department[department_id] = self._spawned_by_department.get(department_id, 0) + 1
-        if slot.state.encounter_id:
+        else:
+            slot.assigned_doctor_slot_id = None
+            slot.assigned_doctor_slot_name = None
+        if increment_coverage:
+            self._spawned_by_department[department_id] = self._spawned_by_department.get(department_id, 0) + 1
+        if update_visit_assignment and slot.state.encounter_id:
             if slot.runner_kind == "legacy":
                 visit_repo = self._legacy_runner.visit_repo
             else:
@@ -534,7 +597,7 @@ class HospitalSupervisor:
                     visit_data = json.loads(visit_row["data_json"])
                 except Exception:
                     visit_data = {}
-            if should_lock_department_for_debug(mode=slot.mode, department_id=department_id):
+            if lock_debug_department and should_lock_department_for_debug(mode=slot.mode, department_id=department_id):
                 visit_data.update(
                     {
                         "debug_department_locked_by_mode": True,
@@ -599,12 +662,18 @@ class HospitalSupervisor:
             current_dialogue_preview=current_dialogue_payload.get("message"),
             target_node_id=slot.target_node_id,
             execution_runner_kind=slot.runner_kind,
+            patient_source=slot.patient_source,
+            generation_hint_department_id=slot.generation_hint_department_id,
+            generation_hint_department_name=slot.generation_hint_department_name,
             department_agent_enabled=slot.department_agent_enabled,
             department_capability_class=slot.department_capability_class,
             assigned_doctor_slot_id=slot.assigned_doctor_slot_id,
             assigned_doctor_slot_name=slot.assigned_doctor_slot_name,
             last_transition_action=slot.state.last_action,
             transition_version=now_iso(),
+            allow_unassigned_department=(
+                slot.patient_source == "generated" and not slot.assigned_department_id
+            ),
         )
         if runtime_row:
             slot.department_agent_enabled = bool(runtime_row.get("department_agent_enabled"))
@@ -647,3 +716,47 @@ class HospitalSupervisor:
             if consult_room is not None:
                 return consult_room.node_id
         return default_target_node
+
+    def _resolved_assigned_department_id(
+        self,
+        slot: _PatientSlot,
+        visit_row: dict | None,
+        patient_row: dict | None,
+    ) -> str | None:
+        if slot.patient_source == "generated" and visit_row:
+            assigned_id = str(visit_row.get("assigned_department_id") or "").strip()
+            assigned_name = str(visit_row.get("assigned_department_name") or "").strip()
+            if assigned_id and assigned_name:
+                return assigned_id
+            return None
+        if visit_row:
+            return resolve_assigned_department_for_visit(visit_row, patient_row)["id"]
+        return slot.assigned_department_id
+
+    def _refresh_slot_department_from_visit(self, slot: _PatientSlot, visit_row: dict | None) -> None:
+        if not visit_row:
+            return
+        assigned_id = str(visit_row.get("assigned_department_id") or "").strip()
+        assigned_name = str(visit_row.get("assigned_department_name") or "").strip()
+        if not assigned_id or not assigned_name:
+            if slot.patient_source == "generated":
+                slot.assigned_department_id = None
+                slot.assigned_department_name = None
+                slot.assigned_doctor_slot_id = None
+                slot.assigned_doctor_slot_name = None
+                slot.department_agent_enabled = False
+                slot.department_capability_class = None
+            return
+        if (
+            slot.assigned_department_id == assigned_id
+            and slot.assigned_department_name == assigned_name
+        ):
+            return
+        self._assign_slot_department(
+            slot,
+            assigned_id,
+            assigned_name,
+            increment_coverage=False,
+            update_visit_assignment=False,
+            lock_debug_department=False,
+        )
