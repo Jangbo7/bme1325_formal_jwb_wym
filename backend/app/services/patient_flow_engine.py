@@ -31,7 +31,6 @@ def _target_node_for_state(visit_state: str | None, assigned_department_id: str 
         VisitLifecycleState.IN_CONSULTATION.value,
         VisitLifecycleState.WAITING_SECOND_CONSULTATION.value,
         VisitLifecycleState.IN_SECOND_CONSULTATION.value,
-        VisitLifecycleState.RESULTS_READY.value,
     }:
         return department_id
     if visit_state in {
@@ -40,6 +39,7 @@ def _target_node_for_state(visit_state: str | None, assigned_department_id: str 
         VisitLifecycleState.TEST_PAYMENT_COMPLETED.value,
         VisitLifecycleState.IN_TEST.value,
         VisitLifecycleState.WAITING_RETURN_CONSULTATION.value,
+        VisitLifecycleState.RESULTS_READY.value,
     }:
         return "testing"
     if visit_state in {
@@ -112,7 +112,7 @@ class FlowDecisionEngine:
         if planned.action == "trigger_encounter_event":
             event = (planned.payload or {}).get("event")
             if event == "queue_second_consultation":
-                return FlowDecision(next_action="enqueue_round2", target_node=context.assigned_department_id, reason=event, payload=planned.payload)
+                return FlowDecision(next_action="enqueue_round2", target_node="testing", reason=event, payload=planned.payload)
             if event == "start_second_consultation":
                 return FlowDecision(next_action="enter_round2_consult", target_node=context.assigned_department_id, reason=event, payload=planned.payload)
             if event in {"request_test_payment", "pay_test", "start_exam", "finish_exam", "results_ready"}:

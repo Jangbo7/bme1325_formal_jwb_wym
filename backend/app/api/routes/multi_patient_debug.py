@@ -79,7 +79,7 @@ def multi_patient_debug_page():
 <body>
   <main>
     <h1>Multi Patient Debug</h1>
-    <div class="muted">Engine-driven hospital supervisor with fair scheduling, node capacity limits, per-node step delays, and probabilistic patient-source control for <code>legacy_probabilistic_llm</code>. Coverage reflects spawn hints or scripted preassignment, not always the final triage destination.</div>
+    <div class="muted">Engine-driven hospital supervisor with fair scheduling, node capacity limits, per-node step delays, and probabilistic patient-source control for <code>legacy_probabilistic_llm</code>. Coverage reflects spawn hints or scripted preassignment, not always the final triage destination. <code>blocked_count</code> is blocked attempt count, not unique patient count.</div>
     <div class="toolbar">
       <div>
         <label>Mode</label><br />
@@ -222,7 +222,8 @@ def multi_patient_debug_page():
         <div class="stat"><strong>step interval</strong><div>${snapshot.step_interval_seconds}</div></div>
         <div class="stat"><strong>probability</strong><div>${snapshot.llm_probability ?? "-"}</div></div>
         <div class="stat"><strong>dispatch</strong><div>${snapshot.dispatch_count}</div></div>
-        <div class="stat"><strong>blocked</strong><div>${snapshot.blocked_count}</div></div>
+        <div class="stat"><strong>blocked attempts</strong><div>${snapshot.blocked_count}</div></div>
+        <div class="stat"><strong>blocked patients</strong><div>${snapshot.currently_blocked_patients}</div></div>
         <div class="stat"><strong>coverage</strong><div>${coverage}</div></div>
         <div class="stat"><strong>last spawn</strong><div>${snapshot.last_spawn_at || "-"}</div></div>
         <div class="stat"><strong>last tick</strong><div>${snapshot.last_tick_at || "-"}</div></div>
@@ -305,6 +306,10 @@ def multi_patient_debug_page():
             department_agent_enabled: p.department_agent_enabled,
             capability_class: p.department_capability_class,
           },
+          consultation: {
+            response_source: p.latest_consultation_response_source,
+            llm_error: p.latest_consultation_llm_error,
+          },
           dialogue: p.current_dialogue,
           case_summary: p.case_summary,
           last_error: p.last_error,
@@ -322,6 +327,7 @@ def multi_patient_debug_page():
             <div class="row">lifecycle: ${p.patient_lifecycle_state || "-"}</div>
             <div class="row">phase/status: ${p.phase} / ${p.status}</div>
             <div class="row">llm/source: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
+            <div class="row">doctor llm: ${p.latest_consultation_response_source || "-"} / ${p.latest_consultation_llm_error || "-"}</div>
             <div class="row">node: ${p.current_node_id || "-" } -> ${p.target_node_id || "-"}</div>
             <div class="row">room: ${p.current_room_name || "-"} (${p.current_room_node_id || "-"}) / ${p.room_type || "-"}</div>
             <div class="row">last action: ${p.last_action || "-"}</div>

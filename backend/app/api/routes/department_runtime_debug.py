@@ -58,6 +58,8 @@ def _render_patient_card(patient: dict) -> str:
         f'<div class="row">encounter node: {escape(_text(patient.get("current_node_id") or patient.get("current_node")))}</div>',
         f'<div class="row">target node: {escape(_text(patient.get("target_node_id")))}</div>',
         f'<div class="row">queue: {escape(_text(patient.get("queue_kind")))}</div>',
+        f'<div class="row">doctor llm source: {escape(_text(patient.get("latest_consultation_response_source")))}</div>',
+        f'<div class="row">doctor llm error: {escape(_text(patient.get("latest_consultation_llm_error")))}</div>',
         f'<div class="row">doctor slot: {escape(_text(patient.get("assigned_doctor_slot_name")))} ({escape(_text(patient.get("assigned_doctor_slot_id")))})</div>',
         f'<div class="row">room: {escape(_text(patient.get("current_room_name")))} ({escape(_text(patient.get("current_room_node_id")))}) / {escape(_text(patient.get("room_type")))}</div>',
         f'<div class="row">counterparty: {escape(_text(patient.get("current_counterparty")))}</div>',
@@ -100,7 +102,8 @@ def _render_initial_department_snapshot(snapshot: dict) -> tuple[str, str, str, 
             f'<div class="stat"><strong>dept with patients</strong><div>{departments_with_patients}</div></div>',
             f'<div class="stat"><strong>finished patients</strong><div>{finished_patients}</div></div>',
             f'<div class="stat"><strong>dispatch</strong><div>{escape(_text(snapshot.get("dispatch_count")))}</div></div>',
-            f'<div class="stat"><strong>blocked</strong><div>{escape(_text(snapshot.get("blocked_count")))}</div></div>',
+            f'<div class="stat"><strong>blocked attempts</strong><div>{escape(_text(snapshot.get("blocked_count")))}</div></div>',
+            f'<div class="stat"><strong>blocked patients</strong><div>{escape(_text(snapshot.get("currently_blocked_patients")))}</div></div>',
             f'<div class="stat"><strong>last_spawn</strong><div>{escape(_text(snapshot.get("last_spawn_at")))}</div></div>',
             f'<div class="stat"><strong>last_tick</strong><div>{escape(_text(snapshot.get("last_tick_at")))}</div></div>',
         ]
@@ -140,6 +143,7 @@ def _render_initial_department_snapshot(snapshot: dict) -> tuple[str, str, str, 
             f'<summary><strong>{escape(_text(department.get("department_name")))}</strong> ({len(patients)})</summary>'
             f'<div class="summary">'
             f'<div>capability: {escape(_text(department.get("department_capability_class")))} / agent={escape(_text(department.get("department_agent_enabled")))}</div>'
+            f'<div>gate capacity: {escape(_text(department.get("department_gate_capacity")))}</div>'
             f'<div>active: {escape(_text(summary.get("active_count")))}</div>'
             f'<div>pending reg: {escape(_text(summary.get("pending_registration_count")))}</div>'
             f'<div>waiting r1/r2: {escape(_text(summary.get("waiting_round1_count")))}/{escape(_text(summary.get("waiting_round2_count")))}</div>'
@@ -248,7 +252,7 @@ def _render_department_runtime_page(snapshot: dict, *, status_message: str | Non
 <body>
   <main>
     <h1>Department Runtime Debug</h1>
-    <div class="muted">Department-centric runtime view built on top of the existing multi patient auto-runner. In <code>legacy_probabilistic_llm</code>, probability means generated-patient probability, and coverage means spawn hint or scripted preassignment rather than guaranteed final triage destination.</div>
+    <div class="muted">Department-centric runtime view built on top of the existing multi patient auto-runner. In <code>legacy_probabilistic_llm</code>, probability means generated-patient probability, and coverage means spawn hint or scripted preassignment rather than guaranteed final triage destination. <code>blocked_count</code> is blocked attempt count, not unique patient count.</div>
     <form class="toolbar" method="get" action="/department-runtime-debug">
       <div>
         <label>Mode</label><br />

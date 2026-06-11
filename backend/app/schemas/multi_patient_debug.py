@@ -52,6 +52,8 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     current_room_name: str | None = None
     room_type: str | None = None
     target_node_id: str | None = None
+    latest_consultation_response_source: Literal["llm_then_validated", "fallback"] | None = None
+    latest_consultation_llm_error: str | None = None
     next_step_at: str | None = None
 
 
@@ -73,6 +75,7 @@ class MultiPatientDebugSnapshot(BaseModel):
     node_step_delays: dict[str, float] = Field(default_factory=dict)
     dispatch_count: int = 0
     blocked_count: int = 0
+    currently_blocked_patients: int = 0
     department_coverage: dict[str, int] = Field(default_factory=dict)
     active_by_department: dict[str, int] = Field(default_factory=dict)
     patients: list[MultiPatientDebugPatientSnapshot] = Field(default_factory=list)

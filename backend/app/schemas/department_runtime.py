@@ -31,6 +31,8 @@ class DepartmentPatientState(BaseModel):
     current_room_name: str | None = None
     room_type: str | None = None
     target_node_id: str | None = None
+    latest_consultation_response_source: str | None = None
+    latest_consultation_llm_error: str | None = None
     last_transition_action: str | None = None
     transition_version: str | None = None
     current_counterparty: str | None = None
@@ -95,6 +97,7 @@ class DepartmentRuntimeDepartmentView(BaseModel):
     department_name: str
     department_agent_enabled: bool = False
     department_capability_class: str = "script_only"
+    department_gate_capacity: int | None = None
     summary: DepartmentRuntimeSummaryView
     doctor_slots: list[DepartmentDoctorSlotRuntimeView] = Field(default_factory=list)
     rooms: list[DepartmentRoomRuntimeView] = Field(default_factory=list)
@@ -119,6 +122,7 @@ class DepartmentRuntimeSnapshot(BaseModel):
     node_step_delays: dict[str, float] = Field(default_factory=dict)
     dispatch_count: int = 0
     blocked_count: int = 0
+    currently_blocked_patients: int = 0
     formal_departments: list[dict] = Field(default_factory=list)
     departments: list[DepartmentRuntimeDepartmentView] = Field(default_factory=list)
     unassigned_patients: list[DepartmentRuntimePatientView] = Field(default_factory=list)

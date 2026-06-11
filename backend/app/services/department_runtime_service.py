@@ -13,9 +13,11 @@ from app.schemas.department_runtime import (
     DepartmentRuntimeSummaryView,
 )
 from app.schemas.hospital_runtime import HospitalNodeRuntimeView, HospitalNodeSummary, HospitalRuntimeSnapshot
+from app.services.consultation_registry import is_second_consultation_flow, resolve_consultation_agent_for_visit
 from app.services.department_capabilities import get_department_capability
 from app.services.department_assignment import resolve_assigned_department_for_visit
 from app.services.department_resources import (
+    get_department_gate_capacity,
     get_department_resource_config,
     get_doctor_slot_by_id,
     resolve_room_for_visit_state,
@@ -54,11 +56,12 @@ TEST_VISIT_STATES = {
 
 
 class DepartmentRuntimeService:
-    def __init__(self, *, runtime_repo, patient_repo, visit_repo, queue_repo):
+    def __init__(self, *, runtime_repo, patient_repo, visit_repo, queue_repo, agent_memory_repo):
         self.runtime_repo = runtime_repo
         self.patient_repo = patient_repo
         self.visit_repo = visit_repo
         self.queue_repo = queue_repo
+        self.agent_memory_repo = agent_memory_repo
 
     def clear_all(self) -> None:
         self.runtime_repo.clear_all()
@@ -172,6 +175,12 @@ class DepartmentRuntimeService:
             patient_lifecycle_state=patient_row.get("lifecycle_state"),
             ticket=ticket,
         )
+        consultation_observability = self.get_latest_consultation_observability(
+            patient_id=patient_id,
+            visit_id=resolved_visit_id,
+            visit_row=visit_row,
+            patient_row=patient_row,
+        )
         previous_entered_at = existing.get("entered_department_at")
         entered_department_at = previous_entered_at or now_iso()
         if flow_status == DepartmentFlowStatus.ASSIGNED_PENDING_REGISTRATION.value:
@@ -209,6 +218,8 @@ class DepartmentRuntimeService:
             "current_room_name": room_info["name"],
             "room_type": room_info["room_type"],
             "target_node_id": target_node_id or existing.get("target_node_id"),
+            "latest_consultation_response_source": consultation_observability["latest_consultation_response_source"],
+            "latest_consultation_llm_error": consultation_observability["latest_consultation_llm_error"],
             "last_transition_action": last_transition_action or existing.get("last_transition_action"),
             "transition_version": transition_version or now_iso(),
             "current_counterparty": current_counterparty if current_counterparty is not None else existing.get("current_counterparty"),
@@ -313,11 +324,25 @@ class DepartmentRuntimeService:
                 merged["target_node_id"] = overlay.get("target_node_id") or merged.get("target_node_id")
                 merged["current_counterparty"] = overlay.get("current_counterparty") or merged.get("current_counterparty")
                 merged["current_dialogue"] = overlay.get("current_dialogue")
+                merged["latest_consultation_response_source"] = (
+                    overlay.get("latest_consultation_response_source")
+                    or merged.get("latest_consultation_response_source")
+                )
+                merged["latest_consultation_llm_error"] = (
+                    overlay.get("latest_consultation_llm_error")
+                    or merged.get("latest_consultation_llm_error")
+                )
                 if overlay.get("current_dialogue"):
                     overlay_dialogue = overlay["current_dialogue"]
                     if hasattr(overlay_dialogue, "model_dump"):
                         overlay_dialogue = overlay_dialogue.model_dump()
                     merged["current_dialogue_preview"] = (overlay_dialogue or {}).get("message")
+            merged.update(
+                self.get_latest_consultation_observability(
+                    patient_id=row.patient_id,
+                    visit_id=row.visit_id,
+                )
+            )
             patient_view = DepartmentRuntimePatientView(**merged)
             rows_by_department.setdefault(patient_view.assigned_department_id, []).append(patient_view)
 
@@ -355,6 +380,7 @@ class DepartmentRuntimeService:
                     department_name=department["label"],
                     department_agent_enabled=capability.department_agent_enabled,
                     department_capability_class=capability.department_capability_class,
+                    department_gate_capacity=resource_summary["department_gate_capacity"],
                     summary=summary,
                     doctor_slots=resource_summary["doctor_slots"],
                     rooms=resource_summary["rooms"],
@@ -393,6 +419,8 @@ class DepartmentRuntimeService:
                     current_node=None,
                     current_node_id=overlay.get("current_node_id"),
                     target_node_id=overlay.get("target_node_id"),
+                    latest_consultation_response_source=overlay.get("latest_consultation_response_source"),
+                    latest_consultation_llm_error=overlay.get("latest_consultation_llm_error"),
                     last_transition_action=overlay.get("last_action"),
                     transition_version=now_iso(),
                     current_counterparty=overlay.get("current_counterparty"),
@@ -426,6 +454,7 @@ class DepartmentRuntimeService:
             node_step_delays=multi_snapshot.node_step_delays,
             dispatch_count=multi_snapshot.dispatch_count,
             blocked_count=multi_snapshot.blocked_count,
+            currently_blocked_patients=multi_snapshot.currently_blocked_patients,
             formal_departments=formal_departments,
             departments=departments,
             unassigned_patients=sorted(unassigned, key=lambda item: item.updated_at, reverse=True),
@@ -449,11 +478,6 @@ class DepartmentRuntimeService:
             grouped.setdefault(node_id or "unknown", []).append(row)
 
         node_views: list[HospitalNodeRuntimeView] = []
-        currently_blocked_patients = sum(
-            1
-            for item in multi_snapshot.patients
-            if not item.finished and item.status in {"blocked", "waiting_capacity"}
-        )
         for node in nodes:
             node_rows = sorted(grouped.get(node.node_id, []), key=lambda item: item.updated_at, reverse=True)
             waiting_count = sum(
@@ -527,13 +551,54 @@ class DepartmentRuntimeService:
             dispatch_count=multi_snapshot.dispatch_count,
             blocked_count=multi_snapshot.blocked_count,
             blocked_attempt_count=multi_snapshot.blocked_count,
-            currently_blocked_patients=currently_blocked_patients,
+            currently_blocked_patients=multi_snapshot.currently_blocked_patients,
             department_coverage=multi_snapshot.department_coverage,
             active_by_department=multi_snapshot.active_by_department,
             nodes=node_views,
             departments=department_snapshot.departments,
             unassigned_patients=department_snapshot.unassigned_patients,
         )
+
+    def get_latest_consultation_observability(
+        self,
+        *,
+        patient_id: str,
+        visit_id: str,
+        visit_row: dict | None = None,
+        patient_row: dict | None = None,
+    ) -> dict[str, str | None]:
+        resolved_visit_row = visit_row or self.visit_repo.get(visit_id)
+        if not resolved_visit_row:
+            return {
+                "latest_consultation_response_source": None,
+                "latest_consultation_llm_error": None,
+            }
+        resolved_patient_row = patient_row or self.patient_repo.get(patient_id)
+        definition = resolve_consultation_agent_for_visit(resolved_visit_row, resolved_patient_row)
+        if definition is None:
+            return {
+                "latest_consultation_response_source": None,
+                "latest_consultation_llm_error": None,
+            }
+        visit_data = self.visit_repo.get_visit_data(visit_id)
+        session_id: str | None = None
+        if is_second_consultation_flow(resolved_visit_row.get("state")) and definition.round2_session_ref_key:
+            session_id = str(visit_data.get(definition.round2_session_ref_key) or "").strip() or None
+        if not session_id:
+            session_id = str(visit_data.get(definition.session_ref_key) or "").strip() or None
+        if not session_id and definition.round2_session_ref_key:
+            session_id = str(visit_data.get(definition.round2_session_ref_key) or "").strip() or None
+        if not session_id:
+            return {
+                "latest_consultation_response_source": None,
+                "latest_consultation_llm_error": None,
+            }
+        session_memory = self.agent_memory_repo.peek_agent_session_memory(session_id, definition.agent_type)
+        diagnostics = dict((session_memory or {}).get("llm_diagnostics") or {})
+        return {
+            "latest_consultation_response_source": diagnostics.get("response_source"),
+            "latest_consultation_llm_error": diagnostics.get("llm_error"),
+        }
 
     @staticmethod
     def _derive_flow_status(*, visit_state: str | None, patient_lifecycle_state: str | None, ticket: dict | None) -> tuple[str, str, str | None]:
@@ -601,10 +666,7 @@ class DepartmentRuntimeService:
             VisitLifecycleState.TRIAGED.value,
             VisitLifecycleState.REGISTERED.value,
             VisitLifecycleState.WAITING_CONSULTATION.value,
-            VisitLifecycleState.IN_CONSULTATION.value,
             VisitLifecycleState.WAITING_SECOND_CONSULTATION.value,
-            VisitLifecycleState.IN_SECOND_CONSULTATION.value,
-            VisitLifecycleState.RESULTS_READY.value,
         }:
             return department_id
         if visit_state in {
@@ -615,6 +677,7 @@ class DepartmentRuntimeService:
             VisitLifecycleState.WAITING_OUTPATIENT_PROCEDURE.value,
             VisitLifecycleState.IN_OUTPATIENT_PROCEDURE.value,
             VisitLifecycleState.WAITING_RETURN_CONSULTATION.value,
+            VisitLifecycleState.RESULTS_READY.value,
         }:
             return "testing"
         if visit_state in {
@@ -701,16 +764,16 @@ class DepartmentRuntimeService:
                 "room_type": room.room_type,
             }
         return {
-            "node_id": current_room_node_id,
-            "name": current_room_name,
-            "room_type": room_type,
+            "node_id": None,
+            "name": None,
+            "room_type": None,
         }
 
     @staticmethod
-    def _build_resource_summary(department_id: str, patient_rows: list[DepartmentRuntimePatientView]) -> dict[str, list]:
+    def _build_resource_summary(department_id: str, patient_rows: list[DepartmentRuntimePatientView]) -> dict[str, object]:
         config = get_department_resource_config(department_id)
         if config is None:
-            return {"doctor_slots": [], "rooms": []}
+            return {"department_gate_capacity": get_department_gate_capacity(department_id), "doctor_slots": [], "rooms": []}
 
         doctor_slot_views: list[DepartmentDoctorSlotRuntimeView] = []
         for slot in config.doctor_slots:
@@ -748,6 +811,7 @@ class DepartmentRuntimeService:
             )
 
         return {
+            "department_gate_capacity": config.department_gate_capacity,
             "doctor_slots": doctor_slot_views,
             "rooms": room_views,
         }

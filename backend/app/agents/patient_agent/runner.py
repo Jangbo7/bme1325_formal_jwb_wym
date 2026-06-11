@@ -16,6 +16,8 @@ from app.services.department_assignment import resolve_assigned_department_for_v
 
 WAIT_SECONDS = 10
 CONSULTATION_ROOM = "Consultation Room"
+CONSULTATION_ROUND1_PHASE = "consultation_round1"
+CONSULTATION_ROUND2_PHASE = "consultation_round2"
 
 
 def now_iso() -> str:
@@ -365,7 +367,7 @@ class PatientAgentDebugRunner:
                 QUEUE_TICKET_COMPLETED,
                 {"patient_id": state.patient_id, "visit_id": visit_row["id"], "ticket": completed_ticket},
             )
-        state.phase = "internal_medicine_round1"
+        state.phase = CONSULTATION_ROUND1_PHASE
         state.status = VisitLifecycleState.IN_CONSULTATION.value
         state.clear_dialogue()
 
@@ -492,7 +494,7 @@ class PatientAgentDebugRunner:
                     QUEUE_TICKET_COMPLETED,
                     {"patient_id": state.patient_id, "visit_id": visit_row["id"], "ticket": completed_ticket},
                 )
-            state.phase = "internal_medicine_round2"
+            state.phase = CONSULTATION_ROUND2_PHASE
             state.status = VisitLifecycleState.IN_SECOND_CONSULTATION.value
         else:
             state.phase = "testing"
@@ -655,7 +657,7 @@ class PatientAgentDebugRunner:
 
     @staticmethod
     def _phase_for_round(round_number: int) -> str:
-        return "internal_medicine_round2" if round_number == 2 else "internal_medicine_round1"
+        return CONSULTATION_ROUND2_PHASE if round_number == 2 else CONSULTATION_ROUND1_PHASE
 
     @staticmethod
     def _phase_for_visit_state(visit_state: str | None) -> str:
@@ -666,7 +668,7 @@ class PatientAgentDebugRunner:
         if visit_state in {"registered", "waiting_consultation"}:
             return "queue"
         if visit_state == "in_consultation":
-            return "internal_medicine_round1"
+            return CONSULTATION_ROUND1_PHASE
         if visit_state in {
             "waiting_test",
             "waiting_test_payment",
@@ -680,7 +682,7 @@ class PatientAgentDebugRunner:
         }:
             return "testing"
         if visit_state == "in_second_consultation":
-            return "internal_medicine_round2"
+            return CONSULTATION_ROUND2_PHASE
         if visit_state == "waiting_payment":
             return "finished"
         return "system"

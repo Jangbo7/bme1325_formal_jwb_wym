@@ -11,9 +11,25 @@ def _department_hint_text(department_id: str | None) -> str:
     if not normalized:
         return ""
     resolved = resolve_department(normalized, "M")
+    style_id = resolved["id"]
+    if style_id == "surgery":
+        style_guidance = (
+            "Prefer a surgery-style outpatient case with a complaint that triage could reasonably route to surgery, "
+            "such as localized pain, superficial injury, minor trauma, wound issue, lump, or post-procedure review. "
+            "Do not generate a plain cough/fever/general-medical case under a surgery hint."
+        )
+    elif style_id == "internal":
+        style_guidance = (
+            "Prefer an internal-medicine-style outpatient case with a complaint that triage could reasonably route to internal medicine, "
+            "such as respiratory symptoms, dizziness, headache, fatigue, gastrointestinal upset, or chronic-disease follow-up. "
+            "Do not generate a wound/trauma/procedure-first surgical case under an internal hint."
+        )
+    else:
+        style_guidance = "Prefer a case whose complaint pattern is clearly consistent with the hinted department."
     return (
         "Use this as a soft department hint only: "
         f"{resolved['label']} ({resolved['id']}). "
+        f"{style_guidance} "
         "Bias the chief complaint, symptom mix, and present illness toward cases commonly seen there, "
         "but do not treat this hint as the final routing result. "
         "The case must still be a general outpatient triageable case that could be routed elsewhere after triage."

@@ -46,7 +46,7 @@ def hospital_runtime_debug_page():
 <body>
   <main>
     <h1>Hospital Runtime Debug</h1>
-    <div class="muted">Engine-driven multi patient simulation with node + department runtime projection. In <code>legacy_probabilistic_llm</code>, probability means generated-patient probability.</div>
+    <div class="muted">Engine-driven multi patient simulation with node + department runtime projection. In <code>legacy_probabilistic_llm</code>, probability means generated-patient probability. <code>blocked_count</code> is blocked attempt count, not unique patient count.</div>
     <div class="panel toolbar">
       <div><div class="small">Mode</div><select id="mode"><option value="intelligent_agent">intelligent_agent</option><option value="department_mixed">department_mixed</option><option value="legacy_template">legacy_template</option><option value="legacy_probabilistic_llm">legacy_probabilistic_llm</option></select></div>
       <div><div class="small">Spawn(s)</div><input id="spawn" type="number" min="0" step="0.5" value="4"></div>
@@ -68,7 +68,7 @@ def hospital_runtime_debug_page():
       const p=await r.json(); if(!r.ok||p.ok===false){throw new Error(p.error?.message||p.error?.details||r.statusText);} return p.data;
     }
     function render(s){
-      document.getElementById("stats").textContent = `running=${s.running} mode=${s.mode} active=${s.active_count} spawned=${s.total_spawned} llm_probability=${s.llm_probability ?? "-"} dispatch=${s.dispatch_count} blocked=${s.blocked_count} fairness=${s.fairness_policy} last_tick=${s.last_tick_at||"-"}`;
+      document.getElementById("stats").textContent = `running=${s.running} mode=${s.mode} active=${s.active_count} spawned=${s.total_spawned} llm_probability=${s.llm_probability ?? "-"} dispatch=${s.dispatch_count} blocked_attempts=${s.blocked_count} blocked_patients=${s.currently_blocked_patients} fairness=${s.fairness_policy} last_tick=${s.last_tick_at||"-"}`;
       document.getElementById("nodes").innerHTML = (s.nodes||[]).map(n=>`
         <div class="card">
           <div><strong>${n.node.name}</strong> <span class="small">(${n.node.node_id})</span></div>
@@ -80,7 +80,7 @@ def hospital_runtime_debug_page():
         <div class="card">
           <div><strong>${d.department_name}</strong></div>
           <div class="small">capability=${d.department_capability_class || "-"} agent=${d.department_agent_enabled}</div>
-          <div class="small">active=${d.summary.active_count} wait1=${d.summary.waiting_round1_count} wait2=${d.summary.waiting_round2_count} consult1=${d.summary.in_consultation_round1_count} consult2=${d.summary.in_consultation_round2_count} test=${d.summary.in_test_count} finished=${d.summary.finished_count}</div>
+          <div class="small">gate_capacity=${d.department_gate_capacity ?? "-"} active=${d.summary.active_count} wait1=${d.summary.waiting_round1_count} wait2=${d.summary.waiting_round2_count} consult1=${d.summary.in_consultation_round1_count} consult2=${d.summary.in_consultation_round2_count} test=${d.summary.in_test_count} finished=${d.summary.finished_count}</div>
           <div class="small">patients=${d.patients.length}</div>
         </div>`).join("");
     }

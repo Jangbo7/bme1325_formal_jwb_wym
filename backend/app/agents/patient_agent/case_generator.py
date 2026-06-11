@@ -19,7 +19,7 @@ class PatientCaseGenerator:
         retries: int = 2,
     ) -> PatientCaseCard:
         messages = build_generate_case_messages(
-            constraints=self.rag_context.build_case_constraints(),
+            constraints=self.rag_context.build_case_constraints(department_id=department_id),
             seed=seed,
             department_id=department_id,
         )

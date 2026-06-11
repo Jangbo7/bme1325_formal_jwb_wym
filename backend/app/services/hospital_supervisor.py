@@ -176,6 +176,11 @@ class HospitalSupervisor:
         with self._lock:
             patients = [self._to_patient_snapshot(slot) for slot in self._slots]
             active_count = sum(1 for slot in self._slots if not slot.state.finished)
+            currently_blocked_patients = sum(
+                1
+                for slot in self._slots
+                if not slot.state.finished and slot.state.status in {"blocked", "waiting_capacity"}
+            )
             active_by_department: dict[str, int] = {}
             for slot in self._slots:
                 if slot.state.finished or not slot.assigned_department_id:
@@ -199,6 +204,7 @@ class HospitalSupervisor:
                 node_step_delays=dict(self._node_step_delays),
                 dispatch_count=self._dispatch_count,
                 blocked_count=self._blocked_count,
+                currently_blocked_patients=currently_blocked_patients,
                 department_coverage=dict(self._spawned_by_department),
                 active_by_department=active_by_department,
                 patients=patients,
@@ -447,6 +453,7 @@ class HospitalSupervisor:
         target_node = self._resolve_target_node_for_slot(
             slot,
             visit_state=context.visit_state,
+            next_action=decision.next_action,
             default_target_node=decision.target_node or assigned_department_id or "triage",
         )
         slot.target_node_id = target_node
@@ -506,9 +513,8 @@ class HospitalSupervisor:
 
     def _build_node_capacities(self) -> dict[str, int]:
         capacities = {"*": 1, "testing": 2, "payment": 2, "pharmacy": 2}
-        for department in list_departments(include_legacy=False):
-            capacities[department["id"]] = 1
         for config in list_department_resource_configs():
+            capacities[config.department_id] = config.department_gate_capacity
             for room in config.room_nodes:
                 capacities[room.node_id] = room.capacity
         return capacities
@@ -516,6 +522,17 @@ class HospitalSupervisor:
     def _to_patient_snapshot(self, slot: _PatientSlot) -> MultiPatientDebugPatientSnapshot:
         profile_id = slot.profile.profile_id if slot.profile else None
         case_summary = slot.state.case_summary if isinstance(slot.state, PatientAgentDebugState) else None
+        consultation_observability = (
+            self._department_runtime_service.get_latest_consultation_observability(
+                patient_id=slot.state.patient_id,
+                visit_id=slot.state.encounter_id,
+            )
+            if self._department_runtime_service and slot.state.patient_id and slot.state.encounter_id
+            else {
+                "latest_consultation_response_source": None,
+                "latest_consultation_llm_error": None,
+            }
+        )
         if case_summary is None and slot.profile is not None:
             case_summary = {
                 "name": slot.profile.name,
@@ -558,6 +575,8 @@ class HospitalSupervisor:
             current_room_name=slot.current_room_name,
             room_type=slot.room_type,
             target_node_id=slot.target_node_id,
+            latest_consultation_response_source=consultation_observability["latest_consultation_response_source"],
+            latest_consultation_llm_error=consultation_observability["latest_consultation_llm_error"],
             next_step_at=slot.next_step_at.isoformat(),
         )
 
@@ -690,24 +709,13 @@ class HospitalSupervisor:
         slot: _PatientSlot,
         *,
         visit_state: str | None,
+        next_action: str | None,
         default_target_node: str,
     ) -> str:
         department_id = slot.assigned_department_id
-        if department_id != "surgery":
+        if not department_id:
             return default_target_node
-        room = resolve_room_for_visit_state(
-            department_id,
-            visit_state,
-            assigned_doctor_slot_id=slot.assigned_doctor_slot_id,
-        )
-        if room is not None:
-            return room.node_id
-        if default_target_node == "surgery" and visit_state in {
-            "waiting_consultation",
-            "in_consultation",
-            "waiting_second_consultation",
-            "in_second_consultation",
-        }:
+        if next_action in {"enter_round1_consult", "enter_round2_consult"}:
             consult_room = resolve_room_for_visit_state(
                 department_id,
                 "in_consultation",
@@ -715,6 +723,13 @@ class HospitalSupervisor:
             )
             if consult_room is not None:
                 return consult_room.node_id
+        room = resolve_room_for_visit_state(
+            department_id,
+            visit_state,
+            assigned_doctor_slot_id=slot.assigned_doctor_slot_id,
+        )
+        if room is not None and default_target_node in {department_id, "outpatient_procedure"}:
+            return room.node_id
         return default_target_node
 
     def _resolved_assigned_department_id(

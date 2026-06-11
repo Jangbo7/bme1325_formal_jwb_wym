@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.departments.registry import list_departments
 from app.schemas.hospital_runtime import HospitalNode
-from app.services.department_resources import list_department_resource_configs
+from app.services.department_resources import get_department_gate_capacity, list_department_resource_configs
 
 
 SYSTEM_NODES = [
@@ -57,6 +57,7 @@ def build_department_nodes() -> list[HospitalNode]:
                 node_id=department["id"],
                 node_type="department",
                 name=department["label"],
+                capacity=get_department_gate_capacity(department["id"]),
                 supports_queue=True,
                 supports_consultation=True,
                 supported_actions=list(department.get("supported_actions") or []),

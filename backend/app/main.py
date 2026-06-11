@@ -267,6 +267,7 @@ def create_container():
         patient_repo=patient_repo,
         visit_repo=visit_repo,
         queue_repo=queue_repo,
+        agent_memory_repo=memory_repo,
     )
     scene_snapshot_service = SceneSnapshotService(
         patient_repo=patient_repo,
