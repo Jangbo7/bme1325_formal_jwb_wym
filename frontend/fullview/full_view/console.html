@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Hospital Console</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="console-shell">
+    <header class="console-top">
+      <div>
+        <div class="console-eyebrow">Sim Hospital</div>
+        <h1 class="console-title">Operations Console</h1>
+      </div>
+      <div id="consoleSummary" class="console-summary">Loading hospital snapshot...</div>
+      <nav class="console-nav">
+        <a class="console-link" href="./index.html">Map</a>
+        <button id="consoleRefresh" class="console-link" type="button">Refresh</button>
+      </nav>
+    </header>
+
+    <section class="console-grid">
+      <aside class="console-panel console-panel--rooms">
+        <div class="console-panel__head">
+          <h2>Floors & Rooms</h2>
+          <span id="roomCount">0 rooms</span>
+        </div>
+        <div class="console-room-browser">
+          <div id="consoleFloors" class="console-floor-list" aria-label="Floor list"></div>
+          <div id="consoleRooms" class="console-room-list" aria-label="Room list"></div>
+        </div>
+      </aside>
+
+      <section class="console-panel console-panel--details">
+        <div class="console-panel__head">
+          <h2>Room Detail</h2>
+          <span id="selectedRoomMeta">Select a room</span>
+        </div>
+        <div id="consoleRoomDetail" class="console-detail-empty">Select a room to inspect patients, staff, and resources.</div>
+      </section>
+
+      <aside class="console-panel console-panel--events">
+        <div class="console-panel__head">
+          <h2>Patient Intake</h2>
+          <span id="intakeStatus">Ready</span>
+        </div>
+        <div class="console-intake-actions">
+          <button id="admitEmergencyPatient" class="console-intake-button" type="button">
+            <strong>新增急诊患者</strong>
+            <span>ED registration → triage</span>
+          </button>
+          <button id="admitOutpatientPatient" class="console-intake-button" type="button">
+            <strong>新增门诊患者</strong>
+            <span>Registration → triage</span>
+          </button>
+        </div>
+
+        <div class="console-panel__head">
+          <h2>Move Event</h2>
+          <span id="eventStatus">Ready</span>
+        </div>
+        <form id="moveEventForm" class="console-form">
+          <div id="selectedPersonSummary" class="console-selected-person">Select a patient from room detail or the list below.</div>
+          <label>
+            <span>Patient</span>
+            <select id="movePatient"></select>
+          </label>
+          <label>
+            <span>Event Rule</span>
+            <select id="moveEvent"></select>
+          </label>
+          <label>
+            <span>Target Floor</span>
+            <select id="moveFloor"></select>
+          </label>
+          <label>
+            <span>Target Room</span>
+            <select id="moveTarget"></select>
+          </label>
+          <label>
+            <span>Reason</span>
+            <input id="moveReason" type="text" autocomplete="off" placeholder="optional reason" />
+          </label>
+          <button class="console-submit" type="submit">Send Move Request</button>
+        </form>
+
+        <div class="console-panel__head console-panel__head--sub">
+          <h2>Event Log</h2>
+          <span id="eventCount">0 events</span>
+        </div>
+        <div id="consoleEvents" class="console-event-list"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module" src="./console.js?v=queue-delete-20260612"></script>
+</body>
+</html>

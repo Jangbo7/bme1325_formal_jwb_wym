@@ -1,0 +1,444 @@
+{
+  "mode": "patient-movement-only",
+  "id": "ward",
+  "label": "Ward Patient Moves",
+  "sourceFile": "ward-move-rules",
+  "updatedAt": "2026-06-11T10:11:36.749Z",
+  "rules": [
+    {
+      "id": "ward-move-1",
+      "name": "住院登记后前往目标病房",
+      "eventId": "WARD_ADMISSION_TO_BED",
+      "classification": "住院移动",
+      "trigger": "患者完成住院登记并已分配床位。",
+      "rooms": [
+        "ward_admission",
+        "resp_ward",
+        "card_ward",
+        "gastro_ward",
+        "neuro_ward",
+        "endo_ward",
+        "gensurg_ward",
+        "ortho_ward",
+        "obgyn_ward",
+        "peds_ward"
+      ],
+      "roomsText": "ward_admission、resp_ward、card_ward、gastro_ward、neuro_ward、endo_ward、gensurg_ward、ortho_ward、obgyn_ward、peds_ward",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "目标病房有空床；专科、年龄、性别、隔离等约束满足。",
+      "actions": "移动患者从 ward_admission 到目标病房床位。",
+      "successState": "患者状态变为 ADMITTED；目标床位占用。",
+      "blocking": "无床或约束不匹配时患者留在 ward_admission。",
+      "visualization": "患者进入 5F 病房并躺到空床。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "ward_admission",
+        "to": "target_ward_room",
+        "via": [],
+        "transport": "stretcher",
+        "acuity": "routine",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ward_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "WARD_ADMISSION_TO_BED"
+    },
+    {
+      "id": "ward-move-2",
+      "name": "住院患者前往检查中心",
+      "eventId": "WARD_TO_DIAGNOSTIC_MOVE",
+      "classification": "住院移动",
+      "trigger": "住院医生开立检查。",
+      "rooms": [
+        "resp_ward",
+        "card_ward",
+        "gastro_ward",
+        "neuro_ward",
+        "endo_ward",
+        "gensurg_ward",
+        "ortho_ward",
+        "obgyn_ward",
+        "peds_ward",
+        "diagnostic_center"
+      ],
+      "roomsText": "resp_ward、card_ward、gastro_ward、neuro_ward、endo_ward、gensurg_ward、ortho_ward、obgyn_ward、peds_ward、diagnostic_center",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "检查医嘱有效；diagnostic_center 可服务或可排队；患者可转运。",
+      "actions": "患者从当前病房由推车转运到 diagnostic_center，原床位继续绑定该患者。",
+      "successState": "患者状态短暂变为 IN_EXAM。",
+      "blocking": "检查中心忙或患者不稳定时留原病房。",
+      "visualization": "患者由护工/护士用推车从病房送到检查中心，原床位保留。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ward_room",
+        "to": "diagnostic_center",
+        "via": [],
+        "transport": "stretcher",
+        "acuity": "routine",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "stretcher",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": true,
+          "retainSourceBed": true,
+          "releaseSourceBed": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "stretcher",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ward_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "WARD_TO_DIAGNOSTIC_MOVE"
+    },
+    {
+      "id": "ward-move-3",
+      "name": "住院检查后返回病房",
+      "eventId": "WARD_DIAGNOSTIC_RETURN",
+      "classification": "住院移动",
+      "trigger": "住院辅助检查完成。",
+      "rooms": [
+        "diagnostic_center",
+        "resp_ward",
+        "card_ward",
+        "gastro_ward",
+        "neuro_ward",
+        "endo_ward",
+        "gensurg_ward",
+        "ortho_ward",
+        "obgyn_ward",
+        "peds_ward"
+      ],
+      "roomsText": "diagnostic_center、resp_ward、card_ward、gastro_ward、neuro_ward、endo_ward、gensurg_ward、ortho_ward、obgyn_ward、peds_ward",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "原床位仍由该患者占用。",
+      "actions": "患者从 diagnostic_center 返回 bedRoomId 对应的原病房床位。",
+      "successState": "患者状态回到 ADMITTED 或 IN_TREATMENT。",
+      "blocking": "床位状态不一致时阻塞返回。",
+      "visualization": "患者由护工/护士用推车送回原病房床位。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "diagnostic_center",
+        "to": "source_ward_room",
+        "via": [],
+        "transport": "stretcher",
+        "acuity": "routine",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": true,
+          "retainSourceBed": true,
+          "releaseSourceBed": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ward_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "WARD_DIAGNOSTIC_RETURN"
+    },
+    {
+      "id": "ward-move-4",
+      "name": "住院转床",
+      "eventId": "WARD_BED_TO_BED_MOVE",
+      "classification": "住院移动",
+      "trigger": "患者需要从一个病房或床位转到另一个病房或床位。",
+      "rooms": [
+        "resp_ward",
+        "card_ward",
+        "gastro_ward",
+        "neuro_ward",
+        "endo_ward",
+        "gensurg_ward",
+        "ortho_ward",
+        "obgyn_ward",
+        "peds_ward"
+      ],
+      "roomsText": "resp_ward、card_ward、gastro_ward、neuro_ward、endo_ward、gensurg_ward、ortho_ward、obgyn_ward、peds_ward",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "新床可用；原床当前由该患者占用。",
+      "actions": "移动患者到新病房床位，释放原床。",
+      "successState": "新床占用；原床释放。",
+      "blocking": "新床不可用时患者留原床，原床不得释放。",
+      "visualization": "患者从一个 ward room 移动到另一个 ward room。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "source_ward_room",
+        "to": "target_ward_room",
+        "via": [],
+        "transport": "stretcher",
+        "acuity": "routine",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false,
+          "releaseSourceBed": true,
+          "retainSourceBed": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ward_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "WARD_BED_TO_BED_MOVE"
+    },
+    {
+      "id": "ward-move-5",
+      "name": "住院转 ICU",
+      "eventId": "WARD_TO_ICU_MOVE",
+      "classification": "跨部门移动",
+      "trigger": "住院患者病情恶化需要 ICU。",
+      "rooms": [
+        "elevator_5",
+        "elevator_3",
+        "icu_admission",
+        "icu_beds_a",
+        "icu_beds_b",
+        "icu_isolation"
+      ],
+      "roomsText": "elevator_5、elevator_3、icu_admission、icu_beds_a、icu_beds_b、icu_isolation",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "ICU 有空床；ICU 接收确认；患者可转运；转运人员可用。",
+      "actions": "锁定 ICU 床位，患者经 elevator_5 到 elevator_3，进入 ICU。",
+      "successState": "原住院床释放；ICU 床位占用。",
+      "blocking": "ICU 满床时患者留原病房并触发 critical alert。",
+      "visualization": "患者以 stretcher 形式从 5F 转到 3F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ward_room",
+        "to": "icu_admission",
+        "via": [
+          "elevator_5",
+          "elevator_3"
+        ],
+        "transport": "stretcher",
+        "acuity": "urgent",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false,
+          "releaseSourceBed": true,
+          "retainSourceBed": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ward_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "WARD_TO_ICU_MOVE"
+    },
+    {
+      "id": "ward-move-6",
+      "name": "住院患者出院离开医院",
+      "eventId": "WARD_DISCHARGE_EXIT_HOSPITAL",
+      "classification": "住院离院",
+      "trigger": "医生下达出院医嘱且出院流程完成。",
+      "rooms": [
+        "resp_ward",
+        "card_ward",
+        "gastro_ward",
+        "neuro_ward",
+        "endo_ward",
+        "gensurg_ward",
+        "ortho_ward",
+        "obgyn_ward",
+        "peds_ward",
+        "discharge_desk",
+        "elevator_5"
+      ],
+      "roomsText": "resp_ward、card_ward、gastro_ward、neuro_ward、endo_ward、gensurg_ward、ortho_ward、obgyn_ward、peds_ward、discharge_desk、elevator_5",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "出院医嘱有效；护理宣教、费用或文书已完成；身份核验通过。",
+      "actions": "患者从病房移动到 discharge_desk，再离开地图。",
+      "successState": "患者状态变为 DISCHARGED/COMPLETED；住院床位释放。",
+      "blocking": "未完成医嘱、检查、费用或宣教时禁止出院。",
+      "visualization": "患者从病房到 discharge_desk 后离开医院。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ward_room",
+        "to": "exit",
+        "via": [
+          "discharge_desk"
+        ],
+        "transport": "wheelchair",
+        "acuity": "routine",
+        "patientFormDuringMove": "wheelchair",
+        "finalForm": "hidden",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter"
+        ],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": false,
+          "keepSourceReservedUntilArrival": false,
+          "releaseSourceBed": true,
+          "retainSourceBed": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "wheelchair",
+        "final_form": "hidden",
+        "escort_required": true,
+        "escort_roles": [
+          "porter"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "WARD_DISCHARGE_EXIT_HOSPITAL"
+    }
+  ]
+}
