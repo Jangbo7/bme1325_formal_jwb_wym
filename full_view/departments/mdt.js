@@ -1,0 +1,55 @@
+import { door, elevatorProp, elevatorRoom, prop, room } from "../layout.js";
+
+export const rooms = [
+  room(4, "mdt_call", "mdt", "MDT Call", 6, 6, 11, 8, "#9b87f5"),
+  room(4, "head_doctor", "doctor_office", "Head Doctor", 19, 6, 11, 8, "#c79b69"),
+  room(4, "mdt_meeting", "mdt_meeting", "Conference", 32, 6, 11, 8, "#a992f7"),
+  room(4, "imaging_review", "imaging_review", "Imaging Review", 45, 6, 11, 8, "#67b7cf"),
+  room(4, "final_plan", "doctor_office", "Final Plan", 58, 6, 11, 8, "#dca768"),
+  room(4, "anesthesia_room", "specialist", "Anesthesia", 6, 17, 11, 8, "#8fb7e8"),
+  room(4, "cardiology_room", "specialist", "Cardiology", 19, 17, 11, 8, "#d46d8e"),
+  room(4, "hbp_room", "specialist", "HBP Surgery", 32, 17, 11, 8, "#dca768"),
+  room(4, "neurosurgery_room", "specialist", "Neurosurgery", 45, 17, 11, 8, "#7b82ad"),
+  room(4, "orthopaedics_room", "specialist", "Orthopaedics", 58, 17, 11, 8, "#76c59d"),
+  room(4, "mdt_records", "doctor_office", "Records", 6, 28, 11, 8, "#c79b69"),
+  room(4, "mdt_lounge", "waiting", "Consult Waiting", 19, 28, 11, 8, "#e7d1a1"),
+  room(4, "mdt_memory", "mdt", "Plan Memory", 32, 28, 11, 8, "#b184d0"),
+  room(4, "mdt_kb", "doctor_office", "Knowledge Base", 45, 28, 11, 8, "#b7c58b"),
+  elevatorRoom(4),
+];
+
+export const doors = [
+  door("mdt_call", "bottom", 4, 3),
+  door("head_doctor", "bottom", 4, 3),
+  door("mdt_meeting", "bottom", 4, 3),
+  door("imaging_review", "bottom", 4, 3),
+  door("final_plan", "bottom", 4, 3),
+  door("anesthesia_room", "bottom", 4, 3),
+  door("cardiology_room", "bottom", 4, 3),
+  door("hbp_room", "bottom", 4, 3),
+  door("neurosurgery_room", "bottom", 4, 3),
+  door("orthopaedics_room", "bottom", 4, 3),
+  door("mdt_records", "top", 4, 3),
+  door("mdt_lounge", "top", 4, 3),
+  door("mdt_memory", "top", 4, 3),
+  door("mdt_kb", "top", 4, 3),
+  door("elevator_4", "top", 3.5, 3),
+];
+
+export const props = [
+  prop(4, 9, 9, 3.5, 1.2, "desk"),
+  prop(4, 22, 9, 3.5, 1.2, "desk"),
+  prop(4, 34, 9, 5, 1.8, "table"),
+  prop(4, 48, 9, 3.5, 1.2, "screen"),
+  prop(4, 61, 9, 3.5, 1.2, "desk"),
+  prop(4, 9, 20, 3.5, 1.2, "desk"),
+  prop(4, 22, 20, 3.5, 1.2, "desk"),
+  prop(4, 35, 20, 3.5, 1.2, "desk"),
+  prop(4, 48, 20, 3.5, 1.2, "desk"),
+  prop(4, 61, 20, 3.5, 1.2, "desk"),
+  prop(4, 9, 31, 3.5, 1.2, "cabinet"),
+  prop(4, 22, 31, 3.5, 1.2, "sofa"),
+  prop(4, 35, 31, 3.5, 1.2, "screen"),
+  prop(4, 48, 31, 3.5, 1.2, "cabinet"),
+  elevatorProp(4),
+];

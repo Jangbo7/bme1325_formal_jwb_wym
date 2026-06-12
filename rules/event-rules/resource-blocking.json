@@ -1,0 +1,395 @@
+{
+  "mode": "patient-movement-only",
+  "id": "resource-blocking",
+  "label": "Movement Blocking Rules",
+  "sourceFile": "movement-blocking-rules",
+  "updatedAt": "2026-06-11T10:11:36.749Z",
+  "rules": [
+    {
+      "id": "movement-block-1",
+      "name": "ICU 满床阻塞转运",
+      "eventId": "BLOCK_MOVE_ICU_FULL",
+      "classification": "移动阻塞",
+      "trigger": "任意患者准备转入 ICU，但 ICU 无匹配空床。",
+      "rooms": [
+        "icu_beds_a",
+        "icu_beds_b",
+        "icu_isolation",
+        "intervention_bay"
+      ],
+      "roomsText": "icu_beds_a、icu_beds_b、icu_isolation、intervention_bay",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "患者留在原房间；目标 ICU 不占用；不启动路径。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "患者留在原房间；目标 ICU 不占用；不启动路径。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "患者留在原房间；目标 ICU 不占用；不启动路径。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_ICU_FULL"
+    },
+    {
+      "id": "movement-block-2",
+      "name": "住院无床阻塞转运",
+      "eventId": "BLOCK_MOVE_WARD_FULL",
+      "classification": "移动阻塞",
+      "trigger": "任意患者准备转入住院，但目标专科无床。",
+      "rooms": [
+        "ward_admission",
+        "resp_ward",
+        "card_ward",
+        "gastro_ward",
+        "neuro_ward",
+        "endo_ward",
+        "gensurg_ward",
+        "ortho_ward",
+        "obgyn_ward",
+        "peds_ward"
+      ],
+      "roomsText": "ward_admission、resp_ward、card_ward、gastro_ward、neuro_ward、endo_ward、gensurg_ward、ortho_ward、obgyn_ward、peds_ward",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "患者留原科室；住院床位不变化。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "患者留原科室；住院床位不变化。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "患者留原科室；住院床位不变化。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_WARD_FULL"
+    },
+    {
+      "id": "movement-block-3",
+      "name": "诊室占用阻塞叫号",
+      "eventId": "BLOCK_MOVE_CONSULT_ROOM_BUSY",
+      "classification": "移动阻塞",
+      "trigger": "候诊患者准备进入诊室，但目标诊室被占用。",
+      "rooms": [
+        "outpatient_waiting",
+        "ed_waiting"
+      ],
+      "roomsText": "outpatient_waiting、ed_waiting",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "患者继续留在 waiting room。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "患者继续留在 waiting room。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "患者继续留在 waiting room。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_CONSULT_ROOM_BUSY"
+    },
+    {
+      "id": "movement-block-4",
+      "name": "检查房占用阻塞移动",
+      "eventId": "BLOCK_MOVE_EXAM_BUSY",
+      "classification": "移动阻塞",
+      "trigger": "患者准备进入检查房，但检查房正在服务其他任务。",
+      "rooms": [
+        "lab_2",
+        "ed_diagnostic",
+        "diagnostic_center"
+      ],
+      "roomsText": "lab_2、ed_diagnostic、diagnostic_center",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "患者留原房间或进入等待区；检查房不重复占用。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "患者留原房间或进入等待区；检查房不重复占用。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "患者留原房间或进入等待区；检查房不重复占用。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_EXAM_BUSY"
+    },
+    {
+      "id": "movement-block-5",
+      "name": "药房不可用阻塞取药移动",
+      "eventId": "BLOCK_MOVE_PHARMACY_UNAVAILABLE",
+      "classification": "移动阻塞",
+      "trigger": "患者准备前往药房，但处方缺失、未支付、库存不足或窗口不可用。",
+      "rooms": [
+        "pharmacy_2"
+      ],
+      "roomsText": "pharmacy_2",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "患者不移动到 pharmacy_2。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "患者不移动到 pharmacy_2。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "患者不移动到 pharmacy_2。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_PHARMACY_UNAVAILABLE"
+    },
+    {
+      "id": "movement-block-6",
+      "name": "转运人员不足阻塞跨楼层移动",
+      "eventId": "BLOCK_MOVE_TRANSPORT_STAFF_UNAVAILABLE",
+      "classification": "移动阻塞",
+      "trigger": "跨楼层或危重患者转运需要陪护或担架，但资源不足。",
+      "rooms": [
+        "elevator_1",
+        "elevator_2",
+        "elevator_3",
+        "elevator_5"
+      ],
+      "roomsText": "elevator_1、elevator_2、elevator_3、elevator_5",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "患者留原房间；目标资源可保留或释放。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "患者留原房间；目标资源可保留或释放。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "患者留原房间；目标资源可保留或释放。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_TRANSPORT_STAFF_UNAVAILABLE"
+    },
+    {
+      "id": "movement-block-7",
+      "name": "患者不稳定阻塞普通转运",
+      "eventId": "BLOCK_MOVE_UNSTABLE_FOR_ROUTINE_TRANSFER",
+      "classification": "移动阻塞",
+      "trigger": "患者生命体征不稳定，但事件尝试普通 walking 转运。",
+      "rooms": [],
+      "roomsText": "",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "阻止普通转运，改走 stretcher/急诊/ICU 绿色通道。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "阻止普通转运，改走 stretcher/急诊/ICU 绿色通道。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "阻止普通转运，改走 stretcher/急诊/ICU 绿色通道。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_UNSTABLE_FOR_ROUTINE_TRANSFER"
+    },
+    {
+      "id": "movement-block-8",
+      "name": "接收科室拒收阻塞移动",
+      "eventId": "BLOCK_MOVE_RECEIVER_REJECTED",
+      "classification": "移动阻塞",
+      "trigger": "目标科室拒绝接收患者。",
+      "rooms": [],
+      "roomsText": "",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "患者留原房间；目标资源不占用。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "患者留原房间；目标资源不占用。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "患者留原房间；目标资源不占用。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_RECEIVER_REJECTED"
+    },
+    {
+      "id": "movement-block-9",
+      "name": "电梯路径不可用阻塞跨楼层移动",
+      "eventId": "BLOCK_MOVE_ELEVATOR_PATH_UNAVAILABLE",
+      "classification": "移动阻塞",
+      "trigger": "跨楼层路径无法从起点到电梯或从电梯到目标房间。",
+      "rooms": [
+        "elevator_1",
+        "elevator_2",
+        "elevator_3",
+        "elevator_4",
+        "elevator_5"
+      ],
+      "roomsText": "elevator_1、elevator_2、elevator_3、elevator_4、elevator_5",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "不启动移动动画；提示路径配置错误。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "不启动移动动画；提示路径配置错误。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "不启动移动动画；提示路径配置错误。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "BLOCK_MOVE_ELEVATOR_PATH_UNAVAILABLE"
+    },
+    {
+      "id": "movement-block-10",
+      "name": "床位状态不一致阻塞移动",
+      "eventId": "ERROR_MOVE_BED_STATE_INCONSISTENT",
+      "classification": "移动阻塞",
+      "trigger": "患者记录、床位库存和地图占用不一致。",
+      "rooms": [],
+      "roomsText": "",
+      "agents": "患者、发起科室、接收科室、BedManager、转运系统。",
+      "prechecks": "在移动前检查目标房间、床位、队列、路径和人员资源。",
+      "actions": "阻止新的床位分配、释放或转床，要求人工修正。",
+      "successState": "患者位置、原资源和目标资源保持一致，不发生错误释放。",
+      "blocking": "阻止新的床位分配、释放或转床，要求人工修正。",
+      "visualization": "患者不移动；相关房间或部门 snapshot 显示 warning/critical。",
+      "movement": {
+        "schema": "patient-move",
+        "blocked": true,
+        "blockedStage": "precheck",
+        "patientPositionPolicy": "stay_source",
+        "reason": "阻止新的床位分配、释放或转床，要求人工修正。",
+        "resourcePolicy": {
+          "lockBeforeMove": false,
+          "doNotReleaseSource": true,
+          "doNotOccupyTarget": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "visualAlert": "warning"
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ERROR_MOVE_BED_STATE_INCONSISTENT"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "mode": "patient-movement-only",
+  "description": "Only patient movement and movement-blocking rules are kept here. Each rule uses the patient-move standard for transport mode, escorts, equipment, path policy, and resource policy.",
+  "categories": [
+    {
+      "id": "outpatient",
+      "label": "Outpatient Patient Moves",
+      "file": "outpatient.json",
+      "sourceFile": "outpatient-move-rules",
+      "ruleCount": 10
+    },
+    {
+      "id": "emergency",
+      "label": "Emergency Patient Moves",
+      "file": "emergency.json",
+      "sourceFile": "emergency-move-rules",
+      "ruleCount": 10
+    },
+    {
+      "id": "icu",
+      "label": "ICU Patient Moves",
+      "file": "icu.json",
+      "sourceFile": "icu-move-rules",
+      "ruleCount": 6
+    },
+    {
+      "id": "ward",
+      "label": "Ward Patient Moves",
+      "file": "ward.json",
+      "sourceFile": "ward-move-rules",
+      "ruleCount": 6
+    },
+    {
+      "id": "transfer",
+      "label": "Cross-Floor Patient Transfers",
+      "file": "transfer.json",
+      "sourceFile": "transfer-move-rules",
+      "ruleCount": 6
+    },
+    {
+      "id": "resource-blocking",
+      "label": "Movement Blocking Rules",
+      "file": "resource-blocking.json",
+      "sourceFile": "movement-blocking-rules",
+      "ruleCount": 10
+    }
+  ]
+}

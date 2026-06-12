@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Full Hospital View</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hud top-panel" aria-label="Hospital status">
+      <div class="hud__eyebrow">Sim Hospital</div>
+      <div class="hud__main">
+        <h1 id="floorTitle" class="hud__title">1F Emergency</h1>
+        <p id="floorSubtitle" class="hud__subtitle">Emergency intake, rescue bay, emergency consultation, and elevator core.</p>
+      </div>
+      <div class="hud__tools">
+        <div class="hud__hint">Move: WASD / Arrows · Click person for info · Click mini map to move</div>
+        <div id="roomReadout" class="hud__readout">Current area: Entrance</div>
+      </div>
+    </section>
+
+    <div class="workspace">
+      <section class="map-stage" aria-label="Hospital map">
+        <canvas id="hospitalCanvas" width="1280" height="720" aria-label="full hospital multi-floor visualization"></canvas>
+      </section>
+
+      <aside class="side-panel" aria-label="Map controls">
+        <nav class="floor-panel" aria-label="Floor switcher">
+          <button class="floor-panel__btn is-active" type="button" data-floor="1">
+            <span>1F</span><strong>Emergency</strong>
+          </button>
+          <button class="floor-panel__btn" type="button" data-floor="2">
+            <span>2F</span><strong>Outpatient</strong>
+          </button>
+          <button class="floor-panel__btn" type="button" data-floor="3">
+            <span>3F</span><strong>ICU</strong>
+          </button>
+          <button class="floor-panel__btn" type="button" data-floor="4">
+            <span>4F</span><strong>MDT</strong>
+          </button>
+          <button class="floor-panel__btn" type="button" data-floor="5">
+            <span>5F</span><strong>Ward</strong>
+          </button>
+        </nav>
+
+        <section class="zoom-panel" aria-label="Map zoom controls">
+          <button id="zoomIn" class="zoom-panel__btn" type="button" aria-label="Zoom in">+</button>
+          <div id="zoomLabel" class="zoom-panel__label">100%</div>
+          <button id="zoomOut" class="zoom-panel__btn" type="button" aria-label="Zoom out">-</button>
+          <button id="zoomFit" class="zoom-panel__fit" type="button">Fit</button>
+          <div class="map-actions">
+            <button id="mapRefresh" class="map-actions__btn" type="button">Refresh</button>
+            <button id="mapAdminOpen" class="map-actions__btn map-actions__btn--primary" type="button">Edit Map</button>
+            <button id="rulesAdminOpen" class="map-actions__btn" type="button">Rules</button>
+            <a class="map-actions__btn" href="./console.html" target="_blank" rel="noreferrer">Console</a>
+          </div>
+        </section>
+
+        <section class="person-panel" aria-label="Person information">
+          <div class="side-panel__title">Person Info</div>
+          <div id="personInfo" class="person-info person-info--empty">Click a doctor, nurse, or patient.</div>
+        </section>
+
+        <section class="room-panel" aria-label="Room information">
+          <div class="side-panel__title">Room Info</div>
+          <div id="roomInfo" class="room-info room-info--empty">Click a room.</div>
+        </section>
+
+        <section class="mini-panel" aria-label="Mini map">
+          <div class="side-panel__title">Mini Map</div>
+          <canvas id="miniMapCanvas" width="236" height="160" aria-label="current floor mini map"></canvas>
+        </section>
+
+        <section class="status-panel" aria-label="Department preview">
+          <div class="side-panel__title">Department Snapshot</div>
+          <div id="departmentSnapshot" class="status-panel__list"></div>
+        </section>
+      </aside>
+    </div>
+
+    <section id="mapAdmin" class="map-admin" hidden aria-label="Map editor">
+      <div class="map-admin__topbar">
+        <div>
+          <div class="map-admin__eyebrow">Map Admin</div>
+          <h2 class="map-admin__title">Floor Room Editor</h2>
+        </div>
+        <div class="map-admin__actions">
+          <button id="mapAdminCancel" class="map-admin__btn" type="button">Back</button>
+          <button id="mapAdminSave" class="map-admin__btn map-admin__btn--primary" type="button">Save</button>
+        </div>
+      </div>
+
+      <div class="map-admin__body">
+        <aside class="map-admin__floors" id="mapAdminFloors" aria-label="Admin floor tabs"></aside>
+        <section class="map-admin__rooms">
+          <div class="map-admin__rooms-head">
+            <div>
+              <h3 id="mapAdminFloorTitle" class="map-admin__section-title">1F Rooms</h3>
+              <div id="mapAdminStatus" class="map-admin__status">Ready</div>
+            </div>
+          </div>
+          <div id="mapAdminRoomList" class="map-admin__room-list"></div>
+          <form id="mapAdminAddForm" class="map-admin__add">
+            <input id="mapAdminRoomName" class="map-admin__input" type="text" autocomplete="off" placeholder="Room name" />
+            <button class="map-admin__btn map-admin__btn--primary" type="submit">Add Room</button>
+          </form>
+        </section>
+      </div>
+    </section>
+
+    <section id="rulesAdmin" class="rules-admin" hidden aria-label="Event rules editor">
+      <div class="rules-admin__topbar">
+        <div>
+          <div class="rules-admin__eyebrow">Rules Admin</div>
+          <h2 class="rules-admin__title">Event Rule Library</h2>
+        </div>
+        <div class="rules-admin__actions">
+          <button id="rulesAdminBack" class="rules-admin__btn" type="button">Back</button>
+          <button id="rulesAdminSave" class="rules-admin__btn rules-admin__btn--primary" type="button">Save</button>
+        </div>
+      </div>
+
+      <div class="rules-admin__body">
+        <aside id="rulesAdminCategories" class="rules-admin__categories" aria-label="Rule categories"></aside>
+        <section class="rules-admin__list-panel">
+          <div class="rules-admin__panel-head">
+            <h3 class="rules-admin__section-title">Rules</h3>
+            <div id="rulesAdminStatus" class="rules-admin__status">Ready</div>
+          </div>
+          <div id="rulesAdminList" class="rules-admin__list"></div>
+        </section>
+        <section class="rules-admin__editor-panel">
+          <div class="rules-admin__panel-head">
+            <h3 class="rules-admin__section-title">Rule Details</h3>
+          </div>
+          <div id="rulesAdminEditor" class="rules-admin__editor"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./main.js?v=map-readonly-person-20260612"></script>
+</body>
+</html>

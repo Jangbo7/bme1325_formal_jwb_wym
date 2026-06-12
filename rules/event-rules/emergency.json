@@ -1,0 +1,645 @@
+{
+  "mode": "patient-movement-only",
+  "id": "emergency",
+  "label": "Emergency Patient Moves",
+  "sourceFile": "emergency-move-rules",
+  "updatedAt": "2026-06-11T10:11:36.749Z",
+  "rules": [
+    {
+      "id": "emergency-move-1",
+      "name": "患者进入急诊入口",
+      "eventId": "ED_PATIENT_ARRIVES_ENTRANCE",
+      "classification": "急诊移动",
+      "trigger": "新患者到达医院急诊入口。",
+      "rooms": [
+        "ed_entrance"
+      ],
+      "roomsText": "ed_entrance",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "无同一 patient_id 的未完成 encounter。",
+      "actions": "创建患者并放置到 ed_entrance。",
+      "successState": "患者状态为 ARRIVED。",
+      "blocking": "患者 ID 冲突时留待人工核验。",
+      "visualization": "患者出现在 ed_entrance。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "outside",
+        "to": "ed_entrance",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "walking",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "walking",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_PATIENT_ARRIVES_ENTRANCE"
+    },
+    {
+      "id": "emergency-move-2",
+      "name": "急诊入口到登记",
+      "eventId": "ED_ENTRANCE_TO_REGISTRATION",
+      "classification": "急诊移动",
+      "trigger": "患者到达急诊入口后需要登记。",
+      "rooms": [
+        "ed_entrance",
+        "ed_registration"
+      ],
+      "roomsText": "ed_entrance、ed_registration",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "登记窗口可服务或可排队。",
+      "actions": "移动患者到 ed_registration。",
+      "successState": "患者进入登记流程。",
+      "blocking": "窗口不可用时患者可留在 ed_entrance 或等待。",
+      "visualization": "患者从入口走到登记区。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "ed_entrance",
+        "to": "ed_registration",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "walking",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "walking",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_ENTRANCE_TO_REGISTRATION"
+    },
+    {
+      "id": "emergency-move-3",
+      "name": "急诊登记后到分诊或等待",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "classification": "急诊移动",
+      "trigger": "急诊登记完成。",
+      "rooms": [
+        "ed_registration",
+        "ed_triage",
+        "ed_waiting"
+      ],
+      "roomsText": "ed_registration、ed_triage、ed_waiting",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "登记信息完整；分诊台可用则优先去 ed_triage。",
+      "actions": "移动患者到 ed_triage 或 ed_waiting。",
+      "successState": "患者状态变为 REGISTERED。",
+      "blocking": "身份信息缺失时患者留在 ed_registration。",
+      "visualization": "患者从登记区移动到分诊或等待区。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "ed_registration",
+        "to": [
+          "ed_triage",
+          "ed_waiting"
+        ],
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "waiting",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "waiting",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING"
+    },
+    {
+      "id": "emergency-move-4",
+      "name": "分诊后进入抢救/创伤/普通急诊区域",
+      "eventId": "ED_TRIAGE_TO_TREATMENT_AREA",
+      "classification": "急诊移动",
+      "trigger": "急诊分诊完成并产生 CTAS/zone。",
+      "rooms": [
+        "ed_triage",
+        "ed_red_resus",
+        "ed_trauma",
+        "ed_major",
+        "ed_minor",
+        "ed_waiting"
+      ],
+      "roomsText": "ed_triage、ed_red_resus、ed_trauma、ed_major、ed_minor、ed_waiting",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "目标区域有床位或可接收；L1/L2 优先抢救，创伤进入 trauma，普通进入 major/minor 或 waiting。",
+      "actions": "移动患者到目标急诊区域。",
+      "successState": "患者状态变为 TRIAGED 或 IN_TREATMENT。",
+      "blocking": "目标区域满时患者留在 ed_triage 或 ed_waiting。",
+      "visualization": "患者从分诊移动到抢救床、创伤室或诊疗区。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "ed_triage",
+        "to": [
+          "ed_red_resus",
+          "ed_trauma",
+          "ed_major",
+          "ed_minor",
+          "ed_waiting"
+        ],
+        "via": [],
+        "transport": "wheelchair",
+        "acuity": "urgent",
+        "patientFormDuringMove": "wheelchair",
+        "finalForm": "bed_or_waiting",
+        "escortRequired": true,
+        "escortRoles": [
+          "ed_nurse"
+        ],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "wheelchair",
+        "final_form": "bed_or_waiting",
+        "escort_required": true,
+        "escort_roles": [
+          "ed_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_TRIAGE_TO_TREATMENT_AREA"
+    },
+    {
+      "id": "emergency-move-5",
+      "name": "急诊普通候诊叫号",
+      "eventId": "ED_WAITING_TO_CONSULT_ROOM",
+      "classification": "急诊移动",
+      "trigger": "急诊诊疗房间空闲，候诊队列中有患者。",
+      "rooms": [
+        "ed_waiting",
+        "ed_minor",
+        "ed_major",
+        "ed_doctor_room"
+      ],
+      "roomsText": "ed_waiting、ed_minor、ed_major、ed_doctor_room",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "目标房间空闲；患者已 TRIAGED。",
+      "actions": "从 ed_waiting 移动患者到目标诊疗房间。",
+      "successState": "患者状态变为 IN_CONSULTATION 或 IN_TREATMENT。",
+      "blocking": "目标房间占用时患者继续等待。",
+      "visualization": "患者从 waiting 走到急诊诊疗房间。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "ed_waiting",
+        "to": [
+          "ed_minor",
+          "ed_major",
+          "ed_doctor_room"
+        ],
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "consultation",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "consultation",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_WAITING_TO_CONSULT_ROOM"
+    },
+    {
+      "id": "emergency-move-6",
+      "name": "急诊患者前往检查",
+      "eventId": "ED_TO_DIAGNOSTIC_MOVE",
+      "classification": "急诊移动",
+      "trigger": "急诊医生开立检查。",
+      "rooms": [
+        "ed_doctor_room",
+        "ed_major",
+        "ed_red_resus",
+        "ed_observation",
+        "ed_diagnostic"
+      ],
+      "roomsText": "ed_doctor_room、ed_major、ed_red_resus、ed_observation、ed_diagnostic",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "检查请求有效；ed_diagnostic 可服务或可排队；患者适合移动。",
+      "actions": "移动患者到 ed_diagnostic。",
+      "successState": "患者状态变为 IN_EXAM。",
+      "blocking": "检查房忙或患者不稳定时患者留原房间。",
+      "visualization": "患者从当前急诊房间移动到 ed_diagnostic。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ed_room",
+        "to": "ed_diagnostic",
+        "via": [],
+        "transport": "stretcher",
+        "acuity": "urgent",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "stretcher",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "stretcher",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ed_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_TO_DIAGNOSTIC_MOVE"
+    },
+    {
+      "id": "emergency-move-7",
+      "name": "急诊检查后返回原区域",
+      "eventId": "ED_DIAGNOSTIC_RETURN",
+      "classification": "急诊移动",
+      "trigger": "急诊检查完成。",
+      "rooms": [
+        "ed_diagnostic",
+        "ed_doctor_room",
+        "ed_major",
+        "ed_red_resus",
+        "ed_observation"
+      ],
+      "roomsText": "ed_diagnostic、ed_doctor_room、ed_major、ed_red_resus、ed_observation",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "检查完成；原区域仍可接收。",
+      "actions": "移动患者回原急诊区域。",
+      "successState": "患者状态回到 IN_TREATMENT 或 IN_CONSULTATION。",
+      "blocking": "原区域不可接收时进入 ed_waiting。",
+      "visualization": "患者从检查房返回原房间。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "ed_diagnostic",
+        "to": "source_ed_room",
+        "via": [],
+        "transport": "stretcher",
+        "acuity": "urgent",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed_or_waiting",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed_or_waiting",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ed_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_DIAGNOSTIC_RETURN"
+    },
+    {
+      "id": "emergency-move-8",
+      "name": "急诊转 ICU",
+      "eventId": "ED_TO_ICU_MOVE",
+      "classification": "跨部门移动",
+      "trigger": "急诊患者需要 ICU 接收。",
+      "rooms": [
+        "ed_red_resus",
+        "ed_observation",
+        "ed_handoff",
+        "elevator_1",
+        "elevator_3",
+        "icu_admission",
+        "icu_beds_a",
+        "icu_beds_b",
+        "icu_isolation"
+      ],
+      "roomsText": "ed_red_resus、ed_observation、ed_handoff、elevator_1、elevator_3、icu_admission、icu_beds_a、icu_beds_b、icu_isolation",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "ICU 有匹配空床；接收确认；转运人员可用。",
+      "actions": "锁定 ICU 床位，患者经 elevator_1 到 elevator_3，进入 ICU。",
+      "successState": "患者状态变为 ADMITTED；急诊原床位释放；ICU 床位占用。",
+      "blocking": "ICU 满床或拒收时患者留原急诊房间。",
+      "visualization": "患者以 stretcher 形式从 1F 转到 3F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ed_bed_room",
+        "to": "icu_admission",
+        "via": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_3"
+        ],
+        "transport": "stretcher",
+        "acuity": "critical",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ed_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_TO_ICU_MOVE"
+    },
+    {
+      "id": "emergency-move-9",
+      "name": "急诊转住院",
+      "eventId": "ED_TO_WARD_MOVE",
+      "classification": "跨部门移动",
+      "trigger": "急诊患者稳定但需要住院。",
+      "rooms": [
+        "ed_observation",
+        "ed_handoff",
+        "elevator_1",
+        "elevator_5",
+        "ward_admission"
+      ],
+      "roomsText": "ed_observation、ed_handoff、elevator_1、elevator_5、ward_admission",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "住院部有匹配床位；急诊摘要完整；患者稳定。",
+      "actions": "锁定住院床位，患者经 elevator_1 到 elevator_5，进入 ward_admission 或目标病房。",
+      "successState": "患者状态变为 ADMITTED；急诊观察床释放；住院床占用。",
+      "blocking": "住院无床时患者留在 ed_observation。",
+      "visualization": "患者从 1F 转到 5F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ed_room",
+        "to": "ward_admission",
+        "via": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_5"
+        ],
+        "transport": "stretcher",
+        "acuity": "routine",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ed_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_TO_WARD_MOVE"
+    },
+    {
+      "id": "emergency-move-10",
+      "name": "急诊患者离院",
+      "eventId": "ED_PATIENT_EXIT_HOSPITAL",
+      "classification": "急诊离院",
+      "trigger": "急诊医生判断无需继续急诊、住院或 ICU。",
+      "rooms": [
+        "ed_minor",
+        "ed_major",
+        "ed_doctor_room",
+        "ed_observation",
+        "ed_entrance"
+      ],
+      "roomsText": "ed_minor、ed_major、ed_doctor_room、ed_observation、ed_entrance",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "无未完成检查、观察、转诊或收费事项。",
+      "actions": "释放急诊房间/床位，患者移动到出口或隐藏。",
+      "successState": "患者状态变为 DISCHARGED 或 COMPLETED。",
+      "blocking": "存在未完成事项时禁止离院。",
+      "visualization": "患者从急诊区域离开地图。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ed_room",
+        "to": "exit",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "hidden",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": false,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "hidden",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "ED_PATIENT_EXIT_HOSPITAL"
+    }
+  ]
+}

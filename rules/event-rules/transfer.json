@@ -1,0 +1,431 @@
+{
+  "mode": "patient-movement-only",
+  "id": "transfer",
+  "label": "Cross-Floor Patient Transfers",
+  "sourceFile": "transfer-move-rules",
+  "updatedAt": "2026-06-11T10:11:36.749Z",
+  "rules": [
+    {
+      "id": "transfer-move-1",
+      "name": "急诊转 ICU 标准路径",
+      "eventId": "TRANSFER_ED_TO_ICU",
+      "classification": "跨楼层移动",
+      "trigger": "急诊患者需要 ICU 监护或抢救。",
+      "rooms": [
+        "ed_handoff",
+        "elevator_1",
+        "elevator_3",
+        "icu_admission"
+      ],
+      "roomsText": "ed_handoff、elevator_1、elevator_3、icu_admission",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "ICU 有匹配空床；转运人员可用；患者适合转运。",
+      "actions": "患者从急诊经 elevator_1 到 elevator_3，进入 ICU。",
+      "successState": "ICU 床位占用；急诊原资源释放。",
+      "blocking": "ICU 满床、拒收或转运人员不足时不启动路径。",
+      "visualization": "跨楼层 stretcher 转运动画。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ed_room",
+        "to": "icu_admission",
+        "via": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_3"
+        ],
+        "transport": "stretcher",
+        "acuity": "critical",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ed_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "TRANSFER_ED_TO_ICU"
+    },
+    {
+      "id": "transfer-move-2",
+      "name": "急诊转住院标准路径",
+      "eventId": "TRANSFER_ED_TO_WARD",
+      "classification": "跨楼层移动",
+      "trigger": "急诊患者需要普通住院。",
+      "rooms": [
+        "ed_handoff",
+        "elevator_1",
+        "elevator_5",
+        "ward_admission"
+      ],
+      "roomsText": "ed_handoff、elevator_1、elevator_5、ward_admission",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "住院有匹配床位；急诊摘要完整。",
+      "actions": "患者从急诊经 elevator_1 到 elevator_5，进入住院部。",
+      "successState": "住院床位占用；急诊资源释放。",
+      "blocking": "住院无床时患者留急诊。",
+      "visualization": "患者从 1F 移动到 5F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ed_room",
+        "to": "ward_admission",
+        "via": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_5"
+        ],
+        "transport": "stretcher",
+        "acuity": "routine",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ed_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "TRANSFER_ED_TO_WARD"
+    },
+    {
+      "id": "transfer-move-3",
+      "name": "门诊转急诊标准路径",
+      "eventId": "TRANSFER_OP_TO_ED",
+      "classification": "跨楼层移动",
+      "trigger": "门诊发现急危重风险。",
+      "rooms": [
+        "triage_2",
+        "elevator_2",
+        "elevator_1",
+        "ed_handoff",
+        "ed_red_resus"
+      ],
+      "roomsText": "triage_2、elevator_2、elevator_1、ed_handoff、ed_red_resus",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "急诊接收确认；抢救床或观察床可用。",
+      "actions": "患者从门诊经 elevator_2 到 elevator_1，进入急诊目标区域。",
+      "successState": "门诊资源释放；急诊资源占用。",
+      "blocking": "急诊资源满时患者留门诊并触发告警。",
+      "visualization": "患者从 2F 转到 1F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_op_room",
+        "to": [
+          "ed_handoff",
+          "ed_red_resus",
+          "ed_observation"
+        ],
+        "via": [
+          "elevator_2",
+          "elevator_1"
+        ],
+        "transport": "wheelchair",
+        "acuity": "urgent",
+        "patientFormDuringMove": "wheelchair",
+        "finalForm": "bed_or_waiting",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "oxygen"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "wheelchair",
+        "final_form": "bed_or_waiting",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "outpatient_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "TRANSFER_OP_TO_ED"
+    },
+    {
+      "id": "transfer-move-4",
+      "name": "门诊转住院标准路径",
+      "eventId": "TRANSFER_OP_TO_WARD",
+      "classification": "跨楼层移动",
+      "trigger": "门诊医生判断患者需要入院。",
+      "rooms": [
+        "doctor_entry_2",
+        "elevator_2",
+        "elevator_5",
+        "ward_admission"
+      ],
+      "roomsText": "doctor_entry_2、elevator_2、elevator_5、ward_admission",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "入院资料完整；住院有匹配床位。",
+      "actions": "患者经 elevator_2 到 elevator_5，进入 ward_admission。",
+      "successState": "患者状态变为 ADMITTED。",
+      "blocking": "住院无床时患者不转运。",
+      "visualization": "患者从 2F 移动到 5F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_op_room",
+        "to": "ward_admission",
+        "via": [
+          "doctor_entry_2",
+          "elevator_2",
+          "elevator_5"
+        ],
+        "transport": "stretcher",
+        "acuity": "routine",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "outpatient_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "TRANSFER_OP_TO_WARD"
+    },
+    {
+      "id": "transfer-move-5",
+      "name": "ICU 转住院标准路径",
+      "eventId": "TRANSFER_ICU_TO_WARD",
+      "classification": "跨楼层移动",
+      "trigger": "ICU 患者稳定可转普通病区。",
+      "rooms": [
+        "icu_transfer",
+        "elevator_3",
+        "elevator_5",
+        "ward_admission"
+      ],
+      "roomsText": "icu_transfer、elevator_3、elevator_5、ward_admission",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "住院有匹配床位；患者稳定。",
+      "actions": "患者经 elevator_3 到 elevator_5，进入住院部。",
+      "successState": "ICU 床位释放；住院床位占用。",
+      "blocking": "住院无床时患者留 ICU。",
+      "visualization": "患者从 3F 转到 5F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_icu_bed_room",
+        "to": "ward_admission",
+        "via": [
+          "icu_transfer",
+          "elevator_3",
+          "elevator_5"
+        ],
+        "transport": "stretcher",
+        "acuity": "urgent",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "icu_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "icu_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "TRANSFER_ICU_TO_WARD"
+    },
+    {
+      "id": "transfer-move-6",
+      "name": "住院转 ICU 标准路径",
+      "eventId": "TRANSFER_WARD_TO_ICU",
+      "classification": "跨楼层移动",
+      "trigger": "住院患者病情恶化需要 ICU。",
+      "rooms": [
+        "elevator_5",
+        "elevator_3",
+        "icu_admission"
+      ],
+      "roomsText": "elevator_5、elevator_3、icu_admission",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "ICU 有空床；接收确认；转运人员可用。",
+      "actions": "患者经 elevator_5 到 elevator_3，进入 ICU。",
+      "successState": "住院床位释放；ICU 床位占用。",
+      "blocking": "ICU 满床时患者留原病房。",
+      "visualization": "患者从 5F 转到 3F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_ward_room",
+        "to": "icu_admission",
+        "via": [
+          "elevator_5",
+          "elevator_3"
+        ],
+        "transport": "stretcher",
+        "acuity": "urgent",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "ward_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "TRANSFER_WARD_TO_ICU"
+    }
+  ]
+}
