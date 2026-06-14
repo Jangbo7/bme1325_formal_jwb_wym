@@ -17,6 +17,10 @@ class NpcPatientDebugState:
     encounter_id: str | None = None
     active_session_id: str | None = None
     visit_state: str | None = None
+    primary_disposition: str | None = None
+    disposition: dict = field(default_factory=dict)
+    outpatient_flow_finished: bool = False
+    outpatient_finished_at: str | None = None
     patient_lifecycle_state: str | None = None
     phase: str = "spawned"
     status: str = "idle"
@@ -76,6 +80,10 @@ class NpcPatientDebugState:
             encounter_id=self.encounter_id,
             active_session_id=self.active_session_id,
             visit_state=self.visit_state,
+            primary_disposition=self.primary_disposition,
+            disposition=dict(self.disposition),
+            outpatient_flow_finished=self.outpatient_flow_finished,
+            outpatient_finished_at=self.outpatient_finished_at,
             patient_lifecycle_state=self.patient_lifecycle_state,
             phase=self.phase,
             status=self.status,

@@ -7,6 +7,7 @@ from app.agents.internal_medicine.policy import (
     validate_internal_medicine_policy_snapshot,
 )
 from app.agents.internal_medicine.patient_reply import build_patient_reply
+from app.agents.internal_medicine.post_final_answer import build_post_final_answer_llm_messages
 from app.agents.internal_medicine.prompts import (
     build_consultation_system_prompt,
     build_follow_up_llm_messages,
@@ -52,6 +53,7 @@ def build_internal_medicine_runtime_config() -> DepartmentAgentConfig:
         build_follow_up_question=build_follow_up_question,
         build_follow_up_llm_messages=build_follow_up_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
+        build_post_final_answer_llm_messages=build_post_final_answer_llm_messages,
         build_final_message=build_final_message,
         build_patient_reply=build_patient_reply,
         build_system_prompt=build_consultation_system_prompt,
@@ -74,5 +76,9 @@ def build_internal_medicine_runtime_config() -> DepartmentAgentConfig:
         policy_prompt_adapter=adapt_internal_medicine_policy_prompt,
         policy_validator=validate_internal_medicine_policy_snapshot,
         policy_fallback_builder=build_internal_medicine_policy_fallback,
-        metadata={"policy_agent_role": "internal_medicine_agent"},
+        metadata={
+            "policy_agent_role": "internal_medicine_agent",
+            "department_id": "internal",
+            "department_label": "Internal Medicine",
+        },
     )

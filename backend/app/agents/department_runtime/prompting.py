@@ -58,10 +58,20 @@ def build_shared_consultation_system_prompt(
             else (
                 "This is a second-round consultation. Prioritize the prior consultation summary, available test results, and the patient's current update before deciding the next disposition. "
                 "Do not restart the full intake unless key safety information is still missing. "
-                "For second-round conclusions, primary_disposition must contain exactly one final disposition, while medication_recommendation, admission_recommendation, procedure_recommendation, and followup_recommendation may coexist."
+                "For second-round conclusions, primary_disposition must contain exactly one final disposition, while medication_recommendation, admission_recommendation, procedure_recommendation, and followup_recommendation may coexist. "
+                "You may choose outpatient management, specialty referral after the current loop closes, emergency escalation, ICU escalation, or inpatient-admission recommendation. "
+                "If you choose specialty_referral, recommended_department, recommended_department_reason, handoff_reason, requires_new_registration, and carry_forward_summary must be populated."
             )
         )
         prompt = f"{base_role_text} Base your response only on patient-provided facts and the available consultation context, and return strict JSON. {round_instruction}"
+    if consultation_round >= 2:
+        prompt = (
+            f"{prompt}\n"
+            "Second-round disposition rules: choose exactly one of outpatient_management, specialty_referral, emergency_escalation, icu_escalation, or inpatient_admission_recommended. "
+            "Use specialty_referral only when the current department can close its loop and the patient should re-register with another specialty next. "
+            "If you choose specialty_referral, fill recommended_department, recommended_department_reason, handoff_reason, requires_new_registration=true, and carry_forward_summary. "
+            "Use icu_escalation only for ICU-level deterioration or instability."
+        )
     if policy_prompt_context:
         prompt = f"{prompt}\n{policy_prompt_context}"
     return prompt
@@ -92,13 +102,22 @@ def build_shared_consultation_user_prompt(
         round1_response_keys=round1_response_keys,
         default_response_keys=default_response_keys,
     )
+    consultation_context = payload.get("consultation_context") or {}
     previous_round_summary = payload.get("previous_round_summary") or {}
     simulated_report = payload.get("simulated_report") or {}
     diagnostic_session = payload.get("diagnostic_session") or {}
+    chart_view = payload.get("chart_view") or {}
+    intake_mode = str(consultation_context.get("intake_mode") or "").strip()
 
     if language == "zh":
         if post_final_reassessment:
             instruction = "这是在已有阶段性结果后的再次评估，不要继续追问，只返回更新后的最终 JSON。"
+        elif intake_mode == "referral_handoff":
+            instruction = (
+                "This is a receiving-doctor consultation after referral. Treat prior workflow as closed. "
+                "Do not rely on hidden memory from the previous doctor. Use only the chart view and the patient's current statements, "
+                "then continue as a normal first consultation."
+            )
         elif consultation_round == 2:
             instruction = "这是二轮面诊。请优先结合上一轮摘要、辅助检查结果和患者本次补充完成再评估；除非关键安全信息仍缺失，不要重新从头开始初诊式采集。"
         else:
@@ -120,17 +139,27 @@ def build_shared_consultation_user_prompt(
 
     if post_final_reassessment:
         instruction = "This is a reassessment after a completed result. Do not ask follow-up questions. Return only the updated final JSON."
+    elif intake_mode == "referral_handoff":
+        instruction = (
+            "This is a receiving-doctor consultation after referral. Treat prior workflow as closed. "
+            "Do not rely on hidden memory from the previous doctor. Use only the chart view and the patient's current statements, "
+            "then continue as a normal first consultation."
+        )
     elif consultation_round == 2:
         instruction = (
             "This is a second-round consultation. Use the prior consultation summary, available test results, and the patient's latest update to complete the reassessment. "
             "Do not restart the full intake unless key safety information is still missing. "
-            "primary_disposition must be a single final disposition, while medication_recommendation, admission_recommendation, procedure_recommendation, and followup_recommendation may coexist."
+            "primary_disposition must be a single final disposition, while medication_recommendation, admission_recommendation, procedure_recommendation, and followup_recommendation may coexist. "
+            "If the current department can finish the outpatient loop but another specialty should see the patient next, use specialty_referral and mark requires_new_registration=true. "
+            "If the patient now needs immediate ICU-level care, use icu_escalation instead of outpatient referral."
         )
     else:
         instruction = "If the information is sufficient, return the final JSON directly."
     return (
         f"Consultation round: {consultation_round}\n"
+        f"Consultation context: {_as_prompt_text(consultation_context)}\n"
         f"Patient shared facts: {_as_prompt_text(shared_memory)}\n"
+        f"Doctor chart view: {_as_prompt_text(chart_view)}\n"
         f"Previous consultation summary: {_as_prompt_text(previous_round_summary)}\n"
         f"Simulated test report: {_as_prompt_text(simulated_report)}\n"
         f"Diagnostic session: {_as_prompt_text(diagnostic_session)}\n"
@@ -158,9 +187,11 @@ def build_shared_follow_up_llm_messages(
 ) -> list[dict]:
     payload = payload or {}
     consultation_round = normalize_consultation_round(payload.get("consultation_round") or consultation_round)
+    consultation_context = payload.get("consultation_context") or {}
     previous_round_summary = payload.get("previous_round_summary") or {}
     simulated_report = payload.get("simulated_report") or {}
     diagnostic_session = payload.get("diagnostic_session") or {}
+    chart_view = payload.get("chart_view") or {}
     policy_prompt_context = ""
     if policy_runtime_context is not None:
         policy_prompt_context = str(policy_runtime_context.prompt_policy_context or "")
@@ -200,7 +231,9 @@ def build_shared_follow_up_llm_messages(
         system_prompt = f"{system_prompt}\n{policy_prompt_context}"
     user_prompt = (
         f"Consultation round: {consultation_round}\n"
+        f"Consultation context: {_as_prompt_text(consultation_context)}\n"
         f"Shared memory: {_as_prompt_text(shared_memory)}\n"
+        f"Doctor chart view: {_as_prompt_text(chart_view)}\n"
         f"Previous consultation summary: {_as_prompt_text(previous_round_summary)}\n"
         f"Simulated test report: {_as_prompt_text(simulated_report)}\n"
         f"Diagnostic session: {_as_prompt_text(diagnostic_session)}\n"
@@ -208,6 +241,96 @@ def build_shared_follow_up_llm_messages(
         f"Missing fields: {missing}\n"
         f"Question focus: {focus}\n"
         "Generate one natural, short, concrete follow-up question."
+    )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def build_shared_post_final_answer_llm_messages(
+    shared_memory: dict,
+    message: str,
+    final_result: dict,
+    *,
+    payload: dict | None = None,
+    previous_final_result: dict | None = None,
+    policy_runtime_context=None,
+    consultation_round: int = 1,
+    response_mode: str = "answer_only",
+    language: str,
+    assistant_label: str,
+) -> list[dict]:
+    payload = payload or {}
+    consultation_round = normalize_consultation_round(payload.get("consultation_round") or consultation_round)
+    consultation_context = payload.get("consultation_context") or {}
+    previous_round_summary = payload.get("previous_round_summary") or {}
+    simulated_report = payload.get("simulated_report") or {}
+    diagnostic_session = payload.get("diagnostic_session") or {}
+    historical_records_template = payload.get("historical_records_template") or {}
+    chart_view = payload.get("chart_view") or {}
+    policy_prompt_context = ""
+    if policy_runtime_context is not None:
+        policy_prompt_context = str(policy_runtime_context.prompt_policy_context or "")
+
+    if language == "zh":
+        guidance_instruction = (
+            "优先直接回答患者当前问题，不要重复完整总结，不要重新宣判。"
+            if response_mode == "answer_only"
+            else "优先直接回答患者当前问题，并在末尾补一句简短的下一步建议或安全提醒；不要重复完整总结，不要重新宣判。"
+        )
+        system_prompt = (
+            f"你是{assistant_label}。请基于已有结论和当前上下文，像临床门诊医生一样自然回答患者当前问题。"
+            "除非给定结果中已经明确写出，否则不要发明新的检查结论、诊断升级或处置改变。"
+            f"{guidance_instruction}"
+            "只输出严格 JSON：{\"assistant_message\":\"...\"}。"
+        )
+        if policy_prompt_context:
+            system_prompt = f"{system_prompt}\n{policy_prompt_context}"
+        user_prompt = (
+            f"问诊轮次：第 {consultation_round} 轮\n"
+            f"共享记忆：{_as_prompt_text(shared_memory)}\n"
+            f"上一轮摘要：{_as_prompt_text(previous_round_summary)}\n"
+            f"辅助检查/报告摘要：{_as_prompt_text(simulated_report)}\n"
+            f"检查会话信息：{_as_prompt_text(diagnostic_session)}\n"
+            f"历史病历摘要模板：{_as_prompt_text(historical_records_template)}\n"
+            f"上一版最终结论：{_as_prompt_text(previous_final_result or {})}\n"
+            f"当前有效结论：{_as_prompt_text(final_result or {})}\n"
+            f"当前回复模式：{response_mode}\n"
+            f"患者当前问题：{message}\n"
+            "请直接回答患者问题；如果当前问题并不改变结论，请明确沿用原方案。"
+        )
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+    guidance_instruction = (
+        "Answer the patient's current question directly. Do not restate the entire summary and do not re-announce the judgment."
+        if response_mode == "answer_only"
+        else "Answer the patient's current question directly, then add one short next-step or safety reminder. Do not restate the entire summary and do not re-announce the judgment."
+    )
+    system_prompt = (
+        f"You are a {assistant_label}. Answer the patient's current question like a real outpatient doctor using the existing final result and context. "
+        "Do not invent a new diagnosis, test result, or disposition change unless it is already present in the provided result. "
+        f"{guidance_instruction} Output strict JSON only: {{\"assistant_message\":\"...\"}}."
+    )
+    if policy_prompt_context:
+        system_prompt = f"{system_prompt}\n{policy_prompt_context}"
+    user_prompt = (
+        f"Consultation round: {consultation_round}\n"
+        f"Consultation context: {_as_prompt_text(consultation_context)}\n"
+        f"Shared memory: {_as_prompt_text(shared_memory)}\n"
+        f"Doctor chart view: {_as_prompt_text(chart_view)}\n"
+        f"Previous consultation summary: {_as_prompt_text(previous_round_summary)}\n"
+        f"Simulated test report: {_as_prompt_text(simulated_report)}\n"
+        f"Diagnostic session: {_as_prompt_text(diagnostic_session)}\n"
+        f"Historical medical records template: {_as_prompt_text(historical_records_template)}\n"
+        f"Previous final result: {_as_prompt_text(previous_final_result or {})}\n"
+        f"Current effective result: {_as_prompt_text(final_result or {})}\n"
+        f"Response mode: {response_mode}\n"
+        f"Patient question: {message}\n"
+        "Answer the patient's question directly. If the question does not change the judgment, explicitly keep the current plan."
     )
     return [
         {"role": "system", "content": system_prompt},

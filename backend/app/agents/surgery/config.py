@@ -7,6 +7,7 @@ from app.agents.surgery.policy import (
     validate_surgery_policy_snapshot,
 )
 from app.agents.surgery.patient_reply import build_patient_reply
+from app.agents.surgery.post_final_answer import build_post_final_answer_llm_messages
 from app.agents.surgery.prompts import (
     build_consultation_system_prompt,
     build_consultation_user_prompt,
@@ -51,6 +52,7 @@ def build_surgery_runtime_config() -> DepartmentAgentConfig:
         build_follow_up_question=build_follow_up_question,
         build_follow_up_llm_messages=build_follow_up_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
+        build_post_final_answer_llm_messages=build_post_final_answer_llm_messages,
         build_final_message=build_final_message,
         build_patient_reply=build_patient_reply,
         build_system_prompt=build_consultation_system_prompt,
@@ -73,5 +75,9 @@ def build_surgery_runtime_config() -> DepartmentAgentConfig:
         policy_prompt_adapter=adapt_surgery_policy_prompt,
         policy_validator=validate_surgery_policy_snapshot,
         policy_fallback_builder=build_surgery_policy_fallback,
-        metadata={"policy_agent_role": "surgery_agent"},
+        metadata={
+            "policy_agent_role": "surgery_agent",
+            "department_id": "surgery",
+            "department_label": "Surgery",
+        },
     )

@@ -12,6 +12,7 @@ from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICK
 from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
 from app.services.consultation_registry import resolve_consultation_agent_for_visit
 from app.services.department_assignment import resolve_assigned_department_for_visit
+from app.services.disposition import is_outpatient_flow_finished
 
 
 WAIT_SECONDS = 10
@@ -119,7 +120,8 @@ class NpcPatientRunner:
         dispatch[planned.action](state, profile, planned, force_offline_llm=force_offline_llm)
         state.step_count += 1
         self._sync_state(state, preserve_dialogue=preserve_dialogue)
-        if state.visit_state == VisitLifecycleState.WAITING_PAYMENT.value:
+        visit_row = self._get_visit_row(state)
+        if is_outpatient_flow_finished(state.visit_state, self._decode_visit_data(visit_row)):
             state.finished = True
             state.phase = "finished"
             state.status = "finished"
@@ -706,9 +708,14 @@ class NpcPatientRunner:
 
     def _sync_state(self, state: NpcPatientDebugState, *, preserve_dialogue: bool) -> None:
         visit_row = self._get_visit_row(state)
+        visit_data = self._decode_visit_data(visit_row)
         patient_row = self.patient_repo.get(state.patient_id)
         state.encounter_id = visit_row["id"] if visit_row else state.encounter_id
         state.visit_state = visit_row.get("state") if visit_row else None
+        state.primary_disposition = visit_data.get("primary_disposition")
+        state.disposition = dict(visit_data.get("disposition") or {})
+        state.outpatient_flow_finished = is_outpatient_flow_finished(state.visit_state, visit_data)
+        state.outpatient_finished_at = visit_data.get("outpatient_finished_at")
         state.patient_lifecycle_state = patient_row.get("lifecycle_state") if patient_row else None
         if self.medical_record_repo and state.encounter_id:
             timeline = self.medical_record_repo.get_visit_timeline(state.encounter_id)
@@ -718,6 +725,10 @@ class NpcPatientRunner:
         if state.finished:
             state.phase = "finished"
             state.status = "finished"
+        elif state.outpatient_flow_finished:
+            state.finished = True
+            state.phase = "finished"
+            state.status = state.visit_state or "finished"
         elif state.visit_state:
             state.phase = self._phase_for_visit_state(state.visit_state)
             if not preserve_dialogue:
@@ -813,7 +824,7 @@ class NpcPatientRunner:
             return "testing"
         if visit_state == "in_second_consultation":
             return "internal_medicine_round2"
-        if visit_state == "waiting_payment":
+        if is_outpatient_flow_finished(visit_state):
             return "finished"
         return "system"
 

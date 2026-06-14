@@ -34,6 +34,8 @@ def now_iso() -> str:
 FINISHED_VISIT_STATES = {
     VisitLifecycleState.WAITING_PAYMENT.value,
     VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
+    VisitLifecycleState.IN_EMERGENCY.value,
+    VisitLifecycleState.IN_ICU_RESCUE.value,
     VisitLifecycleState.DISPOSITION_PENDING.value,
     VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
     VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
@@ -310,6 +312,23 @@ class DepartmentRuntimeService:
 
         for row in runtime_rows:
             merged = row.model_dump()
+            visit_data = self.visit_repo.get_visit_data(row.visit_id)
+            merged["primary_disposition"] = visit_data.get("primary_disposition")
+            merged["disposition"] = dict(visit_data.get("disposition") or {})
+            merged["outpatient_flow_finished"] = bool(visit_data.get("outpatient_flow_finished"))
+            merged["outpatient_finished_at"] = visit_data.get("outpatient_finished_at")
+            merged["rare_event_profile"] = dict(visit_data.get("rare_event_profile") or {})
+            merged["rare_event_triggered_by"] = visit_data.get("rare_event_triggered_by")
+            merged["rare_event_type"] = visit_data.get("rare_event_type")
+            merged["rare_event_seed"] = visit_data.get("rare_event_seed")
+            merged["report_acuity_level"] = ((visit_data.get("simulated_report") or {}).get("report_summary") or {}).get("acuity_level")
+            merged["report_cross_specialty_clues"] = list(
+                (((visit_data.get("simulated_report") or {}).get("report_summary") or {}).get("cross_specialty_clues") or [])
+            )
+            merged["recommended_department"] = visit_data.get("recommended_department")
+            merged["recommended_department_reason"] = visit_data.get("recommended_department_reason")
+            merged["requires_new_registration"] = bool(visit_data.get("requires_new_registration", False))
+            merged["carry_forward_summary"] = dict(visit_data.get("carry_forward_summary") or {})
             overlay = controller_patients.get(row.patient_id)
             if overlay:
                 merged["npc_id"] = overlay.get("npc_id")
@@ -319,6 +338,35 @@ class DepartmentRuntimeService:
                 merged["patient_source"] = overlay.get("patient_source") or merged.get("patient_source")
                 merged["generation_hint_department_id"] = overlay.get("generation_hint_department_id") or merged.get("generation_hint_department_id")
                 merged["generation_hint_department_name"] = overlay.get("generation_hint_department_name") or merged.get("generation_hint_department_name")
+                merged["primary_disposition"] = overlay.get("primary_disposition") or merged.get("primary_disposition")
+                merged["disposition"] = dict(overlay.get("disposition") or merged.get("disposition") or {})
+                merged["outpatient_flow_finished"] = bool(
+                    overlay.get("outpatient_flow_finished", merged.get("outpatient_flow_finished", False))
+                )
+                merged["outpatient_finished_at"] = overlay.get("outpatient_finished_at") or merged.get("outpatient_finished_at")
+                merged["rare_event_profile"] = dict(overlay.get("rare_event_profile") or merged.get("rare_event_profile") or {})
+                merged["rare_event_triggered_by"] = overlay.get("rare_event_triggered_by") or merged.get("rare_event_triggered_by")
+                merged["rare_event_type"] = overlay.get("rare_event_type") or merged.get("rare_event_type")
+                merged["rare_event_seed"] = overlay.get("rare_event_seed") or merged.get("rare_event_seed")
+                merged["report_acuity_level"] = overlay.get("report_acuity_level") or merged.get("report_acuity_level")
+                merged["report_cross_specialty_clues"] = list(
+                    overlay.get("report_cross_specialty_clues")
+                    or merged.get("report_cross_specialty_clues")
+                    or []
+                )
+                merged["recommended_department"] = overlay.get("recommended_department") or merged.get("recommended_department")
+                merged["recommended_department_reason"] = (
+                    overlay.get("recommended_department_reason")
+                    or merged.get("recommended_department_reason")
+                )
+                merged["requires_new_registration"] = bool(
+                    overlay.get("requires_new_registration", merged.get("requires_new_registration", False))
+                )
+                merged["carry_forward_summary"] = dict(
+                    overlay.get("carry_forward_summary")
+                    or merged.get("carry_forward_summary")
+                    or {}
+                )
                 merged["department_agent_enabled"] = overlay.get("department_agent_enabled", merged.get("department_agent_enabled", False))
                 merged["department_capability_class"] = overlay.get("department_capability_class") or merged.get("department_capability_class")
                 merged["current_node_id"] = overlay.get("current_node_id") or merged.get("current_node_id")
@@ -458,6 +506,20 @@ class DepartmentRuntimeService:
                     department_flow_status="unassigned",
                     queue_ticket_id=None,
                     visit_state=overlay.get("visit_state"),
+                    primary_disposition=overlay.get("primary_disposition"),
+                    disposition=dict(overlay.get("disposition") or {}),
+                    outpatient_flow_finished=bool(overlay.get("outpatient_flow_finished", False)),
+                    outpatient_finished_at=overlay.get("outpatient_finished_at"),
+                    rare_event_profile=dict(overlay.get("rare_event_profile") or {}),
+                    rare_event_triggered_by=overlay.get("rare_event_triggered_by"),
+                    rare_event_type=overlay.get("rare_event_type"),
+                    rare_event_seed=overlay.get("rare_event_seed"),
+                    report_acuity_level=overlay.get("report_acuity_level"),
+                    report_cross_specialty_clues=list(overlay.get("report_cross_specialty_clues") or []),
+                    recommended_department=overlay.get("recommended_department"),
+                    recommended_department_reason=overlay.get("recommended_department_reason"),
+                    requires_new_registration=bool(overlay.get("requires_new_registration", False)),
+                    carry_forward_summary=dict(overlay.get("carry_forward_summary") or {}),
                     patient_lifecycle_state=overlay.get("patient_lifecycle_state"),
                     active_agent_type=None,
                     current_node=None,

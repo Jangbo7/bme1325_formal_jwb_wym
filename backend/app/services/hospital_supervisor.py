@@ -30,6 +30,7 @@ from app.services.department_resources import (
     resolve_room_for_visit_state,
     stable_doctor_slot_for_patient,
 )
+from app.services.disposition import is_outpatient_flow_finished
 from app.services.patient_flow_engine import FlowDecisionEngine, FlowExecutor
 from app.services.runtime_projection import derive_runtime_projection
 
@@ -458,7 +459,7 @@ class HospitalSupervisor:
             default_target_node=decision.target_node or assigned_department_id or "triage",
         )
         slot.target_node_id = target_node
-        if not self._can_dispatch_to_node(target_node, dispatch_budget):
+        if decision.next_action != "complete_visit" and not self._can_dispatch_to_node(target_node, dispatch_budget):
             self._blocked_count += 1
             slot.state.status = "waiting_capacity"
             slot.state.last_error = f"node capacity reached: {target_node}"
@@ -488,18 +489,18 @@ class HospitalSupervisor:
             slot.next_step_at = now + timedelta(seconds=max(0.5, self._step_interval_seconds / 2))
             return slot.current_node_id or target_node
 
-        dispatch_budget[target_node] = dispatch_budget.get(target_node, 0) + 1
+        if decision.next_action != "complete_visit":
+            dispatch_budget[target_node] = dispatch_budget.get(target_node, 0) + 1
         self._dispatch_count += 1
         updated_visit_row = runner._get_visit_row(slot.state)  # noqa: SLF001
         self._refresh_slot_department_from_visit(slot, updated_visit_row)
-        if (
-            slot.mode == "legacy_probabilistic_llm"
-            and slot.patient_source == "generated"
-            and slot.state.visit_state == "in_emergency"
-        ):
+        visit_data = {}
+        if updated_visit_row is not None:
+            visit_data = runner._decode_visit_data(updated_visit_row)  # noqa: SLF001
+        if is_outpatient_flow_finished(slot.state.visit_state, visit_data):
             slot.state.finished = True
             slot.state.phase = "finished"
-            slot.state.status = "finished"
+            slot.state.status = slot.state.visit_state or "finished"
             slot.state.clear_dialogue()
         slot.state.last_error = None
         slot.next_step_at = now + timedelta(seconds=self._next_delay_for_node(target_node))
@@ -513,7 +514,7 @@ class HospitalSupervisor:
         return max(0.1, float(self._node_step_delays.get(node_id, self._step_interval_seconds)))
 
     def _build_node_capacities(self) -> dict[str, int]:
-        capacities = {"*": 1, "testing": 2, "payment": 2, "pharmacy": 2}
+        capacities = {"*": 1, "triage": 8, "testing": 2, "payment": 2, "pharmacy": 2}
         for config in list_department_resource_configs():
             capacities[config.department_id] = config.department_gate_capacity
             for room in config.room_nodes:
@@ -523,6 +524,13 @@ class HospitalSupervisor:
     def _to_patient_snapshot(self, slot: _PatientSlot) -> MultiPatientDebugPatientSnapshot:
         profile_id = slot.profile.profile_id if slot.profile else None
         case_summary = slot.state.case_summary if isinstance(slot.state, PatientAgentDebugState) else None
+        visit_row = None
+        visit_data = {}
+        if slot.state.encounter_id:
+            runner = self._legacy_runner if slot.runner_kind == "legacy" else self._intelligent_runner
+            visit_row = runner.visit_repo.get(slot.state.encounter_id)
+            if visit_row is not None:
+                visit_data = runner._decode_visit_data(visit_row)  # noqa: SLF001
         runtime_row = (
             self._department_runtime_service.runtime_repo.get_patient_runtime(
                 slot.state.patient_id,
@@ -583,6 +591,26 @@ class HospitalSupervisor:
             encounter_id=slot.state.encounter_id,
             visit_state=slot.state.visit_state,
             patient_lifecycle_state=slot.state.patient_lifecycle_state,
+            primary_disposition=visit_data.get("primary_disposition"),
+            disposition=dict(visit_data.get("disposition") or {}),
+            outpatient_flow_finished=is_outpatient_flow_finished(slot.state.visit_state, visit_data),
+            outpatient_finished_at=visit_data.get("outpatient_finished_at"),
+            rare_event_profile=dict(
+                visit_data.get("rare_event_profile")
+                or (case_summary or {}).get("rare_event_profile")
+                or {}
+            ),
+            rare_event_triggered_by=visit_data.get("rare_event_triggered_by") or (case_summary or {}).get("rare_event_triggered_by"),
+            rare_event_type=visit_data.get("rare_event_type") or (case_summary or {}).get("rare_event_type"),
+            rare_event_seed=visit_data.get("rare_event_seed") or (case_summary or {}).get("rare_event_seed"),
+            report_acuity_level=((visit_data.get("simulated_report") or {}).get("report_summary") or {}).get("acuity_level"),
+            report_cross_specialty_clues=list(
+                (((visit_data.get("simulated_report") or {}).get("report_summary") or {}).get("cross_specialty_clues") or [])
+            ),
+            recommended_department=visit_data.get("recommended_department"),
+            recommended_department_reason=visit_data.get("recommended_department_reason"),
+            requires_new_registration=bool(visit_data.get("requires_new_registration", False)),
+            carry_forward_summary=dict(visit_data.get("carry_forward_summary") or {}),
             assigned_department_id=slot.assigned_department_id,
             assigned_department_name=slot.assigned_department_name,
             generation_hint_department_id=slot.generation_hint_department_id,

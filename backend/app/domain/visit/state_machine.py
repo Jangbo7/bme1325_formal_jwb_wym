@@ -105,9 +105,43 @@ VISIT_TRANSITIONS = {
     },
     VisitLifecycleState.DIAGNOSIS_FINALIZED: {
         "request_medical_payment": VisitLifecycleState.WAITING_PAYMENT,
+        "plan_disposition": VisitLifecycleState.DISPOSITION_PENDING,
         "mark_error": VisitLifecycleState.ERROR,
     },
-    VisitLifecycleState.WAITING_PHARMACY: {"mark_error": VisitLifecycleState.ERROR},
+    VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED: {
+        "plan_disposition": VisitLifecycleState.DISPOSITION_PENDING,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.DISPOSITION_PENDING: {
+        "choose_outpatient_treatment": VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT,
+        "choose_followup_booking": VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING,
+        "choose_referral": VisitLifecycleState.DISPOSITION_REFERRAL,
+        "admit_patient": VisitLifecycleState.ADMITTED,
+        "route_to_emergency": VisitLifecycleState.IN_EMERGENCY,
+        "route_to_icu_rescue": VisitLifecycleState.IN_ICU_RESCUE,
+        "complete_visit": VisitLifecycleState.COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT: {
+        "complete_visit": VisitLifecycleState.COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING: {
+        "complete_visit": VisitLifecycleState.COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.DISPOSITION_REFERRAL: {
+        "complete_visit": VisitLifecycleState.COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.ADMITTED: {
+        "complete_visit": VisitLifecycleState.COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
+    VisitLifecycleState.WAITING_PHARMACY: {
+        "complete_visit": VisitLifecycleState.COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
     VisitLifecycleState.TRANSFERRING: {
         "complete_visit": VisitLifecycleState.COMPLETED,
         "mark_error": VisitLifecycleState.ERROR,

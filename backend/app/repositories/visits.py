@@ -4,6 +4,7 @@ from app.database import Database
 from app.domain.identifiers import generate_encounter_id
 from app.schemas.common import VisitLifecycleState
 from app.schemas.visit import VisitView
+from app.services.disposition import is_outpatient_flow_finished
 
 
 TERMINAL_VISIT_STATES = {
@@ -201,6 +202,7 @@ class VisitRepository:
         return self.update_visit(visit_id, data=data)
 
     def to_view(self, row: dict) -> VisitView:
+        visit_data = Database.decode_json(row.get("data_json"), {})
         return VisitView(
             id=row["id"],
             encounter_id=row["id"],
@@ -211,7 +213,11 @@ class VisitRepository:
             current_node=row.get("current_node"),
             current_department=row.get("current_department"),
             active_agent_type=row.get("active_agent_type"),
-            data=Database.decode_json(row.get("data_json"), {}),
+            primary_disposition=visit_data.get("primary_disposition"),
+            disposition=dict(visit_data.get("disposition") or {}),
+            outpatient_flow_finished=is_outpatient_flow_finished(row.get("state"), visit_data),
+            outpatient_finished_at=visit_data.get("outpatient_finished_at"),
+            data=visit_data,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

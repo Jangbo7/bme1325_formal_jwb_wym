@@ -53,6 +53,68 @@ def _blocking_text(patient: dict) -> str:
     )
 
 
+def _patient_special_outcome_bucket(patient: dict) -> str | None:
+    visit_state = str(patient.get("visit_state") or "").strip().lower()
+    primary_disposition = str(patient.get("primary_disposition") or "").strip().lower()
+    disposition = patient.get("disposition") or {}
+    disposition_category = str(disposition.get("category") or "").strip().lower()
+
+    if visit_state == "in_icu_rescue" or primary_disposition == "icu_escalation" or disposition_category == "icu_rescue":
+        return "icu"
+    if visit_state == "in_emergency" or primary_disposition == "emergency_escalation" or disposition_category == "emergency_escalation":
+        return "emergency"
+    if primary_disposition == "specialty_referral" or disposition_category == "specialty_referral":
+        return "referral"
+    return None
+
+
+def _count_special_outcomes(patients: list[dict]) -> dict[str, int]:
+    counts = {
+        "referral": 0,
+        "emergency": 0,
+        "icu": 0,
+    }
+    for patient in patients:
+        bucket = _patient_special_outcome_bucket(patient)
+        if bucket:
+            counts[bucket] += 1
+    return counts
+
+
+def _patient_rare_event_state(patient: dict) -> str:
+    profile = patient.get("rare_event_profile") or {}
+    patient_enabled = bool(profile.get("patient_special_event_enabled"))
+    report_enabled = bool(profile.get("report_special_signal_enabled"))
+    triggered_by = str(patient.get("rare_event_triggered_by") or profile.get("triggered_by") or "").strip().lower()
+    event_type = str(patient.get("rare_event_type") or profile.get("event_type") or "").strip().lower()
+    if not event_type and triggered_by in {"", "none"} and not patient_enabled and not report_enabled:
+        return "none"
+    if patient_enabled and report_enabled:
+        return "both"
+    if patient_enabled or triggered_by == "patient":
+        return "patient"
+    if report_enabled or triggered_by == "report":
+        return "report"
+    return "unknown"
+
+
+def _count_rare_events(patients: list[dict]) -> dict[str, int]:
+    counts = {
+        "any": 0,
+        "patient": 0,
+        "report": 0,
+        "both": 0,
+        "unknown": 0,
+    }
+    for patient in patients:
+        state = _patient_rare_event_state(patient)
+        if state == "none":
+            continue
+        counts["any"] += 1
+        counts[state] += 1
+    return counts
+
+
 def _render_patient_dialogue(patient: dict) -> str:
     dialogue = patient.get("current_dialogue") or {}
     if not dialogue:
@@ -72,11 +134,19 @@ def _render_patient_card(patient: dict) -> str:
     patient_detail_id = (
         f'patient-{patient.get("visit_id") or patient.get("patient_id") or patient.get("npc_id") or "unknown"}'
     )
+    rare_event_state = _patient_rare_event_state(patient)
+    rare_event_class = f" patient--rare-event patient--rare-event-{rare_event_state}" if rare_event_state != "none" else ""
+    rare_event_badge = (
+        f'<span class="badge badge--rare badge--rare-{escape(rare_event_state)}">rare:{escape(rare_event_state)}</span>'
+        if rare_event_state != "none"
+        else ""
+    )
     detail_rows = [
         f'<div class="row">patient: {escape(_text(patient.get("patient_id")))}</div>',
         f'<div class="row">visit: {escape(_text(patient.get("visit_id")))}</div>',
         f'<div class="row">source: {escape(_text(patient.get("patient_source")))}</div>',
         f'<div class="row">generation hint: {escape(_text(patient.get("generation_hint_department_name")))} ({escape(_text(patient.get("generation_hint_department_id")))})</div>',
+        f'<div class="row">rare event: {escape(_text(patient.get("rare_event_type")))} / {escape(_text(patient.get("rare_event_triggered_by")))}</div>',
         f'<div class="row">stage/dispatch: {escape(_projection_text(patient))}</div>',
         f'<div class="row">blocking: {escape(_blocking_text(patient))}</div>',
         f'<div class="row">encounter node: {escape(_text(patient.get("current_node_id") or patient.get("current_node")))}</div>',
@@ -84,6 +154,9 @@ def _render_patient_card(patient: dict) -> str:
         f'<div class="row">queue: {escape(_text(patient.get("queue_kind")))}</div>',
         f'<div class="row">doctor llm source: {escape(_text(patient.get("latest_consultation_response_source")))}</div>',
         f'<div class="row">doctor llm error: {escape(_text(patient.get("latest_consultation_llm_error")))}</div>',
+        f'<div class="row">report acuity: {escape(_text(patient.get("report_acuity_level")))}</div>',
+        f'<div class="row">referral target: {escape(_text(patient.get("recommended_department")))}</div>',
+        f'<div class="row">re-register required: {escape(_text(patient.get("requires_new_registration")))}</div>',
         f'<div class="row">doctor slot: {escape(_text(patient.get("assigned_doctor_slot_name")))} ({escape(_text(patient.get("assigned_doctor_slot_id")))})</div>',
         f'<div class="row">room: {escape(_text(patient.get("current_room_name")))} ({escape(_text(patient.get("current_room_node_id")))}) / {escape(_text(patient.get("room_type")))}</div>',
         f'<div class="row">resource assignment: {escape(_text((patient.get("resource_assignment") or {}).get("target_resource_kind")))} / {escape(_text((patient.get("resource_assignment") or {}).get("target_node_id")))}</div>',
@@ -95,14 +168,17 @@ def _render_patient_card(patient: dict) -> str:
         f'<div class="row">finished at: {escape(_text(patient.get("finished_at")))}</div>',
     ]
     return (
-        '<article class="patient">'
+        f'<article class="patient{rare_event_class}">'
         f'<div><strong>{escape(_text(patient_label))}</strong>'
-        f'<span class="badge">{escape(_text(patient.get("department_status") or patient.get("department_flow_status")))}</span></div>'
+        f'<span class="badge">{escape(_text(patient.get("department_status") or patient.get("department_flow_status")))}</span>'
+        f"{rare_event_badge}</div>"
         f'<div class="row">visit_state: {escape(_text(patient.get("visit_state")))}</div>'
         f'<div class="row">stage/dispatch: {escape(_projection_text(patient))}</div>'
         f'<div class="row">runner/source: {escape(_text(patient.get("execution_runner_kind")))} / {escape(_text(patient.get("patient_source")))}</div>'
         f'<div class="row">hint: {escape(_text(patient.get("generation_hint_department_name")))} ({escape(_text(patient.get("generation_hint_department_id")))})</div>'
+        f'<div class="row">rare event: {escape(_text(patient.get("rare_event_type")))} / {escape(_text(patient.get("rare_event_triggered_by")))}</div>'
         f'<div class="row">capability: {escape(_text(patient.get("department_capability_class")))}</div>'
+        f'<div class="row">report/referral: {escape(_text(patient.get("report_acuity_level")))} / {escape(_text(patient.get("recommended_department")))}</div>'
         f'<div class="row">room: {escape(_text(patient.get("current_room_name")))} ({escape(_text(patient.get("current_room_node_id")))})</div>'
         f'<details data-detail-id="{escape(patient_detail_id)}">'
         '<summary>Patient Details</summary>'
@@ -114,10 +190,14 @@ def _render_patient_card(patient: dict) -> str:
 
 def _render_initial_department_snapshot(snapshot: dict) -> tuple[str, str, str, str]:
     departments = list(snapshot.get("departments") or [])
+    unassigned_patients = list(snapshot.get("unassigned_patients") or [])
     departments_with_patients = sum(1 for item in departments if item.get("patients"))
     finished_patients = sum(
         1 for item in departments for patient in (item.get("patients") or []) if patient.get("finished")
     )
+    all_patients = [patient for item in departments for patient in (item.get("patients") or [])] + unassigned_patients
+    special_outcome_counts = _count_special_outcomes(all_patients)
+    rare_event_counts = _count_rare_events(all_patients)
     stats_html = "".join(
         [
             f'<div class="stat"><strong>running</strong><div>{escape(_text(snapshot.get("running")))}</div></div>',
@@ -127,9 +207,14 @@ def _render_initial_department_snapshot(snapshot: dict) -> tuple[str, str, str, 
             f'<div class="stat"><strong>probability</strong><div>{escape(_text(snapshot.get("llm_probability")))}</div></div>',
             f'<div class="stat"><strong>dept with patients</strong><div>{departments_with_patients}</div></div>',
             f'<div class="stat"><strong>finished patients</strong><div>{finished_patients}</div></div>',
+            f'<div class="stat"><strong>referrals</strong><div>{special_outcome_counts["referral"]}</div></div>',
+            f'<div class="stat"><strong>emergency</strong><div>{special_outcome_counts["emergency"]}</div></div>',
+            f'<div class="stat"><strong>icu</strong><div>{special_outcome_counts["icu"]}</div></div>',
             f'<div class="stat"><strong>dispatch</strong><div>{escape(_text(snapshot.get("dispatch_count")))}</div></div>',
             f'<div class="stat"><strong>blocked attempts</strong><div>{escape(_text(snapshot.get("blocked_count")))}</div></div>',
             f'<div class="stat"><strong>blocked patients</strong><div>{escape(_text(snapshot.get("currently_blocked_patients")))}</div></div>',
+            f'<div class="stat"><strong>rare events</strong><div>{rare_event_counts["any"]}</div></div>',
+            f'<div class="stat"><strong>rare source</strong><div>p={rare_event_counts["patient"]} r={rare_event_counts["report"]} b={rare_event_counts["both"]}</div></div>',
             f'<div class="stat"><strong>last_spawn</strong><div>{escape(_text(snapshot.get("last_spawn_at")))}</div></div>',
             f'<div class="stat"><strong>last_tick</strong><div>{escape(_text(snapshot.get("last_tick_at")))}</div></div>',
         ]
@@ -138,6 +223,8 @@ def _render_initial_department_snapshot(snapshot: dict) -> tuple[str, str, str, 
     for department in departments:
         summary = department.get("summary") or {}
         patients = list(department.get("patients") or [])
+        special_counts = _count_special_outcomes(patients)
+        rare_event_counts = _count_rare_events(patients)
         doctor_slots = list(department.get("doctor_slots") or [])
         rooms = list(department.get("rooms") or [])
         resource_parts: list[str] = []
@@ -174,15 +261,16 @@ def _render_initial_department_snapshot(snapshot: dict) -> tuple[str, str, str, 
             f'<div>pending reg: {escape(_text(summary.get("pending_registration_count")))}</div>'
             f'<div>waiting r1/r2: {escape(_text(summary.get("waiting_round1_count")))}/{escape(_text(summary.get("waiting_round2_count")))}</div>'
             f'<div>called r1/r2: {escape(_text(summary.get("called_round1_count")))}/{escape(_text(summary.get("called_round2_count")))}</div>'
-            f'<div>consult r1/r2: {escape(_text(summary.get("in_consultation_round1_count")))}/{escape(_text(summary.get("in_consultation_round2_count")))}</div>'
-            f'<div>in test: {escape(_text(summary.get("in_test_count")))}</div>'
-            f'<div>finished: {escape(_text(summary.get("finished_count")))}</div>'
-            f'<div>updated: {escape(_text(summary.get("updated_at")))}</div>'
-            f'<div>patients: {len(patients)}</div>'
-            f'</div>{"".join(resource_parts)}<div class="patients">{patient_rows}</div></details></section>'
+             f'<div>consult r1/r2: {escape(_text(summary.get("in_consultation_round1_count")))}/{escape(_text(summary.get("in_consultation_round2_count")))}</div>'
+             f'<div>in test: {escape(_text(summary.get("in_test_count")))}</div>'
+              f'<div>referral/emergency/icu: {special_counts["referral"]}/{special_counts["emergency"]}/{special_counts["icu"]}</div>'
+              f'<div>rare events: {rare_event_counts["any"]} (p={rare_event_counts["patient"]} r={rare_event_counts["report"]} b={rare_event_counts["both"]})</div>'
+              f'<div>finished: {escape(_text(summary.get("finished_count")))}</div>'
+              f'<div>updated: {escape(_text(summary.get("updated_at")))}</div>'
+              f'<div>patients: {len(patients)}</div>'
+              f'</div>{"".join(resource_parts)}<div class="patients">{patient_rows}</div></details></section>'
         )
     departments_html = "".join(department_sections) or "<section class='department'><div class='muted'>No departments available.</div></section>"
-    unassigned_patients = list(snapshot.get("unassigned_patients") or [])
     unassigned_html = (
         "".join(
             _render_patient_card(patient)
@@ -224,6 +312,14 @@ def _render_department_runtime_page(snapshot: dict, *, status_message: str | Non
       --line: #cad7c8;
       --accent: #2f6d44;
       --muted: #5d6f63;
+      --rare-patient-bg: #fff0e2;
+      --rare-patient-line: #d68a36;
+      --rare-report-bg: #e7f4ff;
+      --rare-report-line: #3e8acb;
+      --rare-both-bg: #fff3c7;
+      --rare-both-line: #ae7d00;
+      --rare-unknown-bg: #f4ebff;
+      --rare-unknown-line: #7f5ab6;
     }}
     body {{
       margin: 0;
@@ -268,9 +364,35 @@ def _render_department_runtime_page(snapshot: dict, *, status_message: str | Non
     .resource-card {{ border: 1px dashed var(--line); border-radius: 10px; padding: 8px; font-size: 13px; background: #f8fbf6; }}
     .patients {{ display: grid; gap: 10px; margin-top: 12px; }}
     .patient {{ padding: 10px; }}
+    .patient--rare-event {{ border-width: 2px; }}
+    .patient--rare-event-patient {{
+      background: linear-gradient(180deg, var(--rare-patient-bg) 0%, #fff9f2 100%);
+      border-color: var(--rare-patient-line);
+      box-shadow: 0 12px 24px rgba(214, 138, 54, 0.16);
+    }}
+    .patient--rare-event-report {{
+      background: linear-gradient(180deg, var(--rare-report-bg) 0%, #f8fcff 100%);
+      border-color: var(--rare-report-line);
+      box-shadow: 0 12px 24px rgba(62, 138, 203, 0.16);
+    }}
+    .patient--rare-event-both {{
+      background: linear-gradient(180deg, var(--rare-both-bg) 0%, #fffbee 100%);
+      border-color: var(--rare-both-line);
+      box-shadow: 0 12px 24px rgba(174, 125, 0, 0.16);
+    }}
+    .patient--rare-event-unknown {{
+      background: linear-gradient(180deg, var(--rare-unknown-bg) 0%, #fcf9ff 100%);
+      border-color: var(--rare-unknown-line);
+      box-shadow: 0 12px 24px rgba(127, 90, 182, 0.14);
+    }}
     .row {{ margin-top: 4px; font-size: 13px; }}
     .dialogue {{ margin-top: 8px; padding: 8px; border: 1px dashed var(--line); border-radius: 10px; background: #f8fbf6; }}
     .badge {{ display: inline-block; border: 1px solid #9db39e; border-radius: 999px; padding: 2px 8px; font-size: 12px; margin-left: 8px; }}
+    .badge--rare {{ color: #fff; border-color: transparent; }}
+    .badge--rare-patient {{ background: #d68a36; }}
+    .badge--rare-report {{ background: #3e8acb; }}
+    .badge--rare-both {{ background: #ae7d00; }}
+    .badge--rare-unknown {{ background: #7f5ab6; }}
     details summary {{ cursor: pointer; color: #2f6d44; font-size: 13px; }}
     form.toolbar {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }}
   </style>

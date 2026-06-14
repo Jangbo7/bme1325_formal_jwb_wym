@@ -19,6 +19,8 @@ PAYMENT_VISIT_STATES = {
 }
 
 FINISHED_VISIT_STATES = {
+    VisitLifecycleState.IN_EMERGENCY.value,
+    VisitLifecycleState.IN_ICU_RESCUE.value,
     VisitLifecycleState.DISPOSITION_PENDING.value,
     VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
     VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,

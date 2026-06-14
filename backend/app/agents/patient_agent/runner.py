@@ -12,6 +12,7 @@ from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICK
 from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
 from app.services.consultation_registry import resolve_consultation_agent_for_visit
 from app.services.department_assignment import resolve_assigned_department_for_visit
+from app.services.disposition import is_outpatient_flow_finished
 
 
 WAIT_SECONDS = 10
@@ -57,6 +58,24 @@ class PatientAgentDebugRunner:
             patient_name=case_card.patient_profile.name,
         )
         self.patient_agent_service.attach_case_to_visit(case_row["id"], encounter["id"])
+        hint_department = resolve_department(department_id, "M") if department_id else None
+        visit_data = self._decode_visit_data(self.visit_repo.get(encounter["id"]))
+        rare_event_profile = (
+            case_card.rare_event_profile.model_dump()
+            if case_card.rare_event_profile is not None
+            else {}
+        )
+        visit_data.update(
+            {
+                "generation_hint_department_id": hint_department["id"] if hint_department else None,
+                "generation_hint_department_name": hint_department["label"] if hint_department else None,
+                "rare_event_profile": rare_event_profile,
+                "rare_event_triggered_by": rare_event_profile.get("triggered_by"),
+                "rare_event_type": rare_event_profile.get("event_type"),
+                "rare_event_seed": rare_event_profile.get("seed"),
+            }
+        )
+        self.visit_repo.update_visit(encounter["id"], data=visit_data)
         self.bus.publish(
             ENCOUNTER_OPENED,
             {
@@ -77,7 +96,6 @@ class PatientAgentDebugRunner:
             case_summary=self.patient_agent_service.summarize_case_for_debug(case_card),
             last_action="spawn",
         )
-        hint_department = resolve_department(department_id, "M") if department_id else None
         if state.case_summary is not None:
             state.case_summary["generation_hint_department_id"] = (
                 hint_department["id"] if hint_department else None
@@ -136,7 +154,8 @@ class PatientAgentDebugRunner:
         dispatch[planned.action](state, planned)
         state.step_count += 1
         self._sync_state(state, preserve_dialogue=preserve_dialogue)
-        if state.visit_state == VisitLifecycleState.WAITING_PAYMENT.value:
+        visit_row = self._get_visit_row(state)
+        if is_outpatient_flow_finished(state.visit_state, self._decode_visit_data(visit_row)):
             state.finished = True
             state.phase = "finished"
             state.status = "finished"
@@ -234,7 +253,7 @@ class PatientAgentDebugRunner:
     def _register_visit(self, state: PatientAgentDebugState, planned: PlannedNpcAction) -> None:
         visit_row = self._require_visit_row(state)
         visit_state = VisitLifecycleState(visit_row["state"])
-        if visit_state == VisitLifecycleState.IN_EMERGENCY:
+        if is_outpatient_flow_finished(visit_state.value, self._decode_visit_data(visit_row)):
             state.finished = True
             state.phase = "finished"
             state.status = "finished"
@@ -573,9 +592,38 @@ class PatientAgentDebugRunner:
 
     def _sync_state(self, state: PatientAgentDebugState, *, preserve_dialogue: bool) -> None:
         visit_row = self._get_visit_row(state)
+        visit_data = self._decode_visit_data(visit_row)
         patient_row = self.patient_repo.get(state.patient_id)
         state.encounter_id = visit_row["id"] if visit_row else state.encounter_id
         state.visit_state = visit_row.get("state") if visit_row else None
+        state.primary_disposition = visit_data.get("primary_disposition")
+        state.disposition = dict(visit_data.get("disposition") or {})
+        state.outpatient_flow_finished = is_outpatient_flow_finished(state.visit_state, visit_data)
+        state.outpatient_finished_at = visit_data.get("outpatient_finished_at")
+        state.rare_event_profile = dict(
+            visit_data.get("rare_event_profile")
+            or (state.case_summary or {}).get("rare_event_profile")
+            or {}
+        )
+        state.rare_event_triggered_by = (
+            visit_data.get("rare_event_triggered_by")
+            or state.rare_event_profile.get("triggered_by")
+        )
+        state.rare_event_type = (
+            visit_data.get("rare_event_type")
+            or state.rare_event_profile.get("event_type")
+        )
+        state.rare_event_seed = (
+            visit_data.get("rare_event_seed")
+            or state.rare_event_profile.get("seed")
+        )
+        report_summary = dict((visit_data.get("simulated_report") or {}).get("report_summary") or {})
+        state.report_acuity_level = report_summary.get("acuity_level")
+        state.report_cross_specialty_clues = list(report_summary.get("cross_specialty_clues") or [])
+        state.recommended_department = visit_data.get("recommended_department")
+        state.recommended_department_reason = visit_data.get("recommended_department_reason")
+        state.requires_new_registration = bool(visit_data.get("requires_new_registration", False))
+        state.carry_forward_summary = dict(visit_data.get("carry_forward_summary") or {})
         state.patient_lifecycle_state = patient_row.get("lifecycle_state") if patient_row else None
         if self.medical_record_repo and state.encounter_id:
             timeline = self.medical_record_repo.get_visit_timeline(state.encounter_id)
@@ -585,9 +633,10 @@ class PatientAgentDebugRunner:
         if state.finished:
             state.phase = "finished"
             state.status = "finished"
-        elif state.visit_state == VisitLifecycleState.IN_EMERGENCY.value:
+        elif state.outpatient_flow_finished:
+            state.finished = True
             state.phase = "finished"
-            state.status = VisitLifecycleState.IN_EMERGENCY.value
+            state.status = state.visit_state or "finished"
         elif state.visit_state:
             state.phase = self._phase_for_visit_state(state.visit_state)
             if not preserve_dialogue:
@@ -683,7 +732,7 @@ class PatientAgentDebugRunner:
             return "testing"
         if visit_state == "in_second_consultation":
             return CONSULTATION_ROUND2_PHASE
-        if visit_state == "waiting_payment":
+        if is_outpatient_flow_finished(visit_state):
             return "finished"
         return "system"
 

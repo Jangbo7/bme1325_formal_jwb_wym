@@ -86,7 +86,7 @@ class FlowDecisionEngine:
         visit_state = context.visit_state
         target_node = _target_node_for_state(visit_state, context.assigned_department_id)
         if planned.action == "finished":
-            return FlowDecision(next_action="complete_visit", target_node=target_node, reason="visit reached waiting_payment")
+            return FlowDecision(next_action="complete_visit", target_node=target_node, reason="outpatient flow finished")
         if planned.action == "idle":
             return FlowDecision(next_action="idle", target_node=target_node, reason="no legal step")
         if planned.action == "register_visit":

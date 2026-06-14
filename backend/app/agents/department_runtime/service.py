@@ -1,16 +1,23 @@
 import json
 import inspect
+from copy import deepcopy
 from datetime import datetime, timezone
 from urllib import request as urlrequest
 
 from app.agents.clinical_policy import ClinicalPolicyRuntime, ClinicalPolicyValidatorResult
+from app.agents.department_runtime.chart_view import build_doctor_chart_view
 from app.agents.department_runtime.config import DepartmentAgentConfig
 from app.agents.department_runtime.replies import (
+    ANSWER_ONLY,
+    ANSWER_WITH_GUIDANCE,
+    REASSESS_REQUIRED,
+    infer_answer_mode_from_message,
     infer_reassessment_intent,
     infer_reply_rendering_mode,
     default_patient_reply_from_result,
     infer_result_changed_fields,
     infer_update_reason,
+    reassessment_intent_from_answer_mode,
     select_patient_reply_style,
 )
 from app.events.types import PATIENT_STATE_CHANGED
@@ -192,9 +199,28 @@ class DepartmentAgentRuntime:
     def prepare_context(self, payload: dict, session_id: str, dialogue_state):
         patient_id = payload["patient_id"]
         patient_name = payload.get("name", patient_id)
-        shared_memory = self.memory_repo.get_shared_memory(patient_id, patient_name)
+        shared_memory = self._ensure_shared_memory_shape(
+            self.memory_repo.get_shared_memory(patient_id, patient_name),
+            patient_name,
+        )
         private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type=self.config.agent_type)
         turns = self.session_repo.list_turns(session_id)
+        visit_row = self.visit_repo.get(payload.get("visit_id")) if payload.get("visit_id") and self.visit_repo is not None else None
+        visit_data = self._decode_visit_data(visit_row)
+
+        self.configure_private_memory_defaults(private_memory, payload)
+        consultation_round = self._normalize_consultation_round(
+            private_memory.get("consultation_round") or payload.get("_consultation_round") or payload.get("consultation_round")
+        )
+        consultation_context = self._build_consultation_context(
+            consultation_round=consultation_round,
+            visit_data=visit_data,
+            private_memory=private_memory,
+        )
+        if consultation_context.get("doctor_memory_policy") == "chart_only" and not private_memory.get("doctor_memory_reset_applied"):
+            shared_memory = self._reset_shared_memory_for_receiving_doctor(shared_memory, patient_name)
+            private_memory["doctor_memory_reset_applied"] = True
+        private_memory["consultation_context"] = consultation_context
 
         if payload.get("age") is not None:
             shared_memory["profile"]["age"] = payload["age"]
@@ -222,19 +248,27 @@ class DepartmentAgentRuntime:
         clinical["vitals"] = self.config.merge_vitals(clinical.get("vitals") or {}, payload.get("vitals") or {})
         clinical["risk_flags"] = self.config.derive_risk_flags(clinical.get("symptoms") or [], clinical.get("vitals") or {})
 
-        self.configure_private_memory_defaults(private_memory, payload)
         private_memory["force_offline_llm"] = bool(payload.get("_force_offline_llm") or private_memory.get("force_offline_llm"))
         private_memory["dialogue_state"] = dialogue_state.value
-        consultation_round = self._normalize_consultation_round(
-            private_memory.get("consultation_round") or payload.get("_consultation_round") or payload.get("consultation_round")
-        )
-        if payload.get("debug_read_historical_records") or consultation_round >= 2:
+        if payload.get("visit_id"):
+            private_memory["chart_view"] = build_doctor_chart_view(
+                medical_record_repo=self.medical_record_repo,
+                patient_id=patient_id,
+                visit_id=str(payload.get("visit_id") or ""),
+                visit_data=visit_data,
+            )
+        if payload.get("debug_read_historical_records") or (
+            consultation_round >= 2 and consultation_context.get("doctor_memory_policy") != "chart_only"
+        ):
             template = self.load_historical_records_template(
                 patient_id=patient_id,
                 visit_id=str(payload.get("visit_id") or ""),
             )
             private_memory["historical_records_template"] = template
             private_memory["historical_records_note"] = template.get("clinician_note") or ""
+        else:
+            private_memory.pop("historical_records_template", None)
+            private_memory.pop("historical_records_note", None)
 
         self.after_prepare_context(payload, shared_memory, private_memory)
         progress = self._get_progress(private_memory)
@@ -275,12 +309,18 @@ class DepartmentAgentRuntime:
         merged["consultation_round"] = self._normalize_consultation_round(
             (private_memory or {}).get("consultation_round") or payload.get("consultation_round") or payload.get("_consultation_round")
         )
+        consultation_context = dict((private_memory or {}).get("consultation_context") or {})
+        doctor_memory_policy = str(consultation_context.get("doctor_memory_policy") or "")
         merged["symptoms"] = payload.get("symptoms") or ", ".join(clinical.get("symptoms") or [])
         merged["chief_complaint"] = payload.get("chief_complaint") or clinical.get("chief_complaint")
         merged["vitals"] = self.config.merge_vitals(clinical.get("vitals") or {}, payload.get("vitals") or {})
         merged["onset_time"] = payload.get("onset_time") or clinical.get("onset_time")
         merged["allergies"] = payload.get("allergies") or shared_memory["profile"].get("allergies") or []
         merged["visit_id"] = payload.get("visit_id")
+        if consultation_context:
+            merged["consultation_context"] = consultation_context
+        if private_memory and isinstance(private_memory.get("chart_view"), dict):
+            merged["chart_view"] = private_memory.get("chart_view")
 
         visit_id = payload.get("visit_id")
         if visit_id and self.visit_repo is not None:
@@ -290,7 +330,7 @@ class DepartmentAgentRuntime:
             diagnostic_session = visit_data.get("diagnostic_session")
             if isinstance(simulated_report, dict):
                 merged["simulated_report"] = simulated_report
-            if isinstance(diagnostic_session, dict):
+            if isinstance(diagnostic_session, dict) and doctor_memory_policy != "chart_only":
                 merged["diagnostic_session"] = diagnostic_session
             outpatient_procedure_plan = visit_data.get("outpatient_procedure_plan")
             outpatient_procedure_summary = visit_data.get("outpatient_procedure_summary")
@@ -299,11 +339,11 @@ class DepartmentAgentRuntime:
             if isinstance(outpatient_procedure_summary, dict):
                 merged["outpatient_procedure_summary"] = outpatient_procedure_summary
                 merged["procedure_completed"] = bool(outpatient_procedure_summary.get("completed"))
-            if merged["consultation_round"] >= 2:
+            if merged["consultation_round"] >= 2 and doctor_memory_policy != "chart_only":
                 previous_round_summary = self._extract_previous_round_summary(visit_data)
                 if isinstance(previous_round_summary, dict):
                     merged["previous_round_summary"] = previous_round_summary
-        if private_memory and isinstance(private_memory.get("historical_records_template"), dict):
+        if private_memory and doctor_memory_policy != "chart_only" and isinstance(private_memory.get("historical_records_template"), dict):
             merged["historical_records_template"] = private_memory.get("historical_records_template")
         self.extend_merged_payload(merged, payload, shared_memory, private_memory or {})
         return merged
@@ -330,6 +370,11 @@ class DepartmentAgentRuntime:
                 payload=payload,
                 missing_fields=missing_fields,
             )
+        policy_prompt_context = self._augment_prompt_context_for_handoff(
+            policy_prompt_context,
+            payload,
+        )
+        prompt_shared_memory = self._build_prompt_shared_memory(shared_memory, payload)
         return [
             {
                 "role": "system",
@@ -344,7 +389,7 @@ class DepartmentAgentRuntime:
                 "role": "user",
                 "content": self._call_with_supported_kwargs(
                     self.config.build_user_prompt,
-                    shared_memory,
+                    prompt_shared_memory,
                     payload.get("message", ""),
                     missing_fields,
                     payload=payload,
@@ -415,6 +460,93 @@ class DepartmentAgentRuntime:
                 return json.loads(text[start : end + 1])
             return None
 
+    def build_post_final_answer_llm_messages(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        final_result: dict,
+        *,
+        previous_final_result: dict | None = None,
+        response_mode: str = ANSWER_ONLY,
+        policy_runtime_context=None,
+    ) -> list[dict]:
+        consultation_round = self._normalize_consultation_round(payload.get("consultation_round"))
+        if not self.config.build_post_final_answer_llm_messages:
+            return []
+        prompt_shared_memory = self._build_prompt_shared_memory(shared_memory, payload)
+        return self._call_with_supported_kwargs(
+            self.config.build_post_final_answer_llm_messages,
+            prompt_shared_memory,
+            payload.get("message", ""),
+            final_result,
+            payload=payload,
+            previous_final_result=previous_final_result,
+            policy_runtime_context=policy_runtime_context,
+            consultation_round=consultation_round,
+            response_mode=response_mode,
+        ) or []
+
+    def request_post_final_answer_from_llm(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        final_result: dict,
+        *,
+        previous_final_result: dict | None = None,
+        response_mode: str = ANSWER_ONLY,
+        policy_runtime_context=None,
+    ) -> str | None:
+        if payload.get("_force_offline_llm"):
+            return None
+        if not self.llm_settings.get("api_key"):
+            return None
+        messages = self.build_post_final_answer_llm_messages(
+            payload,
+            shared_memory,
+            final_result,
+            previous_final_result=previous_final_result,
+            response_mode=response_mode,
+            policy_runtime_context=policy_runtime_context,
+        )
+        if not messages:
+            return None
+        req = urlrequest.Request(
+            self.llm_settings["endpoint"],
+            data=json.dumps(
+                {
+                    "model": self.llm_settings["model"],
+                    "messages": messages,
+                    "temperature": 0,
+                    "n": 1,
+                    "stream": False,
+                    "presence_penalty": 0,
+                    "frequency_penalty": 0,
+                }
+            ).encode("utf-8"),
+            headers={
+                "accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.llm_settings['api_key']}",
+            },
+            method="POST",
+        )
+        with urlrequest.urlopen(req, timeout=18) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        text = self.extract_text_from_response(data)
+        if not text:
+            return None
+        parsed_text = text.strip()
+        try:
+            payload_json = json.loads(parsed_text)
+            if isinstance(payload_json, dict):
+                for key in ("assistant_message", "answer", "message", "reply"):
+                    value = payload_json.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+        except Exception:
+            pass
+        return parsed_text or None
+
     def extract_text_from_response(self, data):
         if isinstance(data, str):
             return data.strip()
@@ -451,9 +583,10 @@ class DepartmentAgentRuntime:
             return None
         if not self.config.build_follow_up_llm_messages:
             return None
+        prompt_shared_memory = self._build_prompt_shared_memory(shared_memory, payload)
         messages = self._call_with_supported_kwargs(
             self.config.build_follow_up_llm_messages,
-            shared_memory,
+            prompt_shared_memory,
             payload.get("message", ""),
             missing_fields,
             question_focus=question_focus,
@@ -498,6 +631,107 @@ class DepartmentAgentRuntime:
         except Exception:
             pass
         return parsed_text or None
+
+    def _classify_post_final_answer_mode(self, payload: dict, memory, previous_final_result: dict | None = None) -> str:
+        del previous_final_result
+        latest_extraction = dict(memory.private_memory.get("latest_extraction") or {})
+        return infer_answer_mode_from_message(payload.get("message", ""), latest_extraction)
+
+    def _request_post_final_answer_with_diagnostics(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        final_result: dict,
+        *,
+        previous_final_result: dict | None = None,
+        response_mode: str = ANSWER_ONLY,
+        policy_runtime_context=None,
+    ) -> tuple[str | None, dict]:
+        diagnostics = {
+            "llm_attempted": False,
+            "llm_succeeded": False,
+            "llm_error": None,
+            "response_source": "fallback",
+            "llm_response_kind": "direct_answer",
+        }
+        if payload.get("_force_offline_llm") or not self.llm_settings.get("api_key"):
+            diagnostics["llm_error"] = "llm_unavailable"
+            return None, diagnostics
+        diagnostics["llm_attempted"] = True
+        try:
+            result = self.request_post_final_answer_from_llm(
+                payload,
+                shared_memory,
+                final_result,
+                previous_final_result=previous_final_result,
+                response_mode=response_mode,
+                policy_runtime_context=policy_runtime_context,
+            )
+        except Exception as exc:
+            diagnostics["llm_error"] = str(exc)
+            return None, diagnostics
+        if result:
+            diagnostics["llm_succeeded"] = True
+            diagnostics["response_source"] = "llm_then_validated"
+        else:
+            diagnostics["llm_error"] = "empty_or_unparseable_response"
+        return result, diagnostics
+
+    def _build_post_final_answer_fallback(
+        self,
+        final_result: dict,
+        *,
+        response_mode: str,
+        previous_final_result: dict | None = None,
+        payload: dict | None = None,
+        memory=None,
+    ) -> tuple[str, str, str]:
+        reassessment_intent = reassessment_intent_from_answer_mode(response_mode)
+        reply_rendering_mode = infer_reply_rendering_mode(reassessment_intent, message_type=response_mode)
+        if self.config.build_post_final_answer_fallback is not None:
+            style = self._call_with_supported_kwargs(
+                self.config.patient_reply_style_selector or select_patient_reply_style,
+                consultation_round=self._normalize_consultation_round((payload or {}).get("consultation_round")),
+                message_type=response_mode,
+                complete=True,
+                progress_completed=bool(getattr(getattr(memory, "consultation_progress", None), "completed", True)),
+                final_result=final_result,
+                previous_final_result=previous_final_result or {},
+                changed_fields=[],
+                update_reason=None,
+                payload=payload or {},
+                memory=memory,
+            )
+            reply = self._call_with_supported_kwargs(
+                self.config.build_post_final_answer_fallback,
+                final_result,
+                message_type=response_mode,
+                consultation_round=self._normalize_consultation_round((payload or {}).get("consultation_round")),
+                reply_style=style,
+                previous_final_result=previous_final_result or {},
+                changed_fields=[],
+                update_reason=None,
+                reassessment_intent=reassessment_intent,
+                reply_rendering_mode=reply_rendering_mode,
+                payload=payload or {},
+                memory=memory,
+            )
+            if isinstance(reply, str) and reply.strip():
+                return reply.strip(), style, "fallback_formatter"
+        return self._build_patient_reply(
+            final_result,
+            message_type=response_mode,
+            consultation_round=self._normalize_consultation_round((payload or {}).get("consultation_round")),
+            complete=True,
+            progress_completed=bool(getattr(getattr(memory, "consultation_progress", None), "completed", True)),
+            previous_final_result=previous_final_result or {},
+            changed_fields=[],
+            update_reason=None,
+            reassessment_intent=reassessment_intent,
+            reply_rendering_mode=reply_rendering_mode,
+            payload=payload or {},
+            memory=memory,
+        )
 
     def _build_patient_reply(
         self,
@@ -647,6 +881,65 @@ class DepartmentAgentRuntime:
             )
 
         if is_post_final_reassessment:
+            response_mode = self._classify_post_final_answer_mode(
+                merged_payload,
+                memory,
+                previous_final_result=previous_final_result,
+            )
+            if response_mode in {ANSWER_ONLY, ANSWER_WITH_GUIDANCE}:
+                assistant_message, llm_diagnostics = self._request_post_final_answer_with_diagnostics(
+                    {**merged_payload, "_force_offline_llm": force_offline_llm},
+                    memory.shared_memory,
+                    previous_final_result,
+                    previous_final_result=previous_final_result,
+                    response_mode=response_mode,
+                    policy_runtime_context=policy_runtime_context,
+                )
+                reply_style = None
+                answer_source = "llm"
+                patient_reply_source = "llm"
+                reply_rendering_mode = infer_reply_rendering_mode(
+                    reassessment_intent_from_answer_mode(response_mode),
+                    message_type=response_mode,
+                )
+                if not assistant_message:
+                    assistant_message, reply_style, answer_source = self._build_post_final_answer_fallback(
+                        previous_final_result,
+                        response_mode=response_mode,
+                        previous_final_result=previous_final_result,
+                        payload=merged_payload,
+                        memory=memory,
+                    )
+                    patient_reply_source = answer_source
+                    answer_source = "fallback_formatter"
+                progress.last_question_focus = None
+                progress.last_question_text = assistant_message
+                consultation_result, validated_missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
+                    merged_payload=merged_payload,
+                    memory=memory,
+                    consultation_result=previous_final_result,
+                    missing_fields=[],
+                    assistant_payload={
+                        "assistant_message": assistant_message,
+                        "message_type": response_mode,
+                        "response_mode": response_mode,
+                        "judgment_changed": False,
+                        "judgment_action": "none",
+                        "answer_source": answer_source,
+                        "llm_response_kind": "direct_answer",
+                        "patient_reply_style": reply_style,
+                        "patient_reply_source": patient_reply_source,
+                        "update_reason": None,
+                        "result_changed_fields": [],
+                        "reassessment_intent": reassessment_intent_from_answer_mode(response_mode),
+                        "reply_rendering_mode": reply_rendering_mode,
+                        "llm_diagnostics": llm_diagnostics,
+                    },
+                    complete=True,
+                    policy_runtime_context=policy_runtime_context,
+                )
+                return consultation_result, evidence, validated_missing_fields, assistant_payload, complete
+
             llm_result, llm_diagnostics = self._request_consultation_with_diagnostics(
                 {**merged_payload, "_force_offline_llm": force_offline_llm},
                 memory.shared_memory,
@@ -667,64 +960,137 @@ class DepartmentAgentRuntime:
                 complete=True,
             )
             changed = self.config.final_result_changed(previous_final_result, final_result) if self.config.final_result_changed else final_result != previous_final_result
-            message_type = "final_update" if changed else "final_no_change"
             changed_fields = infer_result_changed_fields(previous_final_result, final_result) if changed else []
             update_reason = self._call_with_supported_kwargs(
                 self.config.result_update_reason_inferer or infer_update_reason,
                 merged_payload.get("message", ""),
                 changed_fields,
                 consultation_round=consultation_round,
-                message_type=message_type,
+                message_type="final_update" if changed else "final_no_change",
                 final_result=final_result,
                 previous_final_result=previous_final_result,
             )
+            if changed:
+                message_type = "final_update"
+                reassessment_intent = self._call_with_supported_kwargs(
+                    self.config.reassessment_intent_inferer or infer_reassessment_intent,
+                    merged_payload.get("message", ""),
+                    changed_fields,
+                    consultation_round=consultation_round,
+                    message_type=message_type,
+                    update_reason=update_reason,
+                    final_result=final_result,
+                    previous_final_result=previous_final_result,
+                )
+                reply_rendering_mode = infer_reply_rendering_mode(reassessment_intent, message_type=message_type)
+                assistant_message, reply_style, patient_reply_source = self._build_patient_reply(
+                    final_result,
+                    message_type=message_type,
+                    consultation_round=consultation_round,
+                    complete=True,
+                    progress_completed=progress.completed,
+                    previous_final_result=previous_final_result,
+                    changed_fields=changed_fields,
+                    update_reason=update_reason,
+                    reassessment_intent=reassessment_intent,
+                    reply_rendering_mode=reply_rendering_mode,
+                    payload=merged_payload,
+                    memory=memory,
+                )
+                progress.last_question_focus = None
+                progress.last_question_text = assistant_message
+                final_result, validated_missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
+                    merged_payload=merged_payload,
+                    memory=memory,
+                    consultation_result=final_result,
+                    missing_fields=[],
+                    assistant_payload={
+                        "assistant_message": assistant_message,
+                        "message_type": message_type,
+                        "response_mode": "final_update",
+                        "judgment_changed": True,
+                        "judgment_action": "reassessed_changed",
+                        "answer_source": patient_reply_source,
+                        "llm_response_kind": "final_update",
+                        "patient_reply_style": reply_style,
+                        "patient_reply_source": patient_reply_source,
+                        "update_reason": update_reason,
+                        "result_changed_fields": changed_fields,
+                        "reassessment_intent": reassessment_intent,
+                        "reply_rendering_mode": reply_rendering_mode,
+                        "llm_diagnostics": {**llm_diagnostics, "llm_response_kind": "final_update"},
+                    },
+                    complete=True,
+                    policy_runtime_context=policy_runtime_context,
+                )
+                return final_result, evidence, validated_missing_fields, assistant_payload, complete
+
+            unchanged_answer_mode = ANSWER_WITH_GUIDANCE if response_mode == REASSESS_REQUIRED else response_mode
+            assistant_message, answer_llm_diagnostics = self._request_post_final_answer_with_diagnostics(
+                {**merged_payload, "_force_offline_llm": force_offline_llm},
+                memory.shared_memory,
+                previous_final_result,
+                previous_final_result=previous_final_result,
+                response_mode=unchanged_answer_mode,
+                policy_runtime_context=policy_runtime_context,
+            )
+            reply_style = None
+            answer_source = "llm"
+            patient_reply_source = "llm"
             reassessment_intent = self._call_with_supported_kwargs(
                 self.config.reassessment_intent_inferer or infer_reassessment_intent,
                 merged_payload.get("message", ""),
                 changed_fields,
                 consultation_round=consultation_round,
-                message_type=message_type,
+                message_type="final_no_change",
                 update_reason=update_reason,
-                final_result=final_result,
+                final_result=previous_final_result,
                 previous_final_result=previous_final_result,
             )
-            reply_rendering_mode = infer_reply_rendering_mode(reassessment_intent, message_type=message_type)
-            assistant_message, reply_style, patient_reply_source = self._build_patient_reply(
-                final_result,
-                message_type=message_type,
-                consultation_round=consultation_round,
-                complete=True,
-                progress_completed=progress.completed,
-                previous_final_result=previous_final_result,
-                changed_fields=changed_fields,
-                update_reason=update_reason,
-                reassessment_intent=reassessment_intent,
-                reply_rendering_mode=reply_rendering_mode,
-                payload=merged_payload,
-                memory=memory,
+            reply_rendering_mode = infer_reply_rendering_mode(
+                reassessment_intent,
+                message_type=unchanged_answer_mode,
             )
+            if not assistant_message:
+                assistant_message, reply_style, patient_reply_source = self._build_post_final_answer_fallback(
+                    previous_final_result,
+                    response_mode=unchanged_answer_mode,
+                    previous_final_result=previous_final_result,
+                    payload=merged_payload,
+                    memory=memory,
+                )
+                answer_source = "fallback_formatter"
             progress.last_question_focus = None
             progress.last_question_text = assistant_message
-            final_result, validated_missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
+            consultation_result, validated_missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
                 merged_payload=merged_payload,
                 memory=memory,
-                consultation_result=final_result,
+                consultation_result=previous_final_result,
                 missing_fields=[],
                 assistant_payload={
                     "assistant_message": assistant_message,
-                    "message_type": message_type,
+                    "message_type": unchanged_answer_mode,
+                    "response_mode": unchanged_answer_mode,
+                    "judgment_changed": False,
+                    "judgment_action": "reassessed_unchanged",
+                    "answer_source": answer_source,
+                    "llm_response_kind": "direct_answer",
                     "patient_reply_style": reply_style,
                     "patient_reply_source": patient_reply_source,
                     "update_reason": update_reason,
-                    "result_changed_fields": changed_fields,
+                    "result_changed_fields": [],
                     "reassessment_intent": reassessment_intent,
                     "reply_rendering_mode": reply_rendering_mode,
-                    "llm_diagnostics": llm_diagnostics,
+                    "llm_diagnostics": {
+                        **llm_diagnostics,
+                        **answer_llm_diagnostics,
+                        "llm_response_kind": "direct_answer",
+                    },
                 },
                 complete=True,
                 policy_runtime_context=policy_runtime_context,
             )
-            return final_result, evidence, validated_missing_fields, assistant_payload, complete
+            return consultation_result, evidence, validated_missing_fields, assistant_payload, complete
 
         minimum_reply_count_before_complete = self.config.min_patient_reply_count_before_complete if consultation_round == 1 else 0
 
@@ -773,7 +1139,15 @@ class DepartmentAgentRuntime:
                 memory=memory,
                 consultation_result=fallback,
                 missing_fields=missing_fields,
-                assistant_payload={"assistant_message": assistant_message, "message_type": "followup"},
+                assistant_payload={
+                    "assistant_message": assistant_message,
+                    "message_type": "followup",
+                    "response_mode": "followup",
+                    "judgment_changed": False,
+                    "judgment_action": "none",
+                    "answer_source": "llm" if llm_followup_message else "fallback_formatter",
+                    "llm_response_kind": "followup_question",
+                },
                 complete=False,
                 policy_runtime_context=policy_runtime_context,
             )
@@ -824,13 +1198,18 @@ class DepartmentAgentRuntime:
             assistant_payload={
                 "assistant_message": assistant_message,
                 "message_type": "final",
+                "response_mode": "final",
+                "judgment_changed": False,
+                "judgment_action": "none",
+                "answer_source": patient_reply_source,
+                "llm_response_kind": "final_update",
                 "patient_reply_style": reply_style,
                 "patient_reply_source": patient_reply_source,
                 "update_reason": update_reason,
                 "result_changed_fields": changed_fields,
                 "reassessment_intent": reassessment_intent,
                 "reply_rendering_mode": reply_rendering_mode,
-                "llm_diagnostics": llm_diagnostics,
+                "llm_diagnostics": {**llm_diagnostics, "llm_response_kind": "final_update"},
             },
             complete=True,
             policy_runtime_context=policy_runtime_context,
@@ -866,6 +1245,11 @@ class DepartmentAgentRuntime:
         private_memory["missing_fields"] = missing_fields
         private_memory["evidence"] = evidence
         private_memory["message_type"] = message_type
+        private_memory["response_mode"] = assistant_payload.get("response_mode") or message_type
+        private_memory["judgment_changed"] = bool(assistant_payload.get("judgment_changed", False))
+        private_memory["judgment_action"] = assistant_payload.get("judgment_action")
+        private_memory["answer_source"] = assistant_payload.get("answer_source")
+        private_memory["llm_response_kind"] = assistant_payload.get("llm_response_kind")
         private_memory["final_result"] = consultation_result if complete else private_memory.get("final_result", {})
         private_memory["patient_reply_style"] = assistant_payload.get("patient_reply_style")
         private_memory["patient_reply_source"] = assistant_payload.get("patient_reply_source")
@@ -880,6 +1264,9 @@ class DepartmentAgentRuntime:
             "priority": consultation_result.get("priority"),
             "complete": complete,
             "message_type": message_type,
+            "response_mode": private_memory.get("response_mode"),
+            "judgment_changed": bool(private_memory.get("judgment_changed", False)),
+            "judgment_action": private_memory.get("judgment_action"),
             "red_flags": consultation_result.get("red_flags", []),
             "update_reason": assistant_payload.get("update_reason"),
             "result_changed_fields": list(assistant_payload.get("result_changed_fields") or []),
@@ -955,6 +1342,11 @@ class DepartmentAgentRuntime:
             "missing_fields": private_memory.get("missing_fields", []),
             "turns": self.session_repo.list_turns(session_id),
             "message_type": private_memory.get("message_type", "followup"),
+            "response_mode": private_memory.get("response_mode"),
+            "judgment_changed": bool(private_memory.get("judgment_changed", False)),
+            "judgment_action": private_memory.get("judgment_action"),
+            "answer_source": private_memory.get("answer_source"),
+            "llm_response_kind": private_memory.get("llm_response_kind"),
             "question_focus": progress.last_question_focus,
             "asked_fields_history": progress.asked_fields_history,
             "final_result": private_memory.get("final_result", {}),
@@ -999,6 +1391,11 @@ class DepartmentAgentRuntime:
         return {
             "agent_type": self.config.agent_type,
             "message_type": message_type,
+            "response_mode": private_memory.get("response_mode"),
+            "judgment_changed": bool(private_memory.get("judgment_changed", False)),
+            "judgment_action": private_memory.get("judgment_action"),
+            "answer_source": private_memory.get("answer_source"),
+            "llm_response_kind": private_memory.get("llm_response_kind"),
             "department": consultation_result.get("department"),
             "priority": consultation_result.get("priority"),
             "question_focus": progress.last_question_focus,
@@ -1153,6 +1550,133 @@ class DepartmentAgentRuntime:
             return max(1, int(value or 1))
         except Exception:
             return 1
+
+    @staticmethod
+    def _normalize_department_token(value: str | None) -> str:
+        return "".join(ch for ch in str(value or "").strip().lower() if ch.isalnum())
+
+    def _department_aliases(self) -> set[str]:
+        values = {
+            self.config.agent_type,
+            self.config.agent_type.replace("_", " "),
+            self.config.route_slug,
+            self.config.route_slug.replace("-", " "),
+            self.config.metadata.get("department_id"),
+            self.config.metadata.get("department_label"),
+        }
+        aliases = {self._normalize_department_token(value) for value in values if str(value or "").strip()}
+        aliases.discard("")
+        return aliases
+
+    @staticmethod
+    def _blank_clinical_memory() -> dict:
+        return {
+            "chief_complaint": None,
+            "symptoms": [],
+            "onset_time": None,
+            "vitals": {},
+            "risk_flags": [],
+        }
+
+    def _ensure_shared_memory_shape(self, shared_memory: dict | None, patient_name: str) -> dict:
+        payload = deepcopy(shared_memory or {})
+        profile = payload.setdefault("profile", {})
+        clinical = payload.setdefault("clinical_memory", {})
+        profile.setdefault("name", patient_name)
+        profile.setdefault("allergies", [])
+        profile.setdefault("allergy_status", "unknown")
+        profile.setdefault("chronic_conditions", [])
+        clinical.setdefault("chief_complaint", None)
+        clinical.setdefault("symptoms", [])
+        clinical.setdefault("onset_time", None)
+        clinical.setdefault("vitals", {})
+        clinical.setdefault("risk_flags", [])
+        return payload
+
+    def _reset_shared_memory_for_receiving_doctor(self, shared_memory: dict, patient_name: str) -> dict:
+        reset = self._ensure_shared_memory_shape(shared_memory, patient_name)
+        reset["clinical_memory"] = self._blank_clinical_memory()
+        return reset
+
+    def _build_consultation_context(self, *, consultation_round: int, visit_data: dict, private_memory: dict) -> dict:
+        existing = dict(private_memory.get("consultation_context") or {})
+        if consultation_round >= 2:
+            return {
+                "intake_mode": "return_consultation",
+                "doctor_memory_policy": "continuity_round2",
+                "special_event_type": existing.get("special_event_type"),
+                "recommended_department": existing.get("recommended_department"),
+                "recommended_department_id": existing.get("recommended_department_id"),
+                "handoff_reason": existing.get("handoff_reason"),
+            }
+
+        handoff = self._extract_referral_handoff(visit_data)
+        if handoff is not None:
+            return handoff
+        return {
+            "intake_mode": "standard_round1",
+            "doctor_memory_policy": "shared_memory",
+            "special_event_type": None,
+            "recommended_department": None,
+            "recommended_department_id": None,
+            "handoff_reason": None,
+        }
+
+    def _build_prompt_shared_memory(self, shared_memory: dict, payload: dict) -> dict:
+        prompt_shared_memory = deepcopy(shared_memory or {})
+        consultation_context = dict(payload.get("consultation_context") or {})
+        chart_view = payload.get("chart_view")
+        if consultation_context:
+            prompt_shared_memory["consultation_context"] = consultation_context
+        if chart_view and str(consultation_context.get("intake_mode") or "").strip() == "referral_handoff":
+            prompt_shared_memory["doctor_chart_view"] = chart_view
+        return prompt_shared_memory
+
+    @staticmethod
+    def _augment_prompt_context_for_handoff(policy_prompt_context: str, payload: dict) -> str:
+        consultation_context = dict(payload.get("consultation_context") or {})
+        if str(consultation_context.get("intake_mode") or "").strip() != "referral_handoff":
+            return policy_prompt_context
+        handoff_instruction = (
+            "Referral handoff rule: this is a fresh receiving-doctor consultation. "
+            "Do not rely on hidden memory from the previous workflow or previous doctor. "
+            "Use only the visible chart, available reports, and the patient's current statements."
+        )
+        if not policy_prompt_context:
+            return handoff_instruction
+        if handoff_instruction in policy_prompt_context:
+            return policy_prompt_context
+        return f"{policy_prompt_context}\n{handoff_instruction}"
+
+    def _extract_referral_handoff(self, visit_data: dict) -> dict | None:
+        disposition = dict(visit_data.get("disposition") or {})
+        category = str(disposition.get("category") or "").strip()
+        recommended_department = str(
+            visit_data.get("recommended_department")
+            or disposition.get("target_department")
+            or ""
+        ).strip()
+        recommended_department_id = str(disposition.get("target_department_id") or "").strip()
+        if category != "specialty_referral" and not recommended_department:
+            return None
+        if not bool(visit_data.get("requires_new_registration", False)):
+            return None
+        targets = {
+            self._normalize_department_token(recommended_department),
+            self._normalize_department_token(recommended_department_id),
+            self._normalize_department_token((visit_data.get("carry_forward_summary") or {}).get("target_department")),
+        }
+        targets.discard("")
+        if not targets.intersection(self._department_aliases()):
+            return None
+        return {
+            "intake_mode": "referral_handoff",
+            "doctor_memory_policy": "chart_only",
+            "special_event_type": "specialty_referral",
+            "recommended_department": recommended_department or None,
+            "recommended_department_id": recommended_department_id or None,
+            "handoff_reason": visit_data.get("handoff_reason") or disposition.get("reason"),
+        }
 
     @staticmethod
     def _extract_previous_round_summary(visit_data: dict) -> dict | None:

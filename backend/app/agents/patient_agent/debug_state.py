@@ -13,6 +13,20 @@ class PatientAgentDebugState:
     encounter_id: str | None = None
     active_session_id: str | None = None
     visit_state: str | None = None
+    primary_disposition: str | None = None
+    disposition: dict = field(default_factory=dict)
+    outpatient_flow_finished: bool = False
+    outpatient_finished_at: str | None = None
+    rare_event_profile: dict = field(default_factory=dict)
+    rare_event_triggered_by: str | None = None
+    rare_event_type: str | None = None
+    rare_event_seed: str | None = None
+    report_acuity_level: str | None = None
+    report_cross_specialty_clues: list[dict] = field(default_factory=list)
+    recommended_department: str | None = None
+    recommended_department_reason: str | None = None
+    requires_new_registration: bool = False
+    carry_forward_summary: dict = field(default_factory=dict)
     patient_lifecycle_state: str | None = None
     phase: str = "spawned"
     status: str = "idle"
@@ -70,6 +84,20 @@ class PatientAgentDebugState:
             encounter_id=self.encounter_id,
             active_session_id=self.active_session_id,
             visit_state=self.visit_state,
+            primary_disposition=self.primary_disposition,
+            disposition=dict(self.disposition),
+            outpatient_flow_finished=self.outpatient_flow_finished,
+            outpatient_finished_at=self.outpatient_finished_at,
+            rare_event_profile=dict(self.rare_event_profile),
+            rare_event_triggered_by=self.rare_event_triggered_by,
+            rare_event_type=self.rare_event_type,
+            rare_event_seed=self.rare_event_seed,
+            report_acuity_level=self.report_acuity_level,
+            report_cross_specialty_clues=list(self.report_cross_specialty_clues),
+            recommended_department=self.recommended_department,
+            recommended_department_reason=self.recommended_department_reason,
+            requires_new_registration=self.requires_new_registration,
+            carry_forward_summary=dict(self.carry_forward_summary),
             patient_lifecycle_state=self.patient_lifecycle_state,
             phase=self.phase,
             status=self.status,

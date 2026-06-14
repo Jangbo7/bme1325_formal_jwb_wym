@@ -160,6 +160,8 @@ Current Phase 1 baseline:
 - `backend/app/services/scene_snapshot_service.py`: scene/runtime snapshot builder
 - `backend/app/integrations/openemr/`: OpenEMR adapter layer
 - `scene/`: browser scene and interaction modules
+- `frontend/fullview/`: upstream frontend imported as a subtree
+- `docs/FRONTEND_SUBTREE_MAINTENANCE.md`: subtree sync and ownership guide
 - `docs/AGENT_DEVELOPMENT_README.md`: how collaborators should add a new agent
 
 ## Backend Startup

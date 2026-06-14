@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agents.clinical_policy import ClinicalPolicyRuntimeContext
-from app.agents.department_runtime.conclusions import normalize_round2_conclusion
+from app.agents.department_runtime.conclusions import normalize_round2_conclusion, preserve_round2_escalation_floor
 from app.agents.department_runtime.replies import normalize_prescription_plan
 from app.agents.internal_medicine.rules import merge_unique, merge_vitals, split_symptoms
 
@@ -538,6 +538,9 @@ def _round2_base_result(
     prescription_plan: list[dict] | None = None,
     recommended_department: str | None = None,
     recommended_department_reason: str | None = None,
+    handoff_reason: str | None = None,
+    requires_new_registration: bool = False,
+    carry_forward_summary: dict | None = None,
     note: str | None = None,
 ) -> dict:
     return {
@@ -586,6 +589,9 @@ def _round2_base_result(
         "prescription_plan": list(prescription_plan or []),
         "recommended_department": recommended_department,
         "recommended_department_reason": recommended_department_reason,
+        "handoff_reason": handoff_reason,
+        "requires_new_registration": requires_new_registration,
+        "carry_forward_summary": dict(carry_forward_summary or {}),
         "red_flags": [],
         "medication_or_action": [],
     }
@@ -609,6 +615,80 @@ def _build_round2_surgery_result(payload: dict) -> dict | None:
         ] if part
     ).lower()
     red_flags = _detect_surgery_red_flags(payload)
+    report_summary = report.get("report_summary") if isinstance(report.get("report_summary"), dict) else {}
+    escalation_clues = dict(report_summary.get("escalation_clues") or {})
+    referral_clues = list(report_summary.get("cross_specialty_clues") or [])
+
+    if escalation_clues.get("to_icu"):
+        reason = str(escalation_clues.get("reason") or "Report-level findings suggest ICU-level deterioration risk.").strip()
+        return _round2_base_result(
+            clinical_impression="The current report no longer supports routine surgery follow-up and raises concern for ICU-level instability.",
+            final_assessment_summary="Immediate emergency/ICU escalation is more appropriate than continued outpatient surgery review.",
+            patient_facing_plan="Go for immediate emergency reassessment now so the team can decide ICU monitoring or rescue care.",
+            primary_disposition="icu_escalation",
+            priority="H",
+            department="Emergency",
+            diagnosis_level=3,
+            recommended_department="ICU",
+            recommended_department_reason=reason,
+            handoff_reason=reason,
+            followup_recommendation={
+                "observation_required": False,
+                "observation_setting": "none",
+                "revisit_required": False,
+                "revisit_window": "",
+                "revisit_conditions": [],
+            },
+            return_precautions=[reason],
+        )
+
+    if escalation_clues.get("to_emergency"):
+        reason = str(escalation_clues.get("reason") or "Report-level findings suggest urgent emergency reassessment.").strip()
+        return _round2_base_result(
+            clinical_impression="The current report no longer supports routine surgery follow-up and raises time-sensitive concern.",
+            final_assessment_summary="Emergency reassessment is more appropriate than continued outpatient surgery review.",
+            patient_facing_plan="Go for immediate emergency reassessment now.",
+            primary_disposition="emergency_escalation",
+            priority="H",
+            department="Emergency",
+            diagnosis_level=3,
+            recommended_department="Emergency",
+            recommended_department_reason=reason,
+            handoff_reason=reason,
+            followup_recommendation={
+                "observation_required": False,
+                "observation_setting": "none",
+                "revisit_required": False,
+                "revisit_window": "",
+                "revisit_conditions": [],
+            },
+            return_precautions=[reason],
+        )
+
+    if referral_clues:
+        referral = dict(referral_clues[0] or {})
+        target_department = str(referral.get("target_department") or referral.get("department") or "").strip()
+        referral_reason = str(referral.get("reason") or "The remaining issue fits another specialty better after the current surgery loop.").strip()
+        if target_department:
+            return _round2_base_result(
+                clinical_impression="The report suggests the remaining issue is better handled by another specialty after the surgery loop closes.",
+                final_assessment_summary="The surgery outpatient loop can close, but the next registration should be with a more suitable specialty.",
+                patient_facing_plan=f"Complete this surgery loop, then re-register with {target_department} for further assessment.",
+                primary_disposition="specialty_referral",
+                recommended_department=target_department,
+                recommended_department_reason=referral_reason,
+                handoff_reason=referral_reason,
+                requires_new_registration=True,
+                carry_forward_summary={
+                    "origin_department": "Surgery",
+                    "target_department": target_department,
+                    "current_assessment": "Current surgery assessment is complete for this loop.",
+                    "referral_reason": referral_reason,
+                    "completed_workup": list(report.get("test_items") or []),
+                    "next_department_focus": referral_reason,
+                },
+                return_precautions=[referral_reason],
+            )
 
     if red_flags:
         return _round2_base_result(
@@ -1024,10 +1104,15 @@ def final_result_changed(previous: dict | None, current: dict | None) -> bool:
         "diagnosis_level",
         "red_flags",
         "test_category",
+        "icu_escalation",
         "next_step_decision",
         "needs_second_consultation",
         "needs_second_internal_medicine_consultation",
         "recommended_department",
+        "recommended_department_reason",
+        "handoff_reason",
+        "requires_new_registration",
+        "carry_forward_summary",
         "needs_outpatient_procedure",
         "outpatient_procedure_category",
         "primary_disposition",
@@ -1089,7 +1174,11 @@ def validate_surgery_result(
                     "needs_medication": llm_result.get("needs_medication"),
                     "recommended_department": llm_result.get("recommended_department"),
                     "recommended_department_reason": llm_result.get("recommended_department_reason"),
+                    "handoff_reason": llm_result.get("handoff_reason"),
+                    "requires_new_registration": llm_result.get("requires_new_registration"),
+                    "carry_forward_summary": llm_result.get("carry_forward_summary"),
                     "disposition_advice": llm_result.get("disposition_advice"),
+                    "icu_escalation": llm_result.get("icu_escalation"),
                     "needs_outpatient_procedure": llm_result.get("needs_outpatient_procedure"),
                     "outpatient_procedure_category": llm_result.get("outpatient_procedure_category"),
                     "outpatient_procedure_reason": llm_result.get("outpatient_procedure_reason"),
@@ -1123,4 +1212,9 @@ def validate_surgery_result(
         )
     else:
         normalized = normalize_round2_conclusion(normalized, consultation_round=consultation_round or 2)
+        normalized = preserve_round2_escalation_floor(
+            normalized,
+            fallback_result=fallback,
+            consultation_round=consultation_round or 2,
+        )
     return _normalize_final_result(normalized, payload)

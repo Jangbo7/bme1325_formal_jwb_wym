@@ -25,6 +25,10 @@ class VisitView(BaseModel):
     current_node: str | None = None
     current_department: str | None = None
     active_agent_type: str | None = None
+    primary_disposition: str | None = None
+    disposition: dict = Field(default_factory=dict)
+    outpatient_flow_finished: bool = False
+    outpatient_finished_at: str | None = None
     data: dict = Field(default_factory=dict)
     created_at: str
     updated_at: str

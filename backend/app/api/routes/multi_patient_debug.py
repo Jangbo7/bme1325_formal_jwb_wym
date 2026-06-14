@@ -326,6 +326,22 @@ def multi_patient_debug_page():
             response_source: p.latest_consultation_response_source,
             llm_error: p.latest_consultation_llm_error,
           },
+          rare_event: {
+            profile: p.rare_event_profile,
+            triggered_by: p.rare_event_triggered_by,
+            type: p.rare_event_type,
+            seed: p.rare_event_seed,
+          },
+          report: {
+            acuity_level: p.report_acuity_level,
+            cross_specialty_clues: p.report_cross_specialty_clues,
+          },
+          referral: {
+            recommended_department: p.recommended_department,
+            recommended_department_reason: p.recommended_department_reason,
+            requires_new_registration: p.requires_new_registration,
+            carry_forward_summary: p.carry_forward_summary,
+          },
           projection: {
             display_stage: p.display_stage,
             dispatch_state: p.dispatch_state,
@@ -342,6 +358,7 @@ def multi_patient_debug_page():
             <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.execution_runner_kind}</span> <span class="badge">${p.patient_source || "-"}</span> <span class="badge">${p.department_capability_class || "-"}</span></div>
             <div class="row">department: ${p.assigned_department_name || "-"} (${p.assigned_department_id || "-"})</div>
             <div class="row">generation hint: ${p.generation_hint_department_name || "-"} (${p.generation_hint_department_id || "-"})</div>
+            <div class="row">rare event: ${p.rare_event_type || "-"} / ${p.rare_event_triggered_by || "-"}</div>
             <div class="row">agent enabled: ${p.department_agent_enabled}</div>
             <div class="row">doctor slot: ${p.assigned_doctor_slot_name || "-"} (${p.assigned_doctor_slot_id || "-"})</div>
             <div class="row">patient: ${p.patient_id}</div>
@@ -353,6 +370,7 @@ def multi_patient_debug_page():
             <div class="row">phase/status: ${p.phase} / ${p.status}</div>
             <div class="row">llm/source: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
             <div class="row">doctor llm: ${p.latest_consultation_response_source || "-"} / ${p.latest_consultation_llm_error || "-"}</div>
+            <div class="row">report/referral: ${p.report_acuity_level || "-"} / ${p.recommended_department || "-"}</div>
             <div class="row">node: ${p.current_node_id || "-" } -> ${p.target_node_id || "-"}</div>
             <div class="row">room: ${p.current_room_name || "-"} (${p.current_room_node_id || "-"}) / ${p.room_type || "-"}</div>
             <div class="row">last action: ${p.last_action || "-"}</div>

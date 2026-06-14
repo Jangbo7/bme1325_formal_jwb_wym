@@ -9,6 +9,7 @@ from app.events.types import (
     VISIT_STATE_CHANGED,
 )
 from app.schemas.common import InternalMedicineDialogueState, PatientLifecycleState, VisitLifecycleState
+from app.services.disposition import build_consultation_disposition, disposition_transition_context
 
 
 PRIMARY_TEST_ZONE_LABELS = {
@@ -66,6 +67,11 @@ class InternalMedicineService(DepartmentAgentRuntime):
                 "missing_fields": private_memory.get("missing_fields", []),
                 "turns": self.session_repo.list_turns(session_id),
                 "message_type": private_memory.get("message_type", "followup"),
+                "response_mode": private_memory.get("response_mode"),
+                "judgment_changed": bool(private_memory.get("judgment_changed", False)),
+                "judgment_action": private_memory.get("judgment_action"),
+                "answer_source": private_memory.get("answer_source"),
+                "llm_response_kind": private_memory.get("llm_response_kind"),
                 "question_focus": progress.last_question_focus,
                 "asked_fields_history": progress.asked_fields_history,
                 "final_result": private_memory.get("final_result", {}),
@@ -158,6 +164,11 @@ class InternalMedicineService(DepartmentAgentRuntime):
         return {
             "agent_type": self.config.agent_type,
             "message_type": message_type,
+            "response_mode": private_memory.get("response_mode"),
+            "judgment_changed": bool(private_memory.get("judgment_changed", False)),
+            "judgment_action": private_memory.get("judgment_action"),
+            "answer_source": private_memory.get("answer_source"),
+            "llm_response_kind": private_memory.get("llm_response_kind"),
             "department": consultation_result.get("department"),
             "priority": consultation_result.get("priority"),
             "diagnosis_level": consultation_result.get("diagnosis_level"),
@@ -182,7 +193,11 @@ class InternalMedicineService(DepartmentAgentRuntime):
         current_patient_state = PatientLifecycleState(existing_patient["lifecycle_state"])
         if consultation_round == 1:
             return self.patient_state_machine.transition(current_patient_state, "internal_medicine_completed"), "Auxiliary Diagnostic Center"
-        return self.patient_state_machine.transition(current_patient_state, "finish"), "Payment"
+        disposition = build_consultation_disposition(consultation_result, source_phase="internal_medicine_round2")
+        location = str(disposition.get("target_department") or "").strip()
+        if not location:
+            location = "Disposition"
+        return self.patient_state_machine.transition(current_patient_state, "finish"), location
 
     def after_persist_result(self, **kwargs) -> None:
         patient_id = kwargs["patient_id"]
@@ -227,7 +242,12 @@ class InternalMedicineService(DepartmentAgentRuntime):
 
         if consultation_round == 1 and complete and not was_completed:
             visit_data = self._get_visit_data(visit_row)
-            simulation_report = self.test_simulator.generate_report(consultation_result, memory.shared_memory)
+            simulation_report = self.test_simulator.generate_report(
+                consultation_result,
+                memory.shared_memory,
+                rare_event_profile=dict(visit_data.get("rare_event_profile") or {}),
+                current_department="Internal Medicine",
+            )
             assigned_category = simulation_report["category_code"]
             assigned_zone_label = PRIMARY_TEST_ZONE_LABELS.get(assigned_category, "辅助检查")
             existing_diagnostic_session = visit_data.get("diagnostic_session")
@@ -315,6 +335,8 @@ class InternalMedicineService(DepartmentAgentRuntime):
             )
         elif consultation_round == 2 and complete and not was_completed:
             visit_data = self._get_visit_data(visit_row)
+            disposition = build_consultation_disposition(consultation_result, source_phase="internal_medicine_round2")
+            disposition_context = disposition_transition_context(disposition)
             visit_data["internal_medicine_round2_session_id"] = session_id
             visit_data["internal_medicine_round2_summary"] = {
                 "assistant_message": assistant_message,
@@ -323,6 +345,15 @@ class InternalMedicineService(DepartmentAgentRuntime):
                 "diagnosis_level": consultation_result.get("diagnosis_level"),
                 "updated_at": timestamp,
             }
+            visit_data["primary_disposition"] = consultation_result.get("primary_disposition")
+            visit_data["disposition"] = disposition
+            visit_data["recommended_department"] = consultation_result.get("recommended_department")
+            visit_data["recommended_department_reason"] = consultation_result.get("recommended_department_reason")
+            visit_data["requires_new_registration"] = bool(consultation_result.get("requires_new_registration", False))
+            visit_data["carry_forward_summary"] = dict(consultation_result.get("carry_forward_summary") or {})
+            visit_data["handoff_reason"] = consultation_result.get("handoff_reason")
+            visit_data["outpatient_flow_finished"] = True
+            visit_data["outpatient_finished_at"] = timestamp
             finalized_visit = self._transition_visit(
                 visit_row,
                 "finalize_diagnosis",
@@ -331,13 +362,21 @@ class InternalMedicineService(DepartmentAgentRuntime):
                 active_agent_type=self.config.agent_type,
                 extra_data=visit_data,
             )
-            self._transition_visit(
+            disposition_pending_visit = self._transition_visit(
                 finalized_visit,
-                "request_medical_payment",
-                current_node="payment_wait",
-                current_department="Payment",
+                "plan_disposition",
+                current_node="disposition_pending",
+                current_department="Disposition",
                 active_agent_type=None,
                 extra_data=self._get_visit_data(finalized_visit),
+            )
+            final_visit = self._transition_visit(
+                disposition_pending_visit,
+                str(disposition_context["event"]),
+                current_node=str(disposition_context["current_node"]),
+                current_department=str(disposition_context["current_department"]),
+                active_agent_type=None,
+                extra_data=self._get_visit_data(disposition_pending_visit),
             )
             self._append_medical_record_entry(
                 patient_id=patient_id,
@@ -349,7 +388,7 @@ class InternalMedicineService(DepartmentAgentRuntime):
                     f"department={consultation_result.get('department')}; "
                     f"priority={consultation_result.get('priority')}; "
                     f"diagnosis_level={consultation_result.get('diagnosis_level')}; "
-                    "status=waiting_payment"
+                    f"status={final_visit.get('state')}"
                 ),
                 content={
                     "department": consultation_result.get("department"),
@@ -366,12 +405,43 @@ class InternalMedicineService(DepartmentAgentRuntime):
                     "admission_recommendation": consultation_result.get("admission_recommendation"),
                     "procedure_recommendation": consultation_result.get("procedure_recommendation"),
                     "followup_recommendation": consultation_result.get("followup_recommendation"),
+                    "disposition": disposition,
                     "return_precautions": consultation_result.get("return_precautions", []),
                     "patient_facing_plan": consultation_result.get("patient_facing_plan"),
+                    "recommended_department": consultation_result.get("recommended_department"),
+                    "recommended_department_reason": consultation_result.get("recommended_department_reason"),
+                    "requires_new_registration": bool(consultation_result.get("requires_new_registration", False)),
+                    "carry_forward_summary": dict(consultation_result.get("carry_forward_summary") or {}),
+                    "handoff_reason": consultation_result.get("handoff_reason"),
                     "assistant_message": assistant_message,
-                    "visit_state_after_consult": "waiting_payment",
+                    "outpatient_flow_finished": True,
+                    "outpatient_finished_at": timestamp,
+                    "visit_state_after_consult": final_visit.get("state"),
                 },
             )
+            if str(disposition.get("category") or "").strip() == "specialty_referral":
+                self._append_medical_record_entry(
+                    patient_id=patient_id,
+                    visit_id=visit_row["id"],
+                    phase="internal_medicine_round2",
+                    entry_type="referral_note",
+                    title="Specialty Referral Note",
+                    content_text=(
+                        f"from=Internal Medicine; "
+                        f"to={disposition.get('target_department')}; "
+                        f"reason={disposition.get('reason')}"
+                    ),
+                    content={
+                        "origin_department": "Internal Medicine",
+                        "target_department": disposition.get("target_department"),
+                        "target_department_id": disposition.get("target_department_id"),
+                        "reason": disposition.get("reason"),
+                        "recommended_department_reason": consultation_result.get("recommended_department_reason"),
+                        "handoff_reason": consultation_result.get("handoff_reason"),
+                        "carry_forward_summary": dict(consultation_result.get("carry_forward_summary") or {}),
+                        "requires_new_registration": bool(consultation_result.get("requires_new_registration", False)),
+                    },
+                )
             self.bus.publish(
                 INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
                 {

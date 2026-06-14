@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.services.disposition import OUTPATIENT_TERMINAL_VISIT_STATES
+
 
 TRIGGER_EVENT_BY_VISIT_STATE = {
     "waiting_test": "request_test_payment",
@@ -35,7 +37,7 @@ class NpcPlanningContext:
 def plan_next_action(context: NpcPlanningContext) -> PlannedNpcAction:
     visit_state = context.visit_state
 
-    if visit_state == "waiting_payment":
+    if visit_state in OUTPATIENT_TERMINAL_VISIT_STATES:
         return PlannedNpcAction("finished")
 
     if not context.encounter_id:
@@ -73,8 +75,5 @@ def plan_next_action(context: NpcPlanningContext) -> PlannedNpcAction:
             return PlannedNpcAction("create_internal_medicine_session", {"round": 2})
         if context.internal_medicine_round2_state != "completed":
             return PlannedNpcAction("reply_internal_medicine", {"round": 2})
-
-    if visit_state == "waiting_payment":
-        return PlannedNpcAction("finished")
 
     return PlannedNpcAction("idle")

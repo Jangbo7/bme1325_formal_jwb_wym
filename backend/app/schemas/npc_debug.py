@@ -31,6 +31,10 @@ class NpcDebugSnapshot(BaseModel):
     encounter_id: str | None = None
     active_session_id: str | None = None
     visit_state: str | None = None
+    primary_disposition: str | None = None
+    disposition: dict = Field(default_factory=dict)
+    outpatient_flow_finished: bool = False
+    outpatient_finished_at: str | None = None
     patient_lifecycle_state: str | None = None
     phase: str
     status: str

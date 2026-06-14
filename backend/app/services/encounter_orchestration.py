@@ -231,6 +231,8 @@ _GUARD_TABLE: dict[StandardOutpatientState, dict[str, StandardOutpatientState]] 
         StateTransitionEvent.CHOOSE_FOLLOWUP_BOOKING.value: StandardOutpatientState.DISPOSITION_FOLLOWUP_BOOKING,
         StateTransitionEvent.CHOOSE_REFERRAL.value: StandardOutpatientState.DISPOSITION_REFERRAL,
         StateTransitionEvent.ADMIT_PATIENT.value: StandardOutpatientState.ADMITTED,
+        StateTransitionEvent.ROUTE_TO_EMERGENCY.value: StandardOutpatientState.IN_EMERGENCY,
+        StateTransitionEvent.ROUTE_TO_ICU_RESCUE.value: StandardOutpatientState.IN_ICU_RESCUE,
         StateTransitionEvent.COMPLETE_VISIT.value: StandardOutpatientState.COMPLETED,
         StateTransitionEvent.MARK_ERROR.value: StandardOutpatientState.ERROR,
     },

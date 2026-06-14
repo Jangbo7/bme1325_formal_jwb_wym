@@ -539,15 +539,26 @@ class InternalMedicineAgentDebugController(_BaseAgentDebugController):
         )
         rules = retrieve_relevant_internal_medicine_rules(merged_payload, top_k=3)
         fallback = rule_based_internal_medicine(merged_payload)
-        messages = self.internal_medicine_service.build_consultation_llm_messages(
-            merged_payload,
-            after_memory,
-            (response.get("dialogue") or {}).get("missing_fields") or [],
-            historical_records_template=merged_payload.get("historical_records_template"),
-            previous_final_result=private_memory.get("final_result") if isinstance(private_memory.get("final_result"), dict) else {},
-            post_final_reassessment=bool((response.get("dialogue") or {}).get("message_type") in {"final_update", "final_no_change"}),
-        )
         dialogue = response.get("dialogue") or {}
+        message_type = dialogue.get("message_type")
+        if message_type in {"answer_only", "answer_with_guidance"}:
+            messages = self.internal_medicine_service.build_post_final_answer_llm_messages(
+                merged_payload,
+                after_memory,
+                private_memory.get("final_result") if isinstance(private_memory.get("final_result"), dict) else {},
+                previous_final_result=private_memory.get("final_result") if isinstance(private_memory.get("final_result"), dict) else {},
+                response_mode=dialogue.get("response_mode") or message_type,
+                policy_runtime_context=None,
+            )
+        else:
+            messages = self.internal_medicine_service.build_consultation_llm_messages(
+                merged_payload,
+                after_memory,
+                dialogue.get("missing_fields") or [],
+                historical_records_template=merged_payload.get("historical_records_template"),
+                previous_final_result=private_memory.get("final_result") if isinstance(private_memory.get("final_result"), dict) else {},
+                post_final_reassessment=bool(message_type in {"final_update", "final_no_change"}),
+            )
         llm_diagnostics = dict(private_memory.get("llm_diagnostics") or {})
         return {
             "merged_payload": merged_payload,
@@ -565,6 +576,11 @@ class InternalMedicineAgentDebugController(_BaseAgentDebugController):
                 "missing_fields": list(dialogue.get("missing_fields") or []),
                 "question_focus": dialogue.get("question_focus"),
                 "message_type": dialogue.get("message_type"),
+                "response_mode": dialogue.get("response_mode"),
+                "judgment_changed": bool(dialogue.get("judgment_changed", False)),
+                "judgment_action": dialogue.get("judgment_action"),
+                "answer_source": dialogue.get("answer_source"),
+                "llm_response_kind": dialogue.get("llm_response_kind"),
                 "update_reason": dialogue.get("update_reason"),
                 "result_changed_fields": list(dialogue.get("result_changed_fields") or []),
                 "reassessment_intent": dialogue.get("reassessment_intent"),
@@ -575,6 +591,11 @@ class InternalMedicineAgentDebugController(_BaseAgentDebugController):
             "llm_succeeded": bool(llm_diagnostics.get("llm_succeeded")),
             "llm_error": llm_diagnostics.get("llm_error"),
             "response_source": llm_diagnostics.get("response_source"),
+            "response_mode": dialogue.get("response_mode"),
+            "judgment_changed": bool(dialogue.get("judgment_changed", False)),
+            "judgment_action": dialogue.get("judgment_action"),
+            "answer_source": dialogue.get("answer_source"),
+            "llm_response_kind": dialogue.get("llm_response_kind"),
             "patient_reply_source": dialogue.get("patient_reply_source"),
             "structured_result": dialogue.get("final_result") or {},
             "patient_reply": dialogue.get("assistant_message"),

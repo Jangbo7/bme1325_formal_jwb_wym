@@ -7,6 +7,17 @@ from app.services.department_resources import get_department_gate_capacity, list
 
 SYSTEM_NODES = [
     HospitalNode(
+        node_id="triage",
+        node_type="system",
+        name="Triage",
+        capacity=8,
+        supports_queue=False,
+        supports_consultation=False,
+        supported_actions=["begin_triage", "triage_completed", "followup_requested"],
+        entry_conditions=["arrived", "triaging", "waiting_followup", "in_triage"],
+        exit_conditions=["triaged", "in_emergency", "in_icu_rescue"],
+    ),
+    HospitalNode(
         node_id="testing",
         node_type="system",
         name="Auxiliary Diagnostic Center",

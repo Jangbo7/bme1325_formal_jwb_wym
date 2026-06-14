@@ -32,6 +32,20 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     patient_id: str
     encounter_id: str | None = None
     visit_state: str | None = None
+    primary_disposition: str | None = None
+    disposition: dict = Field(default_factory=dict)
+    outpatient_flow_finished: bool = False
+    outpatient_finished_at: str | None = None
+    rare_event_profile: dict = Field(default_factory=dict)
+    rare_event_triggered_by: str | None = None
+    rare_event_type: str | None = None
+    rare_event_seed: str | None = None
+    report_acuity_level: str | None = None
+    report_cross_specialty_clues: list[dict] = Field(default_factory=list)
+    recommended_department: str | None = None
+    recommended_department_reason: str | None = None
+    requires_new_registration: bool = False
+    carry_forward_summary: dict = Field(default_factory=dict)
     patient_lifecycle_state: str | None = None
     assigned_department_id: str | None = None
     assigned_department_name: str | None = None
