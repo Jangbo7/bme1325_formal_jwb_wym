@@ -1,366 +1,487 @@
-# 门诊流程状态节点文档
+# 门诊状态模型说明
 
-> 本文档描述当前后端已完善的普通门诊（非急诊/非ICU/非住院）流程中，病人可能到达的所有状态节点。每个状态由三层状态机共同描述：**PatientLifecycleState**（患者生命周期）、**VisitLifecycleState**（就诊生命周期）、**DialogueState**（对话状态机）。
+> 本文以当前源码为准，重点解释五层语义：
+> `VisitLifecycleState`、`PatientLifecycleState`、`StandardOutpatientState`、`disposition`、`runtime projection`。
 
----
+## 1. 先分清五层语义
 
-## 一、门诊主流程状态图
+### 1.1 `VisitLifecycleState`
 
+定义文件：
+
+- `backend/app/schemas/common.py`
+- `backend/app/domain/visit/state_machine.py`
+
+它表示 visit 当前处在哪个流程阶段，例如：
+
+- `triaging`
+- `waiting_consultation`
+- `waiting_test`
+- `diagnosis_finalized`
+- `waiting_payment`
+- `disposition_pending`
+
+### 1.2 `PatientLifecycleState`
+
+定义文件：
+
+- `backend/app/schemas/common.py`
+- `backend/app/domain/patient/state_machine.py`
+
+它更偏“病人在整个流程里当前处于什么运行态”，例如：
+
+- `triaging`
+- `queued`
+- `called`
+- `in_consultation`
+- `in_test`
+- `completed`
+
+### 1.3 `StandardOutpatientState`
+
+定义文件：
+
+- `backend/app/schemas/orchestration.py`
+- `backend/app/services/encounter_orchestration.py`
+
+这是 encounter 级标准门诊状态机，用来把内部 visit 状态映射成更稳定的门诊业务语义，例如：
+
+- `IN_TRIAGE`
+- `WAITING_CALL`
+- `IN_INITIAL_CONSULTATION`
+- `WAITING_MEDICAL_PAYMENT`
+- `DISPOSITION_PENDING`
+- `TRANSFERRING`
+
+### 1.4 `disposition`
+
+定义文件：
+
+- `backend/app/services/disposition.py`
+
+它表示医生或系统给出的结构化去向建议，例如：
+
+- `outpatient_treatment`
+- `followup_booking`
+- `specialty_referral`
+- `emergency_escalation`
+- `icu_rescue`
+- `inpatient_admission`
+
+### 1.5 `runtime projection`
+
+定义文件：
+
+- `backend/app/services/runtime_projection.py`
+
+它不是业务真值，而是给前端 / 控制台消费的显示投影，例如：
+
+- `triage`
+- `waiting_call`
+- `consultation`
+- `testing`
+- `procedure`
+- `payment`
+- `pharmacy`
+- `finished`
+
+## 2. 当前门诊主链路
+
+### 2.1 分诊阶段
+
+主线起点是：
+
+- `arrived`
+- `registration_pending`
+
+当前实际主路径会进入：
+
+- `triaging`
+- `waiting_followup`
+- `triaged`
+
+说明：
+
+- `waiting_triage`、`in_triage` 仍保留在枚举里，但不是当前 `VISIT_TRANSITIONS` 主表的主要入口
+- 兼容值可以保留，但新逻辑不应优先围绕它们建模
+
+### 2.2 首轮门诊
+
+分诊完成后，主线进入：
+
+- `registered`
+- `waiting_consultation`
+- `in_consultation`
+
+在 `in_consultation` 之后，当前主要有三条分支：
+
+1. 需要检查
+2. 需要门诊处置
+3. 无检查直接完成问诊
+
+### 2.3 检查分支
+
+检查相关状态：
+
+- `waiting_test`
+- `waiting_test_payment`
+- `test_payment_completed`
+- `in_test`
+- `waiting_return_consultation`
+- `results_ready`
+- `waiting_second_consultation`
+- `in_second_consultation`
+
+### 2.4 门诊处置分支
+
+门诊处置相关状态：
+
+- `waiting_outpatient_procedure`
+- `in_outpatient_procedure`
+
+处置完成后会回到：
+
+- `results_ready`
+- 或重新进入检查链路
+
+### 2.5 结算与处置分支
+
+当前后端把问诊完成后的结算 / 去向拆成：
+
+- `diagnosis_finalized`
+- `waiting_payment`
+- `medical_payment_completed`
+- `disposition_pending`
+- `waiting_pharmacy`
+- `disposition_outpatient_treatment`
+- `disposition_followup_booking`
+- `disposition_referral`
+- `admitted`
+- `transferring`
+- `completed`
+
+## 3. 哪些状态不算门诊结束
+
+这部分容易被前端误判。
+
+当前不应视为门诊完成的 visit 状态包括：
+
+- `diagnosis_finalized`
+- `waiting_payment`
+- `medical_payment_completed`
+- `disposition_pending`
+- `waiting_pharmacy`
+
+这些状态已经离开“问诊中”，但还没真正完成门诊去向落地。
+
+对应地，`runtime_projection` 会把其中一部分投影成：
+
+- `payment`
+- `pharmacy`
+
+但这不等于患者已经完成整个门诊旅程。
+
+## 4. 哪些状态算门诊流程已完成
+
+当前 `disposition.py` 中真正被视为 `outpatient_flow_finished` 的 visit 状态主要是：
+
+- `in_emergency`
+- `in_icu_rescue`
+- `disposition_referral`
+- `admitted`
+- `transferring`
+- `completed`
+
+此外：
+
+- `cancelled`
+- `error`
+
+会停止自动流程，但不算正常完成。
+
+## 5. 为什么不能只看 `finished`
+
+### 5.1 `finished` 是投影词，不是唯一真值
+
+在 runtime / debug / 前端里，`finished` 更接近：
+
+- 当前门诊流程已经走到终点或转出点
+
+而不是：
+
+- 患者的整个医疗旅程完全结束
+
+### 5.2 `outpatient_flow_finished` 仍需和 visit 状态一起看
+
+`disposition.py` 允许 `visit_data.outpatient_flow_finished` 参与判断，但只有在状态匹配时才应成立。
+
+因此排查问题时不要只看：
+
+- `finished=true`
+
+还要一起看：
+
+- `visit_state`
+- `disposition.category`
+- `target_department`
+
+## 6. UI 投影应该怎么理解
+
+当前 `runtime_projection.py` 的显示阶段大致是：
+
+- `triage`
+- `pending_registration`
+- `waiting_call`
+- `called`
+- `consultation`
+- `testing`
+- `procedure`
+- `payment`
+- `pharmacy`
+- `finished`
+- `error`
+
+这层职责是“让 UI 好渲染”，不是重新定义业务流程。
+
+## 7. 当前建模约定
+
+新增门诊能力时，优先遵守：
+
+1. `visit_state` 只描述流程阶段
+2. `disposition` 描述结构化去向
+3. `runtime projection` 只做展示映射
+4. 不要为每种临床建议继续增加新的顶层 visit 状态
+
+例如，不推荐再新增：
+
+- `recommended_surgery`
+- `recommended_icu`
+- `recommended_admission`
+
+因为这些语义应落到 `disposition`，而不是让 visit 状态爆炸。
+
+## 8. 当前最重要的排查顺序
+
+看一个患者“为什么显示不对”时，按这个顺序查：
+
+1. `VisitLifecycleState`
+2. `PatientLifecycleState`
+3. `disposition`
+4. `runtime projection`
+5. Fullview 映射 / 前端渲染
+
+顺序不要反过来。
+- `in_outpatient_procedure`
+- `waiting_return_consultation`
+- `results_ready`
+- `waiting_second_consultation`
+- `in_second_consultation`
+- `diagnosis_finalized`
+- `waiting_payment`
+- `medical_payment_completed`
+
+这些状态负责表达普通门诊过程，不负责表达最终建议去向。
+
+## 4. 建议保留并强化的“非普通门诊”状态
+
+以下状态本身就有明确跨模块语义，建议保留并作为正式接口状态使用：
+
+- `in_emergency`
+- `in_icu_rescue`
+- `disposition_pending`
+- `disposition_outpatient_treatment`
+- `disposition_followup_booking`
+- `disposition_referral`
+- `admitted`
+
+其中：
+
+- `in_emergency`
+  - 表示病人已从普通门诊视角转入急诊去向
+- `in_icu_rescue`
+  - 表示病人已从普通门诊视角转入 ICU rescue 去向
+- `disposition_pending`
+  - 表示门诊诊断已形成，等待系统把建议去向落地为明确流程状态
+- `disposition_outpatient_treatment`
+  - 表示后续按普通门诊治疗闭环，例如药房、开药、离院指导
+- `disposition_followup_booking`
+  - 表示后续重点是复诊预约/随访安排
+- `disposition_referral`
+  - 表示转诊到其他专科/机构
+- `admitted`
+  - 表示已经进入住院建议或住院接收状态
+
+## 5. disposition 模型
+
+推荐为每个 visit 增加或统一一个结构化 `disposition` 对象，而不是让前端从 `assistant_message` 或 `patient_plan` 猜。
+
+建议字段：
+
+```json
+{
+  "category": "inpatient_admission",
+  "target_service": "surgery",
+  "target_department": "Surgery",
+  "urgency": "expedited",
+  "reason": "Second-round review suggests inpatient surgical management.",
+  "source_phase": "doctor_round2",
+  "handoff_status": "planned",
+  "outpatient_flow_finished": true
+}
 ```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────────────┐
-│ UNTRIAGED│───▶│ TRIAGING │───▶│  TRIAGED │───▶│ REGISTERED│───▶│WAITING_CONSULTAT.│
-│          │    │(多轮对话) │    │          │    │          │    │                  │
-│  ARRIVED │    │ TRIAGING │    │  TRIAGED │    │REGISTERED│    │WAITING_CONSULTAT.│
-└──────────┘    └──────────┘    └──────────┘    └──────────┘    └────────┬─────────┘
-                                                                         │
-                                                                         ▼
-                                                                  ┌──────────────┐
-                                                                  │    CALLED     │  ← 叫号
-                                                                  │WAITING_CONS.  │
-                                                                  └──────┬───────┘
-                                                                         │
-                                                                         ▼
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                            IN_CONSULTATION (Round 1)                                 │
-│                      内科/外科问诊 · 多轮对话                                         │
-│          Dialogue: COLLECTING_INFO → EVALUATING →                                    │
-│                NEEDS_FOLLOWUP ⇄ AWAITING_PATIENT_REPLY                               │
-│                            → DIAGNOSIS_COMPLETE                                       │
-└──────────────────────────────────────┬────────────────────────────────────────────────┘
-                                       │
-                    ┌──────────────────┼──────────────────┐
-                    │ (内科路径)        │                  │ (外科路径)
-                    ▼                  │                  ▼
-             ┌──────────┐              │    ┌───────────────────────────┐
-             │ IN_TEST  │              │    │WAITING_OUTPATIENT_PROCEDURE│ ← 门诊手术等待
-             │          │              │    └─────────────┬─────────────┘
-             └────┬─────┘              │                  │
-                  │                    │                  ▼
-                  │                    │    ┌──────────────────────────┐
-                  │                    │    │IN_OUTPATIENT_PROCEDURE   │ ← 门诊手术中
-                  │                    │    │  (手术室/操作室)          │
-                  │                    │    └─────────────┬────────────┘
-                  │                    │                  │
-                  ▼                    │    ┌─────────────┼─────────────┐
-           ┌──────────────┐           │    │             │             │
-           │RESULTS_READY │           │    ▼             ▼             ▼
-           │WAITING_RETURN│           │  ┌──────────┐ ┌──────────┐
-           │_CONSULTATION │           │  │ IN_TEST  │ │RESULTS_  │ ← 手术+检查可以并行
-           └──────┬───────┘           │  │          │ │READY     │     或先后执行
-                  │                   │  └────┬─────┘ └────┬─────┘
-                  │                   │       │            │
-                  └───────────────────┼───────┘            │
-                                      │                    │
-                                      ▼                    ▼
-                              ┌──────────────────────────────────┐
-                              │     IN_SECOND_CONSULTATION        │
-                              │        (Round 2) 复诊 · 出方案    │
-                              │  Dialogue: ... → COMPLETED        │
-                              └────────────────┬─────────────────┘
-                                               │
-                                               ▼
-                                      ┌─────────────────┐
-                                      │DIAGNOSIS_FINAL. │
-                                      └────────┬────────┘
-                                               │
-                                               ▼
-                                        ┌──────────────┐
-                                        │WAITING_PAYMENT│
-                                        └──────┬───────┘
-                                               │
-                                               ▼
-                                   ┌───────────────────┐
-                                   │MEDICAL_PAYMENT_   │
-                                   │COMPLETED           │
-                                   └────────┬──────────┘
-                                            │
-                                            ▼
-                             ┌──────────────────────────────┐
-                             │       DISPOSITION_PENDING     │
-                             └──────────────┬───────────────┘
-                                            │
-                        ┌───────────────────┼───────────────────┐
-                        ▼                   ▼                   ▼
-             ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-             │DISPOSITION_      │ │DISPOSITION_      │ │DISPOSITION_      │
-             │OUTPATIENT_       │ │FOLLOWUP_BOOKING  │ │REFERRAL          │
-             │TREATMENT         │ │                  │ │                  │
-             └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘
-                      │                    │                    │
-                      ▼                    ▼                    ▼
-                ┌──────────┐        ┌──────────┐        ┌──────────┐
-                │ COMPLETED│        │ COMPLETED│        │ COMPLETED│
-                └──────────┘        └──────────┘        └──────────┘
-```
 
----
+### 5.1 推荐的 `category` 枚举
 
-## 二、PatientLifecycleState（患者生命周期）
+- `outpatient_treatment`
+- `followup_booking`
+- `specialty_referral`
+- `emergency_escalation`
+- `icu_rescue`
+- `inpatient_admission`
 
-定义文件：[backend/app/schemas/common.py](backend/app/schemas/common.py)
+### 5.2 推荐的 `handoff_status` 枚举
 
-| # | 状态值 | 含义 | 触发事件 | 前端表现 |
-|---|--------|------|----------|----------|
-| 1 | `untriaged` | 未分诊 | 患者首次创建 | 显示"开始分诊"入口 |
-| 2 | `triaging` | 分诊中 | `begin_triage` | 分诊对话界面 |
-| 3 | `waiting_followup` | 等待患者回复 | `followup_requested` | 显示追问问题，等待用户输入 |
-| 4 | `triaged` | 已分诊 | `triage_completed` | 显示分诊结果卡片 + 挂号按钮 |
-| 5 | `queued` | 排队中 | `queue_created` | 显示排队号 + 倒计时 |
-| 6 | `called` | 已叫号 | `ticket_called` | 高亮提示"请进入诊室" |
-| 7 | `in_consultation` | 问诊中 | `start_consultation` | 医生对话界面 |
-| 8 | `in_test` | 检查/手术中 | `internal_medicine_completed` 或 `surgery_completed`（R1完成） | 显示检查进行中 / 手术进行中 / 报告 |
-| 9 | `completed` | 就诊完成 | `finish`（R2完成） | 显示完成总结 |
+- `none`
+- `planned`
+- `accepted`
+- `transferred`
+- `closed`
 
----
+语义说明：
 
-## 三、VisitLifecycleState（就诊生命周期）
+- `planned`
+  - 门诊系统已经给出建议去向，但下游尚未接收
+- `accepted`
+  - 下游模块或人工流程已经确认接收
+- `transferred`
+  - 病人已正式转入目标流程
+- `closed`
+  - 该 disposition 已完成闭环
 
-定义文件：[backend/app/schemas/common.py](backend/app/schemas/common.py)
+## 6. 推荐的状态映射规则
 
-> 比 PatientLifecycleState 更细粒度，驱动 `current_node`、`current_department`、`ui_flags`。
+### 6.1 triage 直接升级
 
-### 3.1 门诊核心路径（含手术岔路）
+当 triage 结果已经明确不是普通门诊时，不应再走普通门诊 finished 语义。
 
-| # | 状态值 | 含义 | current_department | 对应ui_flags | 所属路径 |
-|---|--------|------|-------------------|-------------|----------|
-| 1 | `arrived` | 已到达 | Lobby | `can_submit_triage = true` | 共有 |
-| 2 | `triaging` | 分诊对话中 | Triage | `can_continue_triage = true` | 共有 |
-| 3 | `waiting_followup` | 等待分诊追问回复 | Triage | `can_continue_triage = true` | 共有 |
-| 4 | `triaged` | 分诊完成 | Registration | `can_register = true` | 共有 |
-| 5 | `registered` | 已挂号 | 分配科室 | `can_progress_visit = true` | 共有 |
-| 6 | `waiting_consultation` | 等待叫号问诊 | 分配科室 | `ready_for_consultation = true` | 共有 |
-| 7 | `in_consultation` | Round 1 问诊中 | Consultation Room | `can_start_consultation = true` | 共有 |
-| 8 | `waiting_outpatient_procedure` | 等待门诊手术 | Outpatient Procedure | — | **外科** |
-| 9 | `in_outpatient_procedure` | 门诊手术/操作中 | Outpatient Procedure | — | **外科** |
-| 10 | `waiting_test` | 等待化验/检查 | Auxiliary Diagnostic Center | — | 共有 |
-| 11 | `in_test` | 化验/检查中 | Auxiliary Diagnostic Center | `can_view_test_report = true` | 共有 |
-| 12 | `results_ready` | 检查/手术结果已出 | 分配科室 | `can_view_test_report = true` | 共有 |
-| 13 | `waiting_return_consultation` | 等待复诊 | 分配科室 | — | 共有 |
-| 14 | `waiting_second_consultation` | 等待第二轮叫号 | 分配科室 | — | 共有 |
-| 15 | `in_second_consultation` | Round 2 复诊中 | Consultation Room | `can_start_consultation = true` | 共有 |
-| 16 | `diagnosis_finalized` | 诊断已确定 | Consultation | `can_ready_payment = true` | 共有 |
-| 17 | `waiting_payment` | 等待缴费 | Payment | — | 共有 |
-| 18 | `medical_payment_completed` | 缴费完成 | Payment | — | 共有 |
-| 19 | `completed` | 就诊结束 | — | — | 共有 |
+推荐映射：
 
-### 3.2 Round1 之后的三条岔路
+- triage -> Emergency
+  - `visit_state = in_emergency`
+  - `disposition.category = emergency_escalation`
+  - `outpatient_flow_finished = true`
+- triage -> ICU
+  - `visit_state = in_icu_rescue`
+  - `disposition.category = icu_rescue`
+  - `outpatient_flow_finished = true`
 
-Round1 问诊完成后，根据医生的判断，进入以下三条路径之一（可组合）：
+这里的重点是：
 
-```
-                         Round1 完成
-                             │
-            ┌────────────────┼────────────────┐
-            ▼                ▼                ▼
-    ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐
-    │  纯检查路径   │ │  纯手术路径   │ │  检查 + 手术 并行     │
-    │  (内科常见)   │ │  (外科: 清创等)│ │  (外科: 复杂病例)     │
-    │              │ │              │ │                      │
-    │ IN_TEST      │ │ WAITING_OP   │ │ IN_TEST ⇄ WAITING_OP │
-    │     ↓        │ │     ↓        │ │     ↓        ↓       │
-    │ RESULTS_READY│ │ IN_OP        │ │ RESULTS    IN_OP     │
-    │     ↓        │ │     ↓        │ │  READY       ↓       │
-    │    (复诊)    │ │ RESULTS_READY│ │     ↓     RESULTS    │
-    │              │ │     ↓        │ │    (都完成后复诊)     │
-    │              │ │    (复诊)    │ │                      │
-    └──────────────┘ └──────────────┘ └──────────────────────┘
-```
+- 门诊流程结束
+- 但病人 journey 没结束
 
-- **纯检查**：`OutpatientProcedureService.mark_tests_completed()` 判断 `outpatient_procedure_required=false` → 直接 `results_ready`
-- **纯手术**：`OutpatientProcedureService.finish_outpatient_procedure()` 判断 `tests_required=false` → 直接 `results_ready`
-- **检查+手术**：两者都完成后才进入 `results_ready`，由 `OutpatientProcedureService.requirements_ready()` 判断
+### 6.2 医生二轮问诊后的 disposition
 
-### 3.3 disposition（处置）状态（R2完成后）
+当内科/外科在二轮给出最终建议后，建议先统一进入：
 
-| # | 状态值 | 含义 | 说明 |
-|---|--------|------|------|
-| — | `disposition_pending` | 待定处置方案 | R2结束后默认进入 |
-| — | `disposition_outpatient_treatment` | 门诊治疗 | 开药/治疗，去药房 |
-| — | `disposition_followup_booking` | 预约复诊 | 定期复查 |
-| — | `disposition_referral` | 转诊 | 转上级医院/其他科室 |
-| — | `waiting_pharmacy` | 等待取药 | 关联disposition_outpatient_treatment |
+- `visit_state = disposition_pending`
 
----
+然后再根据 `primary_disposition` / `admission_recommendation` / `procedure_recommendation` 落到具体状态。
 
-## 四、DialogueState（对话状态机）
+推荐映射：
 
-### 4.1 分诊对话 TriageDialogueState
+- `primary_disposition = outpatient_management`
+  - `visit_state = disposition_outpatient_treatment`
+- `primary_disposition = observe_then_revisit`
+  - `visit_state = disposition_followup_booking`
+- `primary_disposition = specialty_referral`
+  - `visit_state = disposition_referral`
+- `primary_disposition = emergency_escalation`
+  - `visit_state = in_emergency`
+- `icu_escalation = true`
+  - `visit_state = in_icu_rescue`
+- `primary_disposition = inpatient_admission_recommended`
+  - `visit_state = admitted`
 
-定义文件：[backend/app/schemas/common.py](backend/app/schemas/common.py)
+## 7. 关于“建议手术”的建模建议
 
-```
-IDLE → COLLECTING_INITIAL_INFO → EVALUATING
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-            NEEDS_FOLLOWUP     TRIAGED          FAILED
-                    │          (完成)
-                    ▼
-          AWAITING_PATIENT_REPLY
-                    │
-                    ▼
-              RE_EVALUATING ──→ (循环最多3轮)
-```
+不建议把“建议手术”本身做成顶层 `visit_state`。
 
-| 状态值 | 含义 |
-|--------|------|
-| `idle` | 初始 |
-| `collecting_initial_info` | 收集初始信息 |
-| `evaluating` | LLM评估中 |
-| `needs_followup` | 需要追问 |
-| `awaiting_patient_reply` | 等待患者回复 |
-| `re_evaluating` | 重新评估 |
-| `triaged` | 分诊完成 |
-| `failed` | 失败 |
+原因：
 
-### 4.2 内科问诊对话 InternalMedicineDialogueState
+- “住院”是流程阶段
+- “手术建议”更像结构化临床结论
 
-定义文件：[backend/app/schemas/common.py](backend/app/schemas/common.py)
+推荐做法：
 
-```
-IDLE → COLLECTING_INFO → EVALUATING
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-      NEEDS_FOLLOWUP    DIAGNOSIS_COMPLETE   FAILED
-              │          (Round1 完成)
-              ▼
-    AWAITING_PATIENT_REPLY
-              │
-              ▼
-        RE_EVALUATING ──→ (循环)
+- `visit_state = admitted` 或 `visit_state = disposition_referral`
+- 同时在 `disposition` 或 `final_result` 中保留：
+  - `procedure_recommendation.surgery_evaluation_recommended`
+  - `procedure_recommendation.urgency`
+  - `target_service = surgery`
 
-Round 2 (复诊):
-IDLE → COLLECTING_INFO → ... → TREATMENT_PLANNING → COMPLETED
-```
+也就是说：
 
-| 状态值 | 含义 |
-|--------|------|
-| `idle` | 初始 |
-| `collecting_info` | 收集病史信息 |
-| `evaluating` | LLM诊断评估中 |
-| `needs_followup` | 需要追问 |
-| `awaiting_patient_reply` | 等待患者回复 |
-| `re_evaluating` | 重新评估 |
-| `diagnosis_complete` | 初步诊断完成（R1结束） |
-| `treatment_planning` | 制定治疗方案（R2） |
-| `completed` | 问诊完成 |
-| `failed` | 失败 |
+- 是否需要进一步外科/手术评估：放在结构化 disposition
+- 当前流程处于什么阶段：放在 visit_state
 
-### 4.3 外科问诊对话 SurgeryDialogueState
+这样比新增：
 
-> 外科同样使用 `InternalMedicineDialogueState` 的状态值（共用同一套对话状态机），但 Round1 完成后多了一条 **门诊手术** 的判断分支。
+- `surgery_recommended`
+- `waiting_surgery_admission`
 
-区别在于 R1 的 `final_result` 多了三个字段：
+之类状态更干净。
 
-| 字段 | 类型 | 含义 |
-|------|------|------|
-| `needs_outpatient_procedure` | bool | 是否需要门诊手术 |
-| `outpatient_procedure_category` | str | 手术类别（如 wound_care） |
-| `outpatient_procedure_reason` | str | 手术原因 |
+## 8. 推荐的最小落地版本
 
-当 `needs_outpatient_procedure=true` 时，`SurgeryService` 调用 `OutpatientProcedureService.route_after_round1()` 进入门诊手术流程。
+如果第一版想尽量少改已有状态机，建议按下面的最小方案推进：
 
----
+1. 保留现有 `VisitLifecycleState` 枚举，不大改主干流程
+2. 新增或统一 `disposition` 结构
+3. 在 debug / snapshot / UI 中显式增加：
+   - `outpatient_flow_finished`
+   - `journey_closed`
+4. triage 到急诊/ICU 时，直接写入：
+   - `in_emergency`
+   - `in_icu_rescue`
+5. 二轮最终结论后，先进入：
+   - `disposition_pending`
+6. 再按 disposition 结果推进到：
+   - `disposition_outpatient_treatment`
+   - `disposition_followup_booking`
+   - `disposition_referral`
+   - `admitted`
+   - `in_emergency`
+   - `in_icu_rescue`
 
-## 五、DepartmentFlowStatus（科室流程状态）
+## 9. 前端渲染建议
 
-定义文件：[backend/app/schemas/common.py](backend/app/schemas/common.py)
+前端不要再仅依赖文案判断去向。
 
-用于 hospital-runtime 和 department-runtime 的投影视图。
+建议渲染优先读：
 
-| # | 状态值 | 对应visit_state |
-|---|--------|----------------|
-| 1 | `assigned_pending_registration` | triaged（已分诊未挂号） |
-| 2 | `waiting_queue_round1` | registered（排队中） |
-| 3 | `called_round1` | waiting_consultation（已叫号） |
-| 4 | `in_consultation_round1` | in_consultation（Round1问诊） |
-| 5 | `in_test` | in_test / waiting_test 等 |
-| 6 | `in_outpatient_procedure` | waiting_outpatient_procedure / in_outpatient_procedure |
-| 7 | `waiting_queue_round2` | waiting_second_consultation |
-| 8 | `called_round2` | (被叫号) |
-| 9 | `in_consultation_round2` | in_second_consultation（Round2问诊） |
-| 10 | `finished` | 所有终态（waiting_payment 及之后） |
+1. `visit_state`
+2. `disposition.category`
+3. `disposition.target_service`
+4. `disposition.urgency`
+5. `disposition.handoff_status`
+6. `outpatient_flow_finished`
 
----
+前端可以据此稳定区分：
 
-## 六、当前完善的完整路径汇总
+- 普通门诊仍在进行
+- 普通门诊已结束，但后续需要复诊
+- 普通门诊已结束，但建议住院
+- 普通门诊已结束，但转急诊/ICU
+- 普通门诊已结束，但转其他专科
 
-### 路径A：内科门诊（无手术）
-```
-arrived → triaging → triaged → registered → waiting_consultation
-→ in_consultation(R1) → in_test → results_ready
-→ in_second_consultation(R2) → diagnosis_finalized
-→ waiting_payment → medical_payment_completed → completed
-```
+## 10. 当前文档的最终口径
 
-### 路径B：外科门诊 — 纯手术（无检查）
-```
-arrived → triaging → triaged → registered → waiting_consultation
-→ in_consultation(R1,surgery)
-→ waiting_outpatient_procedure → in_outpatient_procedure
-→ results_ready
-→ in_second_consultation(R2,surgery) → diagnosis_finalized
-→ waiting_payment → medical_payment_completed → completed
-```
+本项目后续应采用以下统一口径：
 
-### 路径C：外科门诊 — 检查 + 手术（并行或先后）
-```
-arrived → triaging → triaged → registered → waiting_consultation
-→ in_consultation(R1,surgery)
-→ waiting_outpatient_procedure → in_outpatient_procedure
-        ↘                          ↙
-         （可与 in_test 交叉或同时）
-              ↓
-         results_ready
-              ↓
-→ in_second_consultation(R2,surgery) → diagnosis_finalized
-→ waiting_payment → medical_payment_completed → completed
-```
-
-### 分诊子流程（多轮追问）
-```
-untriaged → triaging [COLLECTING → EVALUATING → NEEDS_FOLLOWUP ⇄ AWAITING_REPLY] → triaged
-```
-最多3轮 `NEEDS_FOLLOWUP → AWAITING_REPLY → RE_EVALUATING` 循环。
-
-### 问诊Round1子流程（内科/外科共用）
-```
-in_consultation [COLLECTING_INFO → EVALUATING → NEEDS_FOLLOWUP ⇄ AWAITING_REPLY → DIAGNOSIS_COMPLETE]
-```
-医生收集病史 → 开检查单/手术单 → 患者去做检查/手术。
-
-### 门诊手术子流程
-```
-waiting_outpatient_procedure → in_outpatient_procedure → (完成)
-     ↑                              ↑
-  route_after_round1()       start_outpatient_procedure()
-  mark_tests_completed()      finish_outpatient_procedure()
-```
-由 `OutpatientProcedureService` 驱动（[outpatient_procedure_service.py](backend/app/services/outpatient_procedure_service.py)），通过 `SurgeryService.after_persist_result()` 触发。
-
-### 问诊Round2子流程
-```
-in_second_consultation [COLLECTING_INFO → ... → TREATMENT_PLANNING → COMPLETED]
-```
-医生看报告 → 下诊断 → 开处方/治疗方案 → 出处置意见。
-
----
-
-## 七、各状态对应的前端场景
-
-| 患者所在阶段 | 前端主界面 | 关键数据 |
-|-------------|-----------|---------|
-| Lobby（未分诊） | 分诊表单 (`can_submit_triage`) | 输入主诉、症状、生命体征 |
-| Triage（分诊对话） | 分诊聊天 (`can_continue_triage`) | dialogue.turns, dialogue.assistant_message |
-| Triage完成 | 分诊结果 + 挂号入口 (`can_register`) | patient.triage, triage_evidence |
-| 排队中 | 排队号 + 倒计时 (`can_progress_visit`) | queue_ticket, timers |
-| 已叫号 | 进入诊室按钮 (`can_enter_consultation`) | queue_ticket.status="called" |
-| Round1 问诊（内科） | 内科医生聊天 | dialogue.turns, dialogue.final_result(R1) |
-| Round1 问诊（外科） | 外科医生聊天 | dialogue.turns, dialogue.final_result(R1): 含 needs_outpatient_procedure |
-| 化验/检查中 | 检查进行中 / 化验报告卡片 (`can_view_test_report`) | latest_test_report, diagnostic_session |
-| 门诊手术等待 | 手术安排通知 | visit.data.outpatient_procedure_plan |
-| 门诊手术中 | 手术进行中界面 | visit.data.outpatient_procedure_summary |
-| Round2 问诊 | 医生聊天 + 报告/手术结果参考 | dialogue.final_result(R2): 诊断、处方、处置 |
-| 缴费 | 缴费按钮 (`can_ready_payment`) | — |
-| 完成 | 就诊总结 | medical_record_summary |
+- `completed / finished` 不再默认代表病人全流程结束
+- 它们只代表普通门诊阶段结束，或历史兼容字段
+- “去向”由 `disposition` 结构表达
+- “病人当前流程位置”由 `visit_state` 表达
+- triage 直转急诊 / ICU，应直接进入目标状态
+- 门诊二轮建议住院 / 手术评估，应进入 disposition / admitted 语义，而不是直接被当成普通门诊 completed

@@ -161,6 +161,7 @@ Current Phase 1 baseline:
 - `backend/app/integrations/openemr/`: OpenEMR adapter layer
 - `scene/`: browser scene and interaction modules
 - `frontend/fullview/`: upstream frontend imported as a subtree
+- `docs/门诊系统总览与前端展示接口说明.md`: Chinese overview for collaboration and showcase GUI design
 - `docs/FRONTEND_SUBTREE_MAINTENANCE.md`: subtree sync and ownership guide
 - `docs/AGENT_DEVELOPMENT_README.md`: how collaborators should add a new agent
 
@@ -173,6 +174,16 @@ python server.py
 
 Backend default URL:
 - `http://127.0.0.1:8787`
+
+## Runtime Console
+- Formal backend runtime control console: `http://127.0.0.1:8787/runtime-console`
+- Purpose:
+  - control total active patients
+  - control active intelligent/scripted patient ratio
+  - control independent spawn/step clocks for intelligent and scripted patients
+  - inspect current issues, patients, and department runtime state
+- The runtime console is the formal control surface for backend scheduling.
+- Existing pages such as `hospital-runtime-debug` and `department-runtime-debug` remain available as compatibility/debug views.
 
 ## Backend debug entrypoints
 one agent debug:
@@ -192,6 +203,7 @@ agent dialogue debug:
 - http://127.0.0.1:8787/department-runtime-debug
 
 Notes:
+- `runtime-console` is the formal session/config/event-driven backend control console.
 - `doctor-agent-debug` is the unified doctor-facing debug entrypoint.
 - `internal-medicine-agent-debug` is kept as a compatibility alias backed by the unified doctor debug controller.
 - The doctor debug registry already includes `surgery` config, but surgery is not yet exposed as an active runtime choice in the app container.

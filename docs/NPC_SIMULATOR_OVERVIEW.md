@@ -1,83 +1,143 @@
-# 模拟病人系统（NPC Simulator）实现说明
+# 模拟病人与运行时调度说明
 
-## 目标
+## 1. 先说结论
 
-这个模拟器用于压测与联调：
+当前仓库里“自动病人推进”实际上有两套能力：
 
-1. 定时生成 NPC 病人。
-2. 定时推进 NPC 病人的就诊流程（不渲染实体）。
-3. 在前端排队面板中可见 NPC 名字。
-4. 约束：默认同时活跃的模拟病人最多 2 个，可通过配置调整。
+1. `NpcPatientSimulator`
+   - 简单后台模拟器
+   - 适合基础自动生成与推进
+2. `HospitalSupervisor`
+   - 正式 mixed runtime 调度器
+   - 由 `runtime-console` 驱动
 
-## 关键约束
+如果你的目标是“正式控制多个脚本病人和智能病人混跑”，应优先看 `HospitalSupervisor`，不要只盯着老的 `NpcPatientSimulator`。
 
-- 活跃 NPC 定义：`patient_id` 前缀为 `P-NPC-`，且 `lifecycle_state` 不在 `completed/cancelled/error`。
-- 上限策略：默认最多 2 个活跃 NPC。达到上限时，本轮 tick 不再创建新 NPC。
-- 释放策略：当 NPC 完成流程后，会释放活跃名额，后续 tick 可以再生成新 NPC。
+## 2. 当前模块分工
 
-## 主要模块
+### 2.1 `NpcPatientSimulator`
+
+主要文件：
 
 - `backend/app/services/npc_simulator.py`
-  - `NpcPatientSimulator`
-  - 负责 spawn + tick + 状态推进。
 - `backend/app/main.py`
-  - 在容器中注入模拟器。
-  - 在 FastAPI startup/shutdown 生命周期启动/停止后台线程。
 - `backend/app/config.py`
-  - 新增模拟器配置项（开关、tick 间隔、spawn 间隔、活跃上限、等待时长）。
 
-## NPC 基础资料（archetype）
+职责：
 
-每次创建 NPC 时，从 archetype 列表选型，写入：
+- 在后台线程里按固定节奏生成和推进病人
+- 复用既有 repository 和状态机
+- 适合作为简单、低控制度的自动流量来源
 
-- 年龄
-- 症状标签（symptom_tags）
-- 目标科室（target_department）
-- 优先级、分诊级别
+### 2.2 `HospitalSupervisor`
 
-资料保存策略：
+主要文件：
 
-- 写入 `visit.data_json` 中的 `simulator` 区块。
-- 同步写入患者 `triage_note`，便于调试与日志排查。
+- `backend/app/services/hospital_supervisor.py`
+- `backend/app/services/runtime_console_service.py`
+- `backend/app/api/routes/runtime_console.py`
 
-## 流程导演（tick）
+职责：
 
-每个 tick 做两件事：
+- 维护 runtime session
+- 控制活跃病人数
+- 控制 intelligent / scripted mix ratio
+- 分别控制 spawn / step 时钟
+- 记录 runtime events
+- 在需要时受 Fullview step gate 约束
 
-1. `spawn_if_needed`
-   - 若活跃 NPC < 2 且满足生成间隔，则创建 1 个 NPC。
-2. `advance_active_patients`
-   - 按当前 patient/visit 状态推进：
-     - `TRIAGED -> REGISTERED`（创建队列票）
-     - `REGISTERED -> WAITING_CONSULTATION`（等待阈值后叫号）
-     - `WAITING_CONSULTATION -> IN_CONSULTATION`
-     - `IN_CONSULTATION -> COMPLETED`（达到咨询时长后完成）
+### 2.3 `npc_patient`
 
-所有推进都走既有状态机约束（patient/visit state machine），避免跳转非法状态。
+主要文件：
 
-## 与现有系统的交互关系
+- `backend/app/agents/npc_patient/profile.py`
+- `backend/app/agents/npc_patient/planner.py`
+- `backend/app/agents/npc_patient/runner.py`
 
-- 与患者系统：复用 `PatientRepository` 创建/更新患者。
-- 与就诊系统：复用 `VisitRepository` 与 `VisitStateMachine`。
-- 与排队系统：复用 `QueueRepository` 创建、叫号、完成票据。
-- 与会话系统：写入 triage/internal medicine 的 session id 到 visit data，保持与当前 patient view 路由逻辑兼容。
-- 与事件系统：发布 `PATIENT_STATE_CHANGED`、`VISIT_STATE_CHANGED`、`QUEUE_TICKET_CALLED`，保持审计与投影一致。
+职责：
 
-## 前端表现（当前阶段）
+- 提供 scripted patient 画像、行为规划和执行器
+- 作为 runtime 中“脚本病人”来源的一部分
 
-- 不渲染 NPC 实体。
-- 仅在队列面板显示 NPC 名字。
-- 后端在 `/api/v1/queues` 的 ticket 中提供 `patient_name`；前端 `scene/queue/runtime.js` 读取并显示。
+## 3. 当前推荐理解
 
-## 配置项
+### 3.1 哪个才是正式运行时
 
-- `SIMULATOR_ENABLED`：是否启用模拟器。
-- `SIMULATOR_TICK_SECONDS`：tick 间隔。
-- `SIMULATOR_SPAWN_INTERVAL_SECONDS`：生成间隔。
-- `SIMULATOR_MAX_ACTIVE_PATIENTS`：活跃上限（当前默认 2）。
-- `SIMULATOR_MAX_ACTIVE_PATIENTS`：活跃上限（默认 2，可配置覆盖）。
-- `SIMULATOR_QUEUE_WAIT_SECONDS`：注册后等待叫号时长。
-- `SIMULATOR_CONSULT_SECONDS`：诊间停留时长。
+当前正式控制面是：
+
+- `GET /runtime-console`
+
+它背后控制的是 `HospitalSupervisor`，不是老式单线程 NPC 模拟器。
+
+### 3.2 `NpcPatientSimulator` 还在做什么
+
+它仍有价值，但定位更像：
+
+- 轻量自动压测
+- 基础联调
+- 不需要复杂配比和观测时的简单后台推进
+
+### 3.3 Fullview 联动发生在哪
+
+Fullview gate、可视化冷却、接受确认等约束，属于：
+
+- `HospitalSupervisor`
+- `fullview_mapping`
+- `fullview_sync`
+
+不是 `NpcPatientSimulator` 自己负责。
+
+## 4. 当前数据来源
+
+自动病人的资料主要来自：
+
+- `npc_patient/profile.py` 中的固定 profile
+- `patient_agent` / runtime 生成器的结构化 case
+- runtime console 的全局与科室配置
+
+当前仍存在一个已知数据规范问题：
+
+- `npc_patient/profile.py` 里还有 `General Surgery` 这样的非规范科室显示名
+
+因此调试“脚本病人显示到了哪个科室”时，要同时看 profile、visit、runtime projection，而不是只看页面展示。
+
+## 5. 推进原则
+
+无论来自哪套自动化入口，推进时都应遵守同一套后端真值：
+
+- `PatientStateMachine`
+- `VisitStateMachine`
+- `EncounterOrchestrationService`
+- `disposition`
+
+不要在模拟器里手写一条与主流程分离的“快捷路径”。
+
+## 6. 观测面
+
+### 6.1 正式观测
+
+- `runtime-console`
+- `fullview-sync-monitor`
+
+### 6.2 兼容 / 调试观测
+
+- `npc-debug`
+- `multi-patient-debug`
+- `hospital-runtime-debug`
+- `department-runtime-debug`
+
+这些页面仍有用，但不应该替代 `runtime-console` 的正式控制职责。
+
+## 7. 什么时候改哪一层
+
+如果你要改的是：
+
+- 自动病人生成频率、活跃上限、混跑比例：改 `HospitalSupervisor` / `runtime-console`
+- 轻量后台自动流：改 `NpcPatientSimulator`
+- 脚本病人的画像和预设行为：改 `npc_patient/*`
+- Fullview 阻塞或同步：改 `fullview_*` 系列
+
+不要把这几类问题混在一起处理。
 
 ## 测试覆盖
 
