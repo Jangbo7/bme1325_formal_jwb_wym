@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from app.database import Database
 from app.schemas.common import PatientLifecycleState, VisitLifecycleState
 from app.schemas.patient import DialogueSummary, EvidenceItem, PatientView, QueueTicketRef, TriageSummary
+from app.services.disposition import is_outpatient_flow_finished
 
 
 def now_iso() -> str:
@@ -167,12 +169,19 @@ class PatientRepository:
     ) -> PatientView:
         visit_id = patient_row.get("visit_id")
         visit_state = None
+        visit_data = {}
         if visit_row:
             visit_id = visit_row.get("id")
             state_value = visit_row.get("state")
             visit_state = VisitLifecycleState(state_value) if state_value else None
             if active_agent_type is None:
                 active_agent_type = visit_row.get("active_agent_type")
+            data_json = visit_row.get("data_json")
+            if data_json:
+                try:
+                    visit_data = json.loads(data_json)
+                except Exception:
+                    visit_data = {}
 
         return PatientView(
             id=patient_row["id"],
@@ -186,6 +195,25 @@ class PatientRepository:
             visit_id=visit_id,
             encounter_id=visit_id,
             visit_state=visit_state,
+            primary_disposition=visit_data.get("primary_disposition"),
+            disposition=dict(visit_data.get("disposition") or {}),
+            outpatient_flow_finished=is_outpatient_flow_finished(
+                visit_state.value if visit_state else None,
+                visit_data,
+            ),
+            outpatient_finished_at=visit_data.get("outpatient_finished_at"),
+            rare_event_profile=dict(visit_data.get("rare_event_profile") or {}),
+            rare_event_triggered_by=visit_data.get("rare_event_triggered_by"),
+            rare_event_type=visit_data.get("rare_event_type"),
+            rare_event_seed=visit_data.get("rare_event_seed"),
+            report_acuity_level=((visit_data.get("simulated_report") or {}).get("report_summary") or {}).get("acuity_level"),
+            report_cross_specialty_clues=list(
+                (((visit_data.get("simulated_report") or {}).get("report_summary") or {}).get("cross_specialty_clues") or [])
+            ),
+            recommended_department=visit_data.get("recommended_department"),
+            recommended_department_reason=visit_data.get("recommended_department_reason"),
+            requires_new_registration=bool(visit_data.get("requires_new_registration", False)),
+            carry_forward_summary=dict(visit_data.get("carry_forward_summary") or {}),
             active_agent_type=active_agent_type,
             session_refs=session_refs or {},
             dialogue_source_agent=dialogue_source_agent,

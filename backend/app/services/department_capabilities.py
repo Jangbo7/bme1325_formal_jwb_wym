@@ -84,6 +84,11 @@ def list_script_only_departments() -> list[str]:
     ]
 
 
+
+def is_script_only_department(department_id: str | None) -> bool:
+    return get_department_capability(department_id).department_capability_class == "script_only"
+
+
 def list_departments_for_mode(mode: MultiPatientMode) -> list[str]:
     capabilities = list_department_capabilities(include_legacy=False)
     if mode in {"legacy_template", "legacy_probabilistic_llm", "department_mixed"}:

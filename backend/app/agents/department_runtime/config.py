@@ -21,6 +21,8 @@ class DepartmentAgentConfig:
     build_follow_up_question: Callable[..., str] | None = None
     build_follow_up_llm_messages: Callable[..., list[dict]] | None = None
     build_transition_follow_up_question: Callable[[dict], str] | None = None
+    build_post_final_answer_llm_messages: Callable[..., list[dict]] | None = None
+    build_post_final_answer_fallback: Callable[..., str] | None = None
     build_final_message: Callable[..., str] | None = None
     build_patient_reply: Callable[..., str] | None = None
     build_system_prompt: Callable[[], str] | None = None

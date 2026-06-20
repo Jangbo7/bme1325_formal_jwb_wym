@@ -58,7 +58,7 @@ def test_npc_debug_spawn_snapshot_and_conflict(tmp_path, monkeypatch):
     assert conflict_resp.status_code == 409
 
 
-def test_npc_debug_step_reaches_waiting_payment_and_records_dialogue(tmp_path, monkeypatch):
+def test_npc_debug_step_reaches_outpatient_disposition_and_records_dialogue(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
 
     spawn_data = get_data(post_json(client, "/api/v1/npc-debug/spawn", {"profile_id": "respiratory_mild"}))
@@ -83,7 +83,9 @@ def test_npc_debug_step_reaches_waiting_payment_and_records_dialogue(tmp_path, m
 
     assert final_snapshot is not None
     assert final_snapshot["finished"] is True
-    assert final_snapshot["visit_state"] == "waiting_payment"
+    assert final_snapshot["visit_state"] == "completed"
+    assert final_snapshot["outpatient_flow_finished"] is True
+    assert final_snapshot["disposition"]["category"] in {"outpatient_treatment", "followup_booking"}
     assert final_snapshot["patient_lifecycle_state"] == "completed"
     assert "create_triage_session" in actions
     assert "reply_triage" in actions
@@ -192,3 +194,75 @@ def test_npc_debug_surgery_profile_uses_surgery_consultation_agent(tmp_path, mon
 
     surgery_session = session_repo.get_latest_by_visit_and_agent(final_snapshot["encounter_id"], "surgery")
     assert surgery_session is not None
+
+
+def test_npc_debug_scripted_consultation_preserves_counterparty_and_main_flow(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+
+    spawn_data = get_data(post_json(client, "/api/v1/npc-debug/spawn", {"profile_id": "pain_chronic_back_pain"}))
+    encounter_id = spawn_data["encounter_id"]
+    assert encounter_id
+
+    visit_repo = client.app.state.container["visit_repo"]
+
+    actions = []
+    visit_states = []
+    scripted_snapshot = None
+
+    for _ in range(24):
+        step_resp = post_json(client, "/api/v1/npc-debug/step")
+        assert step_resp.status_code == 200
+        snapshot = get_data(step_resp)
+        actions.append(snapshot["last_action"])
+        visit_states.append(snapshot["visit_state"])
+        if snapshot["last_action"] == "enter_consultation":
+            visit_repo.update_visit(
+                snapshot["encounter_id"],
+                assigned_department_id="pain",
+                assigned_department_name="Pain Medicine",
+                active_agent_type=None,
+                current_node="pain_consultation_room",
+                current_department="Consultation Room",
+            )
+        if snapshot["last_action"] == "create_internal_medicine_session":
+            scripted_snapshot = snapshot
+            break
+
+    assert scripted_snapshot is not None
+    assert scripted_snapshot["current_counterparty"] == "scripted_pain_consultation"
+    assert any(
+        entry["counterparty"] == "scripted_pain_consultation"
+        for entry in scripted_snapshot["transcript"]
+    )
+
+    for _ in range(12):
+        step_resp = post_json(client, "/api/v1/npc-debug/step")
+        assert step_resp.status_code == 200
+        snapshot = get_data(step_resp)
+        actions.append(snapshot["last_action"])
+        visit_states.append(snapshot["visit_state"])
+        if snapshot["visit_state"] == "in_second_consultation":
+            break
+
+    assert "create_triage_session" in actions
+    assert "reply_triage" in actions
+    assert "register_visit" in actions
+    assert "progress_visit" in actions
+    assert "enter_consultation" in actions
+    assert "create_internal_medicine_session" in actions
+    assert "reply_internal_medicine" in actions
+    assert "trigger_encounter_event" in actions
+    assert "triaged" in visit_states
+    assert "waiting_test" in visit_states
+    assert "in_second_consultation" in visit_states
+
+    session_repo = client.app.state.container["session_repo"]
+    visit_row = visit_repo.get(encounter_id)
+    assert visit_row is not None
+    assert visit_row["assigned_department_id"] == "pain"
+
+    scripted_session = session_repo.get_latest_by_visit_and_agent(
+        encounter_id,
+        "scripted_pain_consultation",
+    )
+    assert scripted_session is not None

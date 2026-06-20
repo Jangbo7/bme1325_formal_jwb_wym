@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from app.events.types import VISIT_STATE_CHANGED
+from app.schemas.common import PatientLifecycleState
 from app.schemas.orchestration import (
     AllowedTransitionView,
     StandardOutpatientState,
@@ -11,6 +12,7 @@ from app.schemas.orchestration import (
     StateTransitionEvent,
     TransitionDebugResult,
 )
+from app.services.disposition import apply_outpatient_completion_metadata
 
 
 def now_iso() -> str:
@@ -105,6 +107,15 @@ _EVENT_ALIASES = {
     "start_second_consultation": StateTransitionEvent.START_SECOND_CONSULTATION.value,
     "finalize_diagnosis": StateTransitionEvent.FINALIZE_DIAGNOSIS.value,
     "request_medical_payment": StateTransitionEvent.REQUEST_MEDICAL_PAYMENT.value,
+    "pay_medical": StateTransitionEvent.PAY_MEDICAL.value,
+    "plan_disposition": StateTransitionEvent.PLAN_DISPOSITION.value,
+    "choose_pharmacy": StateTransitionEvent.CHOOSE_PHARMACY.value,
+    "dispense_medication": StateTransitionEvent.DISPENSE_MEDICATION.value,
+    "choose_outpatient_treatment": StateTransitionEvent.CHOOSE_OUTPATIENT_TREATMENT.value,
+    "choose_followup_booking": StateTransitionEvent.CHOOSE_FOLLOWUP_BOOKING.value,
+    "choose_referral": StateTransitionEvent.CHOOSE_REFERRAL.value,
+    "admit_patient": StateTransitionEvent.ADMIT_PATIENT.value,
+    "complete_visit": StateTransitionEvent.COMPLETE_VISIT.value,
     "begin_triage": StateTransitionEvent.BEGIN_TRIAGE.value,
     "route_to_emergency": StateTransitionEvent.ROUTE_TO_EMERGENCY.value,
     "route_to_icu_rescue": StateTransitionEvent.ROUTE_TO_ICU_RESCUE.value,
@@ -231,10 +242,13 @@ _GUARD_TABLE: dict[StandardOutpatientState, dict[str, StandardOutpatientState]] 
         StateTransitionEvent.CHOOSE_FOLLOWUP_BOOKING.value: StandardOutpatientState.DISPOSITION_FOLLOWUP_BOOKING,
         StateTransitionEvent.CHOOSE_REFERRAL.value: StandardOutpatientState.DISPOSITION_REFERRAL,
         StateTransitionEvent.ADMIT_PATIENT.value: StandardOutpatientState.ADMITTED,
+        StateTransitionEvent.ROUTE_TO_EMERGENCY.value: StandardOutpatientState.IN_EMERGENCY,
+        StateTransitionEvent.ROUTE_TO_ICU_RESCUE.value: StandardOutpatientState.IN_ICU_RESCUE,
         StateTransitionEvent.COMPLETE_VISIT.value: StandardOutpatientState.COMPLETED,
         StateTransitionEvent.MARK_ERROR.value: StandardOutpatientState.ERROR,
     },
     StandardOutpatientState.DISPOSITION_PHARMACY: {
+        StateTransitionEvent.DISPENSE_MEDICATION.value: StandardOutpatientState.COMPLETED,
         StateTransitionEvent.COMPLETE_VISIT.value: StandardOutpatientState.COMPLETED,
         StateTransitionEvent.MARK_ERROR.value: StandardOutpatientState.ERROR,
     },
@@ -495,11 +509,16 @@ class EncounterOrchestrationService:
         )
         data["orchestration_history"] = history
         data["orchestration_state"] = to_standard.value
+        data = apply_outpatient_completion_metadata(
+            data,
+            visit_state=internal_to,
+        )
         self.visit_repo.update_visit(
             row["id"],
             state=internal_to,
             data=data,
         )
+        self._sync_patient_lifecycle(row["patient_id"], internal_to)
         self.bus.publish(
             VISIT_STATE_CHANGED,
             {
@@ -510,6 +529,26 @@ class EncounterOrchestrationService:
                 "standard_state": to_standard.value,
             },
         )
+
+    def _sync_patient_lifecycle(self, patient_id: str, visit_state: str) -> None:
+        patient_row = self.patient_repo.get(patient_id)
+        if not patient_row:
+            return
+        if visit_state == _STANDARD_TO_INTERNAL[StandardOutpatientState.ERROR]:
+            self.patient_repo.update_patient(patient_id, lifecycle_state=PatientLifecycleState.ERROR.value)
+            return
+        if visit_state == _STANDARD_TO_INTERNAL[StandardOutpatientState.CANCELLED]:
+            self.patient_repo.update_patient(patient_id, lifecycle_state=PatientLifecycleState.CANCELLED.value)
+            return
+        if visit_state in {
+            _STANDARD_TO_INTERNAL[StandardOutpatientState.IN_EMERGENCY],
+            _STANDARD_TO_INTERNAL[StandardOutpatientState.IN_ICU_RESCUE],
+            _STANDARD_TO_INTERNAL[StandardOutpatientState.DISPOSITION_REFERRAL],
+            _STANDARD_TO_INTERNAL[StandardOutpatientState.ADMITTED],
+            _STANDARD_TO_INTERNAL[StandardOutpatientState.TRANSFERRING],
+            _STANDARD_TO_INTERNAL[StandardOutpatientState.COMPLETED],
+        }:
+            self.patient_repo.update_patient(patient_id, lifecycle_state=PatientLifecycleState.COMPLETED.value)
 
     @staticmethod
     def _decode_data(visit_row: dict) -> dict:

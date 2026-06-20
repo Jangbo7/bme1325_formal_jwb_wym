@@ -198,6 +198,20 @@ class DummyVisitRepo:
         return self.row
 
 
+class DummyMedicalRecordRepo:
+    def __init__(self, timelines: dict[str, dict] | None = None, recent_visit_ids: list[str] | None = None):
+        self.timelines = timelines or {}
+        self.recent_visit_ids = recent_visit_ids or []
+
+    def get_visit_timeline(self, visit_id: str) -> dict | None:
+        return self.timelines.get(visit_id)
+
+    def list_recent_visit_ids_by_patient(self, patient_id: str, *, exclude_visit_id: str | None = None, limit: int = 3) -> list[str]:
+        del patient_id
+        visit_ids = [visit_id for visit_id in self.recent_visit_ids if visit_id != exclude_visit_id]
+        return visit_ids[:limit]
+
+
 class DummyBus:
     def __init__(self):
         self.events = []
@@ -273,6 +287,12 @@ class FakeDepartmentServiceWithVisitContext(FakeDepartmentService):
             "previous_visits": [],
             "clinician_note": "round2 history loaded",
         }
+
+
+class FakeDepartmentServiceWithVisitAndRecords(FakeDepartmentServiceWithVisitContext):
+    def __init__(self, *, counters: dict, visit_row: dict, medical_record_repo):
+        super().__init__(counters=counters, visit_row=visit_row)
+        self.medical_record_repo = medical_record_repo
 
 
 def build_fake_config(counters: dict) -> DepartmentAgentConfig:
@@ -374,6 +394,13 @@ def build_fake_config(counters: dict) -> DepartmentAgentConfig:
         counters["build_transition_follow_up_question"] += 1
         return "please clarify"
 
+    def build_post_final_answer_llm_messages(shared_memory: dict, message: str, final_result: dict, **kwargs):
+        counters["build_post_final_answer_llm_messages"] = counters.get("build_post_final_answer_llm_messages", 0) + 1
+        return [
+            {"role": "system", "content": "post final answer system"},
+            {"role": "user", "content": f"message={message},department={final_result.get('department')}"},
+        ]
+
     def build_final_message(result: dict, *, message_type: str = "final"):
         counters["build_final_message"] += 1
         return f"{message_type}:{result['source']}"
@@ -409,6 +436,7 @@ def build_fake_config(counters: dict) -> DepartmentAgentConfig:
         build_follow_up_question=build_follow_up_question,
         build_follow_up_llm_messages=build_follow_up_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
+        build_post_final_answer_llm_messages=build_post_final_answer_llm_messages,
         build_final_message=build_final_message,
         build_patient_reply=build_patient_reply,
         build_system_prompt=build_system_prompt,
@@ -663,6 +691,121 @@ def test_department_agent_runtime_round2_auto_loads_history_and_previous_summary
     assert merged["diagnostic_session"]["window_label"] == "Room 3"
 
 
+def test_department_agent_runtime_referral_handoff_resets_old_clinical_memory():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    visit_row = {
+        "id": "visit-referral",
+        "data_json": json.dumps(
+            {
+                "recommended_department": "Fake Department",
+                "recommended_department_reason": "Needs a different clinic.",
+                "requires_new_registration": True,
+                "handoff_reason": "Prior clinic closed its loop and referred the patient.",
+                "carry_forward_summary": {"target_department": "Fake Department", "focus": "new joint pain"},
+                "disposition": {
+                    "category": "specialty_referral",
+                    "target_department": "Fake Department",
+                    "reason": "Needs a different clinic.",
+                },
+                "fake_round1_summary": {
+                    "assistant_message": "old first doctor summary",
+                },
+                "simulated_report": {"report_text": "x-ray is available"},
+                "diagnostic_session": {"window_label": "Old Desk"},
+            }
+        ),
+    }
+    medical_record_repo = DummyMedicalRecordRepo(
+        timelines={
+            "visit-referral": {
+                "summary": {"visit_id": "visit-referral", "entry_count": 2},
+                "entries": [
+                    {
+                        "created_at": "2026-01-01T00:00:00+00:00",
+                        "phase": "internal_medicine_round2",
+                        "entry_type": "referral_note",
+                        "title": "Specialty Referral Note",
+                        "content_text": "from=Internal Medicine; to=Fake Department; reason=Needs a different clinic.",
+                        "content": {"recommended_department": "Fake Department"},
+                    }
+                ],
+            }
+        }
+    )
+    service = FakeDepartmentServiceWithVisitAndRecords(
+        counters=counters,
+        visit_row=visit_row,
+        medical_record_repo=medical_record_repo,
+    )
+    service.memory_repo.shared["patient-referral"] = {
+        "profile": {
+            "name": "Patient Referral",
+            "allergies": ["penicillin"],
+            "allergy_status": "known",
+            "chronic_conditions": ["hypertension"],
+        },
+        "clinical_memory": {
+            "chief_complaint": "old chest pain summary",
+            "symptoms": ["old chest pain summary", "nausea"],
+            "onset_time": "last week",
+            "vitals": {"hr": 110},
+            "risk_flags": ["high-risk"],
+        },
+    }
+    service.patient_repo.update_patient("patient-referral", visit_id="visit-referral")
+    service.session_repo.create_or_update(
+        "fake-session-referral",
+        "patient-referral",
+        FakeDialogueState.COLLECTING.value,
+        agent_type=service.config.agent_type,
+        visit_id="visit-referral",
+    )
+
+    memory = service.prepare_context(
+        {
+            "patient_id": "patient-referral",
+            "visit_id": "visit-referral",
+            "name": "Patient Referral",
+        },
+        "fake-session-referral",
+        FakeDialogueState.COLLECTING,
+    )
+    merged = service.build_merged_payload(
+        {
+            "patient_id": "patient-referral",
+            "visit_id": "visit-referral",
+            "name": "Patient Referral",
+            "message": "I still have pain.",
+        },
+        memory.shared_memory,
+        memory.private_memory,
+    )
+
+    assert memory.private_memory["consultation_context"]["intake_mode"] == "referral_handoff"
+    assert memory.private_memory["consultation_context"]["doctor_memory_policy"] == "chart_only"
+    assert memory.shared_memory["clinical_memory"]["chief_complaint"] in {None, ""}
+    assert memory.shared_memory["clinical_memory"]["symptoms"] == []
+    assert memory.shared_memory["profile"]["allergies"] == ["penicillin"]
+    assert "previous_round_summary" not in merged
+    assert "historical_records_template" not in merged
+    assert "diagnostic_session" not in merged
+    assert merged["chart_view"]["handoff"]["recommended_department"] == "Fake Department"
+    assert merged["chart_view"]["current_visit"]["entries"][0]["entry_type"] == "referral_note"
+    assert merged["simulated_report"]["report_text"] == "x-ray is available"
+
+
 def test_department_agent_runtime_round2_create_session_can_complete_without_forced_followup():
     counters = {
         "retrieve_rules": 0,
@@ -772,6 +915,9 @@ def test_department_agent_runtime_completed_session_tracks_reassessment_reason_a
 
     assert first["dialogue"]["message_type"] == "final"
     assert second["dialogue"]["message_type"] == "final_update"
+    assert second["dialogue"]["response_mode"] == "final_update"
+    assert second["dialogue"]["judgment_changed"] is True
+    assert second["dialogue"]["judgment_action"] == "reassessed_changed"
     assert second["dialogue"]["update_reason"] == "safety_flag"
     assert "priority" in second["dialogue"]["result_changed_fields"]
     assert "department" in second["dialogue"]["result_changed_fields"]
@@ -814,6 +960,7 @@ def test_department_agent_runtime_completed_session_question_only_reassessment_k
         ]
     )
     service.request_consultation_from_llm = lambda *args, **kwargs: next(llm_results)
+    service.request_post_final_answer_from_llm = lambda *args, **kwargs: "direct answer from llm"
 
     service.create_session(
         {
@@ -845,6 +992,144 @@ def test_department_agent_runtime_completed_session_question_only_reassessment_k
         },
     )
 
-    assert second["dialogue"]["message_type"] == "final_no_change"
+    assert second["dialogue"]["message_type"] == "answer_only"
+    assert second["dialogue"]["response_mode"] == "answer_only"
+    assert second["dialogue"]["judgment_changed"] is False
+    assert second["dialogue"]["judgment_action"] == "none"
+    assert second["dialogue"]["answer_source"] == "llm"
+    assert second["dialogue"]["assistant_message"] == "direct answer from llm"
     assert second["dialogue"]["reassessment_intent"] == "question_only"
     assert second["dialogue"]["reply_rendering_mode"] == "answer_only"
+
+
+def test_department_agent_runtime_completed_session_reassess_unchanged_returns_natural_answer():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(counters=counters, llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"})
+    llm_results = iter(
+        [
+            {
+                "department": "Fake Department",
+                "priority": "M",
+                "diagnosis_level": 1,
+                "note": "round1 final",
+                "patient_plan": "final plan",
+            },
+            {
+                "department": "Fake Department",
+                "priority": "M",
+                "diagnosis_level": 1,
+                "note": "round1 final",
+                "patient_plan": "final plan",
+            },
+        ]
+    )
+    service.request_consultation_from_llm = lambda *args, **kwargs: next(llm_results)
+    service.request_post_final_answer_from_llm = lambda *args, **kwargs: "answer after unchanged reassessment"
+
+    service.create_session(
+        {
+            "patient_id": "patient-reassess-unchanged",
+            "session_id": "fake-session-reassess-unchanged",
+            "visit_id": "visit-reassess-unchanged",
+            "name": "Patient Reassess Unchanged",
+            "chief_complaint": "known issue",
+            "onset_time": "yesterday",
+            "allergies": [],
+        }
+    )
+    service.continue_session(
+        "fake-session-reassess-unchanged",
+        {
+            "patient_id": "patient-reassess-unchanged",
+            "visit_id": "visit-reassess-unchanged",
+            "name": "Patient Reassess Unchanged",
+            "message": "I still have cough.",
+        },
+    )
+    second = service.continue_session(
+        "fake-session-reassess-unchanged",
+        {
+            "patient_id": "patient-reassess-unchanged",
+            "visit_id": "visit-reassess-unchanged",
+            "name": "Patient Reassess Unchanged",
+            "message": "I also feel chest pain now.",
+        },
+    )
+
+    assert second["dialogue"]["message_type"] == "answer_with_guidance"
+    assert second["dialogue"]["response_mode"] == "answer_with_guidance"
+    assert second["dialogue"]["judgment_changed"] is False
+    assert second["dialogue"]["judgment_action"] == "reassessed_unchanged"
+    assert second["dialogue"]["answer_source"] == "llm"
+    assert second["dialogue"]["assistant_message"] == "answer after unchanged reassessment"
+
+
+def test_department_agent_runtime_completed_session_post_final_answer_falls_back_safely():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(counters=counters, llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"})
+    service.request_consultation_from_llm = lambda *args, **kwargs: {
+        "department": "Fake Department",
+        "priority": "M",
+        "diagnosis_level": 1,
+        "note": "round1 final",
+        "patient_plan": "final plan",
+    }
+    service.request_post_final_answer_from_llm = lambda *args, **kwargs: None
+
+    service.create_session(
+        {
+            "patient_id": "patient-answer-fallback",
+            "session_id": "fake-session-answer-fallback",
+            "visit_id": "visit-answer-fallback",
+            "name": "Patient Answer Fallback",
+            "chief_complaint": "known issue",
+            "onset_time": "yesterday",
+            "allergies": [],
+        }
+    )
+    service.continue_session(
+        "fake-session-answer-fallback",
+        {
+            "patient_id": "patient-answer-fallback",
+            "visit_id": "visit-answer-fallback",
+            "name": "Patient Answer Fallback",
+            "message": "I still have cough.",
+        },
+    )
+    second = service.continue_session(
+        "fake-session-answer-fallback",
+        {
+            "patient_id": "patient-answer-fallback",
+            "visit_id": "visit-answer-fallback",
+            "name": "Patient Answer Fallback",
+            "message": "What does the current plan mean?",
+        },
+    )
+
+    assert second["dialogue"]["message_type"] == "answer_only"
+    assert second["dialogue"]["answer_source"] == "fallback_formatter"
+    assert second["dialogue"]["judgment_changed"] is False

@@ -45,9 +45,11 @@ export const roomKindLabels = {
   office: "Admin Office",
   registration: "Registration",
   triage: "Triage",
-  doctor_entry: "Doctor Entry Hall",
-  pharmacy_pickup: "Pharmacy Pickup",
-  empty_room: "Specialty Clinic",
+
+  doctor_entry: "Doctor Entry",
+  pharmacy_pickup: "Pharmacy",
+  empty_room: "Reserved",
+
 };
 
 export const fixedNpcDefinitions = [
@@ -80,6 +82,7 @@ export const fixedNpcDefinitions = [
     dialogueSetId: "consultation-doc",
   },
   {
+
     id: "consultation-doc-2",
     name: "Dr. Rowan",
     roleLabel: "Doctor",
@@ -94,6 +97,7 @@ export const fixedNpcDefinitions = [
     dialogueSetId: "consultation-doc-2",
   },
   {
+
     id: "triage-nurse",
     name: "Aya",
     roleLabel: "Triage Nurse",
@@ -234,12 +238,14 @@ export const fixedNpcDialogueBooks = {
     smallTalk: "If you bring in good questions, the answers usually show up on time.",
     closing: "Take it easy. Calm hands make better charts.",
   }),
+
   "consultation-doc-2": createTalkBook({
     intro: "Room two is for cases that need a second pair of eyes, not a second panic.",
     workAction: "Dr. Rowan adjusts the file. \"Tell the story clearly and the chart usually follows.\"",
     smallTalk: "Most delays come from confusion, not from medicine.",
     closing: "If the flow stays clean, this room does too.",
   }),
+
   "triage-nurse": createTalkBook({
     intro: "Start with the headline symptom, then the details fall into place.",
     workAction: "Aya taps the intake pad. \"Temperature, timing, pain level. That usually gets us moving.\"",

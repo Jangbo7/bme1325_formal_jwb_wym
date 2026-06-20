@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.department_runtime import RuntimeBlockingView, RuntimeResourceAssignmentView
 from app.schemas.npc_debug import CounterpartyType, NpcDebugCurrentDialogue
 
 
@@ -22,6 +23,9 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     npc_id: str
     mode: MultiPatientMode
     execution_runner_kind: Literal["intelligent", "legacy"]
+
+    patient_source: Literal["scripted", "generated"] = "scripted"
+
     department_agent_enabled: bool = False
     department_capability_class: Literal["agent_enabled", "script_only"] = "script_only"
     llm_mode: Literal["offline", "online"] | None = None
@@ -30,9 +34,27 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     patient_id: str
     encounter_id: str | None = None
     visit_state: str | None = None
+    primary_disposition: str | None = None
+    disposition: dict = Field(default_factory=dict)
+    outpatient_flow_finished: bool = False
+    outpatient_finished_at: str | None = None
+    rare_event_profile: dict = Field(default_factory=dict)
+    rare_event_triggered_by: str | None = None
+    rare_event_type: str | None = None
+    rare_event_seed: str | None = None
+    report_acuity_level: str | None = None
+    report_cross_specialty_clues: list[dict] = Field(default_factory=list)
+    recommended_department: str | None = None
+    recommended_department_reason: str | None = None
+    requires_new_registration: bool = False
+    carry_forward_summary: dict = Field(default_factory=dict)
     patient_lifecycle_state: str | None = None
     assigned_department_id: str | None = None
     assigned_department_name: str | None = None
+
+    generation_hint_department_id: str | None = None
+    generation_hint_department_name: str | None = None
+
     assigned_doctor_slot_id: str | None = None
     assigned_doctor_slot_name: str | None = None
     phase: str
@@ -49,6 +71,13 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     current_room_name: str | None = None
     room_type: str | None = None
     target_node_id: str | None = None
+    display_stage: str | None = None
+    dispatch_state: str | None = None
+    consultation_round: int | None = None
+    blocking: RuntimeBlockingView | None = None
+    resource_assignment: RuntimeResourceAssignmentView | None = None
+    latest_consultation_response_source: Literal["llm_then_validated", "fallback"] | None = None
+    latest_consultation_llm_error: str | None = None
     next_step_at: str | None = None
 
 
@@ -70,6 +99,7 @@ class MultiPatientDebugSnapshot(BaseModel):
     node_step_delays: dict[str, float] = Field(default_factory=dict)
     dispatch_count: int = 0
     blocked_count: int = 0
+    currently_blocked_patients: int = 0
     department_coverage: dict[str, int] = Field(default_factory=dict)
     active_by_department: dict[str, int] = Field(default_factory=dict)
     patients: list[MultiPatientDebugPatientSnapshot] = Field(default_factory=list)

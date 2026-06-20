@@ -22,6 +22,8 @@ const hudRuntimePanel = document.getElementById("hudRuntimePanel");
 const hudTasksToggle = document.getElementById("hudTasksToggle");
 const hudLabelsToggle = document.getElementById("hudLabelsToggle");
 const hudDebugToggle = document.getElementById("hudDebugToggle");
+const hudRuntimeStartBtn = document.getElementById("hudRuntimeStartBtn");
+const hudRuntimeApplyBtn = document.getElementById("hudRuntimeApplyBtn");
 const hudRuntimeStopBtn = document.getElementById("hudRuntimeStopBtn");
 const hudRuntimeResetBtn = document.getElementById("hudRuntimeResetBtn");
 const hudRuntimeStatus = document.getElementById("hudRuntimeStatus");
@@ -35,6 +37,7 @@ const hudQueueToggle = document.getElementById("hudQueueToggle");
 const hudPatientsToggle = document.getElementById("hudPatientsToggle");
 const hudRuntimeStatsToggle = document.getElementById("hudRuntimeStatsToggle");
 const hudStatsHtmlBtn = document.getElementById("hudStatsHtmlBtn");
+
 const hudRuntimeStatsPanel = document.getElementById("hudRuntimeStatsPanel");
 const hudRuntimeStatsDragHandle = document.getElementById("hudRuntimeStatsDragHandle");
 const hudRuntimeStatsContent = document.getElementById("hudRuntimeStatsContent");
@@ -196,8 +199,10 @@ const ROOM_KIND_LABELS = {
   registration: "Registration",
   consultation: "Consultation Room",
   triage: "Triage",
-  doctor_entry: "Doctor Entry Hall",
-  pharmacy_pickup: "Pharmacy Pickup",
+
+  doctor_entry: "Doctor Entry",
+  pharmacy_pickup: "Pharmacy",
+
   ward: "Ward",
   lab: "Laboratory",
   icu: "ICU Room",
@@ -463,6 +468,12 @@ const integrationState = {
   lastMedicalRecordSummaryKey: "",
   runtimeControlBusy: false,
 };
+
+
+const runtimeDraftState = {
+  dirty: false,
+};
+
 
 const runtimePanelState = {
   dragging: false,
@@ -839,25 +850,11 @@ function mapRuntimeNodeToRoomKind(nodeId) {
   return rooms.some((room) => room.kind === nodeId) ? nodeId : "hall";
 }
 
-function summarizeRuntimeStage(patient) {
-  const phase = String(patient?.phase || "").toLowerCase();
-  if (["triage", "queue", "consult1", "testing", "consult2", "payment", "pharmacy", "completed"].includes(phase)) {
-    return phase;
-  }
-  const departmentStatus = String(patient?.department_status || patient?.department_flow_status || "").toLowerCase();
-  if (departmentStatus.includes("pending_registration")) return "queue";
-  if (departmentStatus.includes("waiting_queue")) return "queue";
-  if (departmentStatus.includes("called_round")) return "queue";
-  if (departmentStatus.includes("consultation_round1")) return "consult1";
-  if (departmentStatus.includes("consultation_round2")) return "consult2";
-  if (departmentStatus === "in_test") return "testing";
-  return summarizeVisitStage(patient?.visit_state);
-}
 
 function buildHospitalScenePatients() {
   const snapshot = integrationState.hospitalRuntime;
   if (!snapshot || !Array.isArray(snapshot.nodes)) return [];
-  const stepSeconds = Number(snapshot.step_interval_seconds || 2);
+
 
   const items = [];
   for (const nodeView of snapshot.nodes) {
@@ -873,12 +870,10 @@ function buildHospitalScenePatients() {
         visitState: patient.visit_state || "",
         currentNodeId: patient.current_node_id || nodeId,
         targetNodeId: patient.target_node_id || "",
-        nextStepAt: patient.next_step_at || "",
-        phase: summarizeRuntimeStage(patient),
-        runtimeStatus: patient.status || "",
+
         displayLabel: patient.npc_id || patient.patient_id,
         statusSummary: truncateText(patient.department_status || patient.department_flow_status || patient.visit_state || "moving", 18),
-        stepSeconds,
+
       });
     }
   }
@@ -909,7 +904,8 @@ function buildRuntimePatientDetails(snapshot) {
         patientId: patient.patient_id,
         roomKind: mapRuntimeNodeToRoomKind(patient.current_room_node_id || patient.current_node_id || node.node.node_id),
         visitState: patient.visit_state || "",
-        stage: summarizeRuntimeStage(patient),
+
+        stage: summarizeVisitStage(patient.visit_state),
         currentNodeId: patient.current_node_id || node.node.node_id,
         targetNodeId: patient.target_node_id || "",
         lastAction: patient.last_action || "-",
@@ -952,7 +948,10 @@ function updateRuntimeHudStatus() {
   if (!hudRuntimeStatus) return;
   const snapshot = integrationState.hospitalRuntime;
   const payload = getRuntimeStartPayloadFromHud();
-  const tuning = `Config: Mode=${payload.mode} | Spawn=${payload.spawn_interval_seconds}s | Step=${payload.step_interval_seconds}s | Max=${payload.max_active_patients} | LLM=${payload.llm_probability ?? "-"}`;
+
+  const draftPrefix = runtimeDraftState.dirty ? "Draft" : "Config";
+  const tuning = `${draftPrefix}: Mode=${payload.mode} | Spawn=${payload.spawn_interval_seconds}s | Step=${payload.step_interval_seconds}s | Max=${payload.max_active_patients} | LLM=${payload.llm_probability ?? "-"}`;
+
   if (!snapshot) {
     hudRuntimeStatus.textContent = integrationState.runtimeControlBusy
       ? `Runtime request in progress... | ${tuning}`
@@ -963,51 +962,9 @@ function updateRuntimeHudStatus() {
   hudRuntimeStatus.textContent = `Runtime ${runningText} | mode ${snapshot.mode || "unknown"} | active ${snapshot.active_count ?? 0} | spawned ${snapshot.total_spawned ?? 0} | blocked ${snapshot.blocked_count ?? 0} | llm_probability=${snapshot.llm_probability ?? "-"} | ${tuning}`;
 }
 
-function saveRuntimeConfig() {
-  const payload = getRuntimeStartPayloadFromHud();
-  pendingRuntimeConfig = { ...payload };
-  try {
-    localStorage.setItem(SESSION_STORAGE_KEYS.runtimeConfig, JSON.stringify(payload));
-  } catch (_error) {
-    // ignore storage failures for local runtime config
-  }
-}
-
-function restoreRuntimeConfig() {
-  try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEYS.runtimeConfig);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    pendingRuntimeConfig = { ...parsed };
-    if (hudRuntimeMode && typeof parsed.mode === "string") hudRuntimeMode.value = parsed.mode;
-    if (hudRuntimeSpawn && Number.isFinite(Number(parsed.spawn_interval_seconds))) hudRuntimeSpawn.value = String(parsed.spawn_interval_seconds);
-    if (hudRuntimeStep && Number.isFinite(Number(parsed.step_interval_seconds))) hudRuntimeStep.value = String(parsed.step_interval_seconds);
-    if (hudRuntimeMax && Number.isFinite(Number(parsed.max_active_patients))) hudRuntimeMax.value = String(parsed.max_active_patients);
-    if (hudRuntimeLlmProbability) {
-      hudRuntimeLlmProbability.value = parsed.llm_probability == null ? "" : String(parsed.llm_probability);
-    }
-  } catch (_error) {
-    // ignore malformed saved config
-  }
-}
-
-function openRuntimeStatsHtmlPage() {
-  const targetUrl = `${backendState.baseUrl.replace(/\/$/, "")}/runtime-stats-html`;
-  window.open(targetUrl, "_blank", "noopener,noreferrer");
-}
 
 function getRuntimeStartPayloadFromHud() {
-  if (pendingRuntimeConfig) {
-    return {
-      mode: pendingRuntimeConfig.mode || "intelligent_agent",
-      spawn_interval_seconds: Number.isFinite(Number(pendingRuntimeConfig.spawn_interval_seconds)) ? Math.max(0, Number(pendingRuntimeConfig.spawn_interval_seconds)) : 4,
-      step_interval_seconds: Number.isFinite(Number(pendingRuntimeConfig.step_interval_seconds)) ? Math.max(0.1, Number(pendingRuntimeConfig.step_interval_seconds)) : 2,
-      max_active_patients: Number.isFinite(Number(pendingRuntimeConfig.max_active_patients)) ? Math.max(1, Math.round(Number(pendingRuntimeConfig.max_active_patients))) : 20,
-      llm_probability: pendingRuntimeConfig.llm_probability == null || !Number.isFinite(Number(pendingRuntimeConfig.llm_probability))
-        ? null
-        : Math.max(0, Math.min(1, Number(pendingRuntimeConfig.llm_probability))),
-    };
-  }
+
   const mode = hudRuntimeMode?.value || "intelligent_agent";
   const spawnInterval = Number(hudRuntimeSpawn?.value || 4);
   const stepInterval = Number(hudRuntimeStep?.value || 2);
@@ -1987,8 +1944,10 @@ function drawLabels() {
     registration: "Registration",
     consultation: "Consultation Room",
     triage: "Triage",
-    doctor_entry: "Doctor Entry Hall",
-    pharmacy_pickup: "Pharmacy Pickup",
+
+    doctor_entry: "Doctor Entry",
+    pharmacy_pickup: "Pharmacy",
+
     ward: "Ward",
     lab: "Laboratory",
     icu: "ICU Room",
@@ -2847,9 +2806,11 @@ function bindHudControls() {
       updateRuntimeStatsPanel();
     }
   });
+
   hudStatsHtmlBtn?.addEventListener("click", () => {
     openRuntimeStatsHtmlPage();
   });
+
 
   hudRestartBtn?.addEventListener("click", () => {
     openRestartConfirmModal();
@@ -2879,6 +2840,15 @@ function bindHudControls() {
     });
   });
 
+
+  hudRuntimeStartBtn?.addEventListener("click", () => {
+    pushStatusHint("Use Restart to begin a new full run. Start Runtime only resumes a paused backend runtime.");
+    controlHospitalRuntime("start");
+  });
+  hudRuntimeApplyBtn?.addEventListener("click", () => {
+    applyHospitalRuntimeConfig();
+  });
+
   hudRuntimeStopBtn?.addEventListener("click", () => {
     controlHospitalRuntime("stop");
   });
@@ -2886,19 +2856,20 @@ function bindHudControls() {
     controlHospitalRuntime("reset");
   });
 
-  [hudRuntimeMode, hudRuntimeSpawn, hudRuntimeStep, hudRuntimeMax, hudRuntimeLlmProbability].forEach((element) => {
+
+  [hudRuntimeMode, hudRuntimeSpawn, hudRuntimeStep, hudRuntimeMax].forEach((element) => {
     element?.addEventListener("input", () => {
-      saveRuntimeConfig();
+      runtimeDraftState.dirty = true;
       updateRuntimeHudStatus();
     });
     element?.addEventListener("change", () => {
-      pendingRuntimeConfig = null;
-      saveRuntimeConfig();
+      runtimeDraftState.dirty = true;
+
       updateRuntimeHudStatus();
     });
   });
 
-  restoreRuntimeConfig();
+
   updateRuntimeHudStatus();
   updateRuntimeStatsPanel();
   syncOverlayUi();
@@ -3753,7 +3724,9 @@ async function openExistingDoctorDialogue() {
     return;
   }
 
-  doctorConversationState.activeAgentType = getCurrentConsultationAgentType();
+
+  doctorConversationState.activeAgentType = "internal_medicine";
+
   const sessionId = getDoctorSessionIdFromContext();
   if (!sessionId) {
     pushStatusHint("No active doctor consultation session was found.");
@@ -4148,11 +4121,20 @@ async function controlHospitalRuntime(action) {
   integrationState.runtimeControlBusy = true;
   updateRuntimeHudStatus();
   try {
-    if (action === "stop") {
+
+    if (action === "start") {
+      integrationState.hospitalRuntime = await backendClient.startHospitalRuntime(getRuntimeStartPayloadFromHud());
+    } else if (action === "stop") {
+
       integrationState.hospitalRuntime = await backendClient.stopHospitalRuntime();
     } else if (action === "reset") {
       integrationState.hospitalRuntime = await backendClient.resetHospitalRuntime();
     }
+
+    if (action === "start" || action === "reset") {
+      runtimeDraftState.dirty = false;
+    }
+
     pushStatusHint(`Hospital runtime ${action} request completed.`);
     await refreshIntegrationRuntime(true);
     taskBoardPresenter.syncIntegratedView({
@@ -4173,15 +4155,25 @@ async function controlHospitalRuntime(action) {
   }
 }
 
+
+async function applyHospitalRuntimeConfig() {
+  runtimeDraftState.dirty = false;
+  updateRuntimeHudStatus();
+  pushStatusHint("Runtime draft config saved. Use Restart to apply it to a new run.");
+}
+
+
 async function performFullRestart() {
   if (integrationState.runtimeControlBusy || backendState.submitting) return;
   integrationState.runtimeControlBusy = true;
   backendState.submitting = true;
   updateRuntimeHudStatus();
   try {
-    saveRuntimeConfig();
+
     await backendClient.resetHospitalRuntime();
     integrationState.hospitalRuntime = await backendClient.startHospitalRuntime(getRuntimeStartPayloadFromHud());
+    runtimeDraftState.dirty = false;
+
     integrationState.medicalRecordTimeline = null;
     integrationState.lastMedicalRecordVisitId = null;
     integrationState.lastMedicalRecordSummaryKey = "";
@@ -4429,8 +4421,10 @@ async function submitCreateDoctorSessionRequest() {
   backendState.submitting = true;
   try {
     const round = visitState === "in_second_consultation" ? 2 : 1;
-    doctorConversationState.activeAgentType = getCurrentConsultationAgentType(getCurrentSceneSnapshot(), selfPatient, visit);
-    const payload = {
+
+    doctorConversationState.activeAgentType = "internal_medicine";
+    const data = await backendClient.createInternalMedicineSession({
+
       patient_id: doctorConversationState.patientId,
       name: "You (Player)",
       visit_id: visitId,
@@ -4802,20 +4796,16 @@ async function submitDoctorDialogueReply() {
     const selfPatient = getCurrentSelfPatient();
     const visitState = getCurrentVisit()?.state || selfPatient?.visit_state || "";
     const consultationAgentType = getCurrentConsultationAgentType();
+
     const data = visitState === "in_icu_rescue"
       ? await backendClient.sendIcuMessage(doctorConversationState.sessionId, {
         patient_id: doctorConversationState.patientId,
         name: "You (Player)",
         message,
       })
-      : consultationAgentType === "surgery"
-        ? await backendClient.sendSurgeryMessage(doctorConversationState.sessionId, {
-          patient_id: doctorConversationState.patientId,
-          name: "You (Player)",
-          visit_id: doctorConversationState.visitId || getCurrentVisit()?.id || null,
-          message,
-        })
-        : await backendClient.sendInternalMedicineMessage(doctorConversationState.sessionId, {
+
+      : await backendClient.sendInternalMedicineMessage(doctorConversationState.sessionId, {
+
         patient_id: doctorConversationState.patientId,
         name: "You (Player)",
         visit_id: doctorConversationState.visitId || getCurrentVisit()?.id || null,

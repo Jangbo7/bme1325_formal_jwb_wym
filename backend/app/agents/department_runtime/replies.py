@@ -37,6 +37,11 @@ FOLLOWUP_TOKENS = ("follow up", "follow-up", "revisit", "review", "come back", "
 TEST_TOKENS = ("recheck", "repeat test", "more test", "check again", "还要检查", "还要不要检查", "为什么不用再检查")
 DIAGNOSIS_TOKENS = ("what is it", "diagnosis", "what does this mean", "是不是", "是什么问题", "什么意思")
 SAFETY_TOKENS = ("worse", "pain", "bleeding", "vomit", "black stool", "fever", "chest pain", "加重", "疼", "黑便", "呕血", "出血", "发热", "胸痛")
+GUIDANCE_TOKENS = REPORT_TOKENS + MEDICATION_TOKENS + FOLLOWUP_TOKENS + TEST_TOKENS
+
+ANSWER_ONLY = "answer_only"
+ANSWER_WITH_GUIDANCE = "answer_with_guidance"
+REASSESS_REQUIRED = "reassess_required"
 
 
 def infer_result_changed_fields(previous: dict | None, current: dict | None) -> list[str]:
@@ -72,6 +77,39 @@ def detect_reassessment_topics(message: str) -> set[str]:
     if any(token in lowered for token in SAFETY_TOKENS):
         topics.add("safety")
     return topics
+
+
+def infer_answer_mode_from_message(message: str, latest_extraction: dict | None = None) -> str:
+    latest_extraction = latest_extraction or {}
+    extracted_fields = set(latest_extraction.get("extracted_fields") or [])
+    topics = detect_reassessment_topics(message)
+    question_like = is_question_like(message)
+
+    if "safety" in topics:
+        return REASSESS_REQUIRED
+    if "report" in topics and not question_like:
+        return REASSESS_REQUIRED
+    if extracted_fields & {"symptoms", "chief_complaint", "onset_time"}:
+        return REASSESS_REQUIRED
+    if question_like and topics:
+        if topics & {"followup", "tests", "medication", "report"}:
+            return ANSWER_WITH_GUIDANCE
+        return ANSWER_ONLY
+    if question_like:
+        return ANSWER_ONLY
+    if extracted_fields:
+        return ANSWER_WITH_GUIDANCE
+    if topics & {"followup", "tests", "medication", "report", "diagnosis"}:
+        return ANSWER_WITH_GUIDANCE
+    return ANSWER_ONLY
+
+
+def reassessment_intent_from_answer_mode(answer_mode: str) -> str:
+    if answer_mode == ANSWER_WITH_GUIDANCE:
+        return "question_with_minor_guidance"
+    if answer_mode == ANSWER_ONLY:
+        return "question_only"
+    return "result_update"
 
 
 def infer_update_reason(
@@ -135,6 +173,10 @@ def infer_reassessment_intent(
 
 
 def infer_reply_rendering_mode(reassessment_intent: str | None, *, message_type: str = "final") -> str | None:
+    if message_type == ANSWER_ONLY:
+        return "answer_only"
+    if message_type == ANSWER_WITH_GUIDANCE:
+        return "answer_plus_guidance"
     if message_type not in {"final_update", "final_no_change"}:
         return None
     if reassessment_intent == "result_update":

@@ -8,6 +8,10 @@ def _contains_any(text: str, keywords: list[str]) -> bool:
     return any(keyword in lowered for keyword in keywords)
 
 
+ROUND1_PHASES = {"internal_medicine_round1", "consultation_round1"}
+ROUND2_PHASES = {"internal_medicine_round2", "consultation_round2"}
+
+
 class PatientPolicy:
     def decide(self, case_card: PatientCaseCard, context: PatientReplyContext) -> PatientPolicyDecision:
         question = (context.recent_question or "").strip().lower()
@@ -40,10 +44,10 @@ class PatientPolicy:
 
         if phase == "triage":
             style_hints.append("brief, factual, and responsive")
-        if phase == "internal_medicine_round1":
+        if phase in ROUND1_PHASES:
             style_hints.append("slightly more descriptive than triage")
             should_follow_up = True
-        if phase == "internal_medicine_round2":
+        if phase in ROUND2_PHASES:
             allowed.add("known_test_results")
             topics.append("known test results")
             style_hints.append("focused on understanding the results and next steps")

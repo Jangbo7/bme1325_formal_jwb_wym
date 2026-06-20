@@ -53,6 +53,11 @@ class AgentDebugTrace(BaseModel):
     llm_succeeded: bool = False
     llm_error: str | None = None
     response_source: str | None = None
+    response_mode: str | None = None
+    judgment_changed: bool = False
+    judgment_action: str | None = None
+    answer_source: str | None = None
+    llm_response_kind: str | None = None
     patient_reply_source: str | None = None
     structured_result: dict[str, Any] = Field(default_factory=dict)
     patient_reply: str | None = None

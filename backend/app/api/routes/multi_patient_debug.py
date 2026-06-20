@@ -74,12 +74,39 @@ def multi_patient_debug_page():
     .filters { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     details { margin-top: 8px; }
     summary { cursor: pointer; color: #2f6d44; font-size: 13px; }
+    .legend { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    .card--rare-event { border-width: 2px; }
+    .card--rare-event-patient {
+      background: linear-gradient(180deg, #fff0e2 0%, #fff9f2 100%);
+      border-color: #d68a36;
+      box-shadow: 0 12px 24px rgba(214, 138, 54, 0.16);
+    }
+    .card--rare-event-report {
+      background: linear-gradient(180deg, #e7f4ff 0%, #f8fcff 100%);
+      border-color: #3e8acb;
+      box-shadow: 0 12px 24px rgba(62, 138, 203, 0.16);
+    }
+    .card--rare-event-both {
+      background: linear-gradient(180deg, #fff3c7 0%, #fffbee 100%);
+      border-color: #ae7d00;
+      box-shadow: 0 12px 24px rgba(174, 125, 0, 0.16);
+    }
+    .card--rare-event-unknown {
+      background: linear-gradient(180deg, #f4ebff 0%, #fcf9ff 100%);
+      border-color: #7f5ab6;
+      box-shadow: 0 12px 24px rgba(127, 90, 182, 0.14);
+    }
+    .badge--rare { color: #fff; border-color: transparent; }
+    .badge--rare-patient { background: #d68a36; }
+    .badge--rare-report { background: #3e8acb; }
+    .badge--rare-both { background: #ae7d00; }
+    .badge--rare-unknown { background: #7f5ab6; }
   </style>
 </head>
 <body>
   <main>
     <h1>Multi Patient Debug</h1>
-    <div class="muted">Engine-driven hospital supervisor with fair scheduling, node capacity limits, per-node step delays, and legacy offline/probabilistic LLM controls.</div>
+    <div class="muted">Engine-driven hospital supervisor with fair scheduling, node capacity limits, per-node step delays, and probabilistic patient-source control for <code>legacy_probabilistic_llm</code>. Coverage reflects spawn hints or scripted preassignment, not always the final triage destination. <code>blocked_count</code> is blocked attempt count, not unique patient count.</div>
     <div class="toolbar">
       <div>
         <label>Mode</label><br />
@@ -103,7 +130,7 @@ def multi_patient_debug_page():
         <input id="maxPatients" type="number" min="1" step="1" value="20" />
       </div>
       <div>
-        <label>LLM Probability</label><br />
+        <label>Probability</label><br />
         <input id="llmProbability" type="number" min="0" max="1" step="0.1" value="0" />
       </div>
       <button id="startBtn">Start</button>
@@ -117,10 +144,23 @@ def multi_patient_debug_page():
         <label>Department</label><br />
         <select id="departmentFilter"><option value="">all</option></select>
       </div>
+      <div>
+        <label>Patient</label><br />
+        <input id="patientFilter" type="text" placeholder="npc / patient / encounter" />
+      </div>
     </div>
     <div id="status"></div>
     <section class="panel">
       <div class="stats" id="stats"></div>
+    </section>
+    <section class="panel">
+      <div class="legend" id="rareEventLegend">
+        <span class="muted">Special event color:</span>
+        <span class="badge badge--rare badge--rare-patient">patient</span>
+        <span class="badge badge--rare badge--rare-report">report</span>
+        <span class="badge badge--rare badge--rare-both">both</span>
+        <span class="badge badge--rare badge--rare-unknown">unknown</span>
+      </div>
     </section>
     <section class="cards" id="cards"></section>
   </main>
@@ -128,6 +168,52 @@ def multi_patient_debug_page():
     const statusEl = document.getElementById("status");
     const statsEl = document.getElementById("stats");
     const cardsEl = document.getElementById("cards");
+    const departmentFilterEl = document.getElementById("departmentFilter");
+    const patientFilterEl = document.getElementById("patientFilter");
+    const detailStorageKey = "multi-patient-debug-open-details";
+
+    function readOpenDetailIds() {
+      try {
+        const raw = window.sessionStorage.getItem(detailStorageKey);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function writeOpenDetailIds(ids) {
+      try {
+        window.sessionStorage.setItem(detailStorageKey, JSON.stringify(ids));
+      } catch (error) {
+        // Ignore storage failures in embedded/locked-down browsers.
+      }
+    }
+
+    function captureOpenDetailIds() {
+      const openIds = Array.from(document.querySelectorAll("details[data-detail-id][open]"))
+        .map((el) => el.getAttribute("data-detail-id"))
+        .filter(Boolean);
+      writeOpenDetailIds(openIds);
+      return openIds;
+    }
+
+    function bindDetailPersistence() {
+      const openIdSet = new Set(readOpenDetailIds());
+      document.querySelectorAll("details[data-detail-id]").forEach((el) => {
+        const detailId = el.getAttribute("data-detail-id");
+        if (detailId && openIdSet.has(detailId)) {
+          el.open = true;
+        }
+        el.addEventListener("toggle", () => {
+          const nextIds = captureOpenDetailIds();
+          if (el.open && detailId && nextIds.indexOf(detailId) === -1) {
+            nextIds.push(detailId);
+            writeOpenDetailIds(nextIds);
+          }
+        });
+      });
+    }
 
     function nextIdempotencyKey() {
       if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -155,6 +241,42 @@ def multi_patient_debug_page():
       return payload.data;
     }
 
+    function stageSummary(patient) {
+      const round = patient.consultation_round != null ? ` / round ${patient.consultation_round}` : "";
+      return `${patient.display_stage || "-"} / ${patient.dispatch_state || "-"}${round}`;
+    }
+
+    function blockingSummary(patient) {
+      const blocking = patient.blocking;
+      if (!blocking) return "-";
+      return [
+        blocking.kind,
+        blocking.resource_kind,
+        blocking.resource_id,
+        blocking.message,
+      ].filter(Boolean).join(" | ");
+    }
+
+    function rareEventState(patient) {
+      const profile = patient.rare_event_profile || {};
+      const patientEnabled = Boolean(profile.patient_special_event_enabled);
+      const reportEnabled = Boolean(profile.report_special_signal_enabled);
+      const triggeredBy = String(patient.rare_event_triggered_by || profile.triggered_by || "").trim().toLowerCase();
+      const eventType = String(patient.rare_event_type || profile.event_type || "").trim().toLowerCase();
+      if (!eventType && triggeredBy !== "patient" && triggeredBy !== "report" && !patientEnabled && !reportEnabled) {
+        return "none";
+      }
+      if (patientEnabled && reportEnabled) return "both";
+      if (patientEnabled || triggeredBy === "patient") return "patient";
+      if (reportEnabled || triggeredBy === "report") return "report";
+      return "unknown";
+    }
+
+    function rareEventBadge(state) {
+      if (state === "none") return "";
+      return `<span class="badge badge--rare badge--rare-${state}">rare:${state}</span>`;
+    }
+
     function render(snapshot) {
       if (!snapshot) {
         statsEl.innerHTML = "<div class='muted'>No data.</div>";
@@ -170,19 +292,19 @@ def multi_patient_debug_page():
         <div class="stat"><strong>spawned</strong><div>${snapshot.total_spawned}</div></div>
         <div class="stat"><strong>spawn interval</strong><div>${snapshot.spawn_interval_seconds}</div></div>
         <div class="stat"><strong>step interval</strong><div>${snapshot.step_interval_seconds}</div></div>
-        <div class="stat"><strong>llm probability</strong><div>${snapshot.llm_probability ?? "-"}</div></div>
+        <div class="stat"><strong>probability</strong><div>${snapshot.llm_probability ?? "-"}</div></div>
         <div class="stat"><strong>dispatch</strong><div>${snapshot.dispatch_count}</div></div>
-        <div class="stat"><strong>blocked</strong><div>${snapshot.blocked_count}</div></div>
+        <div class="stat"><strong>blocked attempts</strong><div>${snapshot.blocked_count}</div></div>
+        <div class="stat"><strong>blocked patients</strong><div>${snapshot.currently_blocked_patients}</div></div>
         <div class="stat"><strong>coverage</strong><div>${coverage}</div></div>
         <div class="stat"><strong>last spawn</strong><div>${snapshot.last_spawn_at || "-"}</div></div>
         <div class="stat"><strong>last tick</strong><div>${snapshot.last_tick_at || "-"}</div></div>
       `;
 
       const departments = [...new Set((snapshot.patients || []).map((item) => item.assigned_department_id).filter(Boolean))].sort();
-      const filterEl = document.getElementById("departmentFilter");
-      const selectedDepartment = filterEl.value;
-      filterEl.innerHTML = `<option value="">all</option>${departments.map((item) => `<option value="${item}">${item}</option>`).join("")}`;
-      filterEl.value = departments.includes(selectedDepartment) ? selectedDepartment : "";
+      const selectedDepartment = departmentFilterEl.value;
+      departmentFilterEl.innerHTML = `<option value="">all</option>${departments.map((item) => `<option value="${item}">${item}</option>`).join("")}`;
+      departmentFilterEl.value = departments.includes(selectedDepartment) ? selectedDepartment : "";
 
       if (!snapshot.patients || snapshot.patients.length === 0) {
         cardsEl.innerHTML = "<div class='muted'>No patients yet.</div>";
@@ -190,10 +312,27 @@ def multi_patient_debug_page():
       }
 
       const activeOnly = document.getElementById("activeOnly").checked;
-      const departmentFilter = filterEl.value;
+      const departmentFilter = departmentFilterEl.value;
+      const patientFilter = patientFilterEl.value.trim().toLowerCase();
       const patients = snapshot.patients.filter((p) => {
         if (activeOnly && p.finished) return false;
         if (departmentFilter && p.assigned_department_id !== departmentFilter) return false;
+        if (patientFilter) {
+          const haystack = [
+            p.npc_id,
+            p.patient_id,
+            p.encounter_id,
+            p.assigned_department_id,
+            p.assigned_department_name,
+            p.generation_hint_department_id,
+            p.generation_hint_department_name,
+            p.patient_source,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          if (haystack.indexOf(patientFilter) === -1) return false;
+        }
         return true;
       });
 
@@ -202,7 +341,10 @@ def multi_patient_debug_page():
         return;
       }
 
+      captureOpenDetailIds();
+
       cardsEl.innerHTML = patients.map((p) => {
+        const rareState = rareEventState(p);
         const dialogueHtml = p.current_dialogue
           ? `
             <div class="dialogue">
@@ -219,6 +361,11 @@ def multi_patient_debug_page():
             id: p.assigned_department_id,
             name: p.assigned_department_name,
           },
+
+          generation_hint: {
+            id: p.generation_hint_department_id,
+            name: p.generation_hint_department_name,
+          },
           doctor_slot: {
             id: p.assigned_doctor_slot_id,
             name: p.assigned_doctor_slot_name,
@@ -233,27 +380,64 @@ def multi_patient_debug_page():
             department_agent_enabled: p.department_agent_enabled,
             capability_class: p.department_capability_class,
           },
+
+          consultation: {
+            response_source: p.latest_consultation_response_source,
+            llm_error: p.latest_consultation_llm_error,
+          },
+          rare_event: {
+            profile: p.rare_event_profile,
+            triggered_by: p.rare_event_triggered_by,
+            type: p.rare_event_type,
+            seed: p.rare_event_seed,
+          },
+          report: {
+            acuity_level: p.report_acuity_level,
+            cross_specialty_clues: p.report_cross_specialty_clues,
+          },
+          referral: {
+            recommended_department: p.recommended_department,
+            recommended_department_reason: p.recommended_department_reason,
+            requires_new_registration: p.requires_new_registration,
+            carry_forward_summary: p.carry_forward_summary,
+          },
+          projection: {
+            display_stage: p.display_stage,
+            dispatch_state: p.dispatch_state,
+            consultation_round: p.consultation_round,
+            blocking: p.blocking,
+            resource_assignment: p.resource_assignment,
+          },
+
           dialogue: p.current_dialogue,
           case_summary: p.case_summary,
           last_error: p.last_error,
         };
         return `
-          <article class="card">
-            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.execution_runner_kind}</span> <span class="badge">${p.department_capability_class || "-"}</span></div>
+
+          <article class="card ${rareState === "none" ? "" : `card--rare-event card--rare-event-${rareState}`}">
+            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.execution_runner_kind}</span> <span class="badge">${p.patient_source || "-"}</span> <span class="badge">${p.department_capability_class || "-"}</span> ${rareEventBadge(rareState)}</div>
             <div class="row">department: ${p.assigned_department_name || "-"} (${p.assigned_department_id || "-"})</div>
+            <div class="row">generation hint: ${p.generation_hint_department_name || "-"} (${p.generation_hint_department_id || "-"})</div>
+            <div class="row">rare event: ${p.rare_event_type || "-"} / ${p.rare_event_triggered_by || "-"}</div>
+
             <div class="row">agent enabled: ${p.department_agent_enabled}</div>
             <div class="row">doctor slot: ${p.assigned_doctor_slot_name || "-"} (${p.assigned_doctor_slot_id || "-"})</div>
             <div class="row">patient: ${p.patient_id}</div>
             <div class="row">encounter: ${p.encounter_id || "-"}</div>
             <div class="row">visit: ${p.visit_state || "-"}</div>
             <div class="row">lifecycle: ${p.patient_lifecycle_state || "-"}</div>
+            <div class="row">stage/dispatch: ${stageSummary(p)}</div>
+            <div class="row">blocking: ${blockingSummary(p)}</div>
             <div class="row">phase/status: ${p.phase} / ${p.status}</div>
-            <div class="row">llm: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
+            <div class="row">llm/source: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
+            <div class="row">doctor llm: ${p.latest_consultation_response_source || "-"} / ${p.latest_consultation_llm_error || "-"}</div>
+            <div class="row">report/referral: ${p.report_acuity_level || "-"} / ${p.recommended_department || "-"}</div>
             <div class="row">node: ${p.current_node_id || "-" } -> ${p.target_node_id || "-"}</div>
             <div class="row">room: ${p.current_room_name || "-"} (${p.current_room_node_id || "-"}) / ${p.room_type || "-"}</div>
             <div class="row">last action: ${p.last_action || "-"}</div>
             <div class="row">step: ${p.step_count} | finished: ${p.finished}</div>
-            <details>
+            <details data-detail-id="${p.npc_id}">
               <summary>Details</summary>
               ${dialogueHtml}
               ${caseSummary}
@@ -262,6 +446,8 @@ def multi_patient_debug_page():
           </article>
         `;
       }).join("");
+
+      bindDetailPersistence();
     }
 
     async function refresh(showStatus = false) {
@@ -313,7 +499,8 @@ def multi_patient_debug_page():
 
     document.getElementById("refreshBtn").addEventListener("click", () => refresh(true));
     document.getElementById("activeOnly").addEventListener("change", () => refresh(false));
-    document.getElementById("departmentFilter").addEventListener("change", () => refresh(false));
+    departmentFilterEl.addEventListener("change", () => refresh(false));
+    patientFilterEl.addEventListener("input", () => refresh(false));
     setInterval(() => refresh(false), 1000);
     refresh(false);
   </script>

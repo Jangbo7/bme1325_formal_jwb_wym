@@ -1,0 +1,55 @@
+import { door, elevatorProp, elevatorRoom, prop, room } from "../layout.js";
+
+export const rooms = [
+  room(1, "ed_entrance", "entrance", "Main Entrance", 6, 6, 11, 8, "#b99163"),
+  room(1, "ed_registration", "registration", "ED Registration", 19, 6, 11, 8, "#d85e5e"),
+  room(1, "ed_triage", "triage", "ED Triage", 32, 6, 11, 8, "#e05f5f"),
+  room(1, "ed_red_resus", "rescue", "Red Resus", 45, 6, 11, 8, "#d84b4b"),
+  room(1, "ed_trauma", "emergency", "Trauma Room", 58, 6, 11, 8, "#c96b58"),
+  room(1, "ed_major", "emergency", "Major Injuries", 6, 17, 11, 8, "#d9736d"),
+  room(1, "ed_minor", "emergency", "Minor Injuries", 19, 17, 11, 8, "#df8a72"),
+  room(1, "ed_diagnostic", "lab", "Diagnostic Room", 32, 17, 11, 8, "#67b7cf"),
+  room(1, "ed_doctor_room", "doctor_office", "ED Doctor Room", 45, 17, 11, 8, "#dca768"),
+  room(1, "ed_bedside_nurse", "nurse_station", "Bedside Nurse", 58, 17, 11, 8, "#e08aac"),
+  room(1, "ed_observation", "emergency", "Observation", 6, 28, 11, 8, "#d9736d"),
+  room(1, "ed_waiting", "waiting", "ED Waiting", 19, 28, 11, 8, "#e7d1a1"),
+  room(1, "ed_handoff", "emergency_consult", "Handoff Desk", 32, 28, 11, 8, "#c79b69"),
+  room(1, "ed_pager", "emergency", "Pager Queue", 45, 28, 11, 8, "#cf6f8c"),
+  elevatorRoom(1),
+];
+
+export const doors = [
+  door("ed_entrance", "bottom", 4, 3),
+  door("ed_registration", "bottom", 4, 3),
+  door("ed_triage", "bottom", 4, 3),
+  door("ed_red_resus", "bottom", 4, 3),
+  door("ed_trauma", "bottom", 4, 3),
+  door("ed_major", "bottom", 4, 3),
+  door("ed_minor", "bottom", 4, 3),
+  door("ed_diagnostic", "bottom", 4, 3),
+  door("ed_doctor_room", "bottom", 4, 3),
+  door("ed_bedside_nurse", "bottom", 4, 3),
+  door("ed_observation", "top", 4, 3),
+  door("ed_waiting", "top", 4, 3),
+  door("ed_handoff", "top", 4, 3),
+  door("ed_pager", "top", 4, 3),
+  door("elevator_1", "top", 3.5, 3),
+];
+
+export const props = [
+  prop(1, 9, 9, 3.4, 1.2, "desk"),
+  prop(1, 22, 9, 3.4, 1.2, "reception"),
+  prop(1, 35, 9, 3.4, 1.2, "desk"),
+  prop(1, 48, 9, 3.4, 1.3, "bed"),
+  prop(1, 61, 9, 3.4, 1.3, "bed"),
+  prop(1, 9, 20, 3.4, 1.3, "bed"),
+  prop(1, 22, 20, 3.4, 1.2, "desk"),
+  prop(1, 35, 20, 3.4, 1.2, "screen"),
+  prop(1, 48, 20, 3.4, 1.2, "desk"),
+  prop(1, 61, 20, 3.4, 1.2, "reception"),
+  prop(1, 9, 31, 3.4, 1.3, "bed"),
+  prop(1, 22, 31, 3.4, 1.2, "sofa"),
+  prop(1, 35, 31, 3.4, 1.2, "desk"),
+  prop(1, 48, 31, 3.4, 1.2, "screen"),
+  elevatorProp(1),
+];

@@ -71,7 +71,7 @@ def test_hospital_runtime_debug_page_is_available(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert "Hospital Runtime Debug" in response.text
     assert "legacy_probabilistic_llm" in response.text
-    assert "LLM Probability" in response.text
+    assert "generated-patient probability" in response.text
     assert client.app.state.container["hospital_supervisor"] is client.app.state.container["multi_patient_debug_controller"]
 
 
@@ -95,12 +95,10 @@ def test_hospital_runtime_snapshot_has_nodes(tmp_path, monkeypatch):
         time.sleep(0.01)
     snapshot = get_data(client.get("/api/v1/hospital-runtime-debug/snapshot", headers=api_headers()))
     node_ids = {item["node"]["node_id"] for item in snapshot["nodes"]}
-    assert {"testing", "payment", "pharmacy"}.issubset(node_ids)
-    assert {
-        "surgery_consult_room_1",
-        "surgery_consult_room_2",
-        "surgery_outpatient_procedure_room",
-    }.issubset(node_ids)
+
+    assert {"triage", "testing", "payment", "pharmacy"}.issubset(node_ids)
+    assert {"internal", "internal_consult_room_1", "surgery_consult_room_1"}.issubset(node_ids)
+
     assert snapshot["departments"]
     assert snapshot["total_spawned"] >= 8
     assert snapshot["active_count"] <= 8
@@ -108,20 +106,12 @@ def test_hospital_runtime_snapshot_has_nodes(tmp_path, monkeypatch):
     assert snapshot["fairness_policy"] == "oldest_due_first"
     assert snapshot["node_capacities"]["testing"] == 2
 
-
-def test_hospital_runtime_snapshot_groups_surgery_patient_into_room_nodes(tmp_path, monkeypatch):
-    client = create_test_client(tmp_path, monkeypatch)
-    seed_surgery_patient_runtime(
-        client,
-        "P-SURGERY-HOSP-1",
-        visit_state="in_outpatient_procedure",
-        patient_state="in_test",
-    )
-
-    snapshot = get_data(client.get("/api/v1/hospital-runtime-debug/snapshot", headers=api_headers()))
-    procedure_node = next(item for item in snapshot["nodes"] if item["node"]["node_id"] == "surgery_outpatient_procedure_room")
-    assert procedure_node["node"]["node_type"] == "room"
-    assert procedure_node["node"]["department_id"] == "surgery"
-    assert procedure_node["node"]["room_type"] == "outpatient_procedure"
-    assert procedure_node["summary"]["active_count"] == 1
-    assert any(patient["patient_id"] == "P-SURGERY-HOSP-1" for patient in procedure_node["patients"])
+    assert snapshot["node_capacities"]["triage"] == 8
+    assert snapshot["node_capacities"]["internal"] == 2
+    assert snapshot["node_capacities"]["surgery"] == 2
+    assert snapshot["blocked_attempt_count"] >= snapshot["currently_blocked_patients"] >= 0
+    assert snapshot["department_coverage"]
+    all_patients = [patient for node in snapshot["nodes"] for patient in node["patients"]]
+    if all_patients:
+        assert all_patients[0]["display_stage"] is not None
+        assert all_patients[0]["dispatch_state"] is not None

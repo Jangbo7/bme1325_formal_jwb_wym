@@ -223,9 +223,11 @@ export function createBackendClient({ baseUrl, apiKey }) {
     getInternalMedicineSession(sessionId) {
       return request(`/api/v1/internal-medicine-sessions/${sessionId}`, { method: "GET" });
     },
+
     getSurgerySession(sessionId) {
       return request(`/api/v1/surgery-sessions/${sessionId}`, { method: "GET" });
     },
+
     createIcuSession(payload) {
       return request("/api/v1/icu-sessions", {
         method: "POST",

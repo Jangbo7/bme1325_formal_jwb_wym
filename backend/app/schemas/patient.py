@@ -15,6 +15,11 @@ class DialogueSummary(BaseModel):
     turns: list[dict] = Field(default_factory=list)
     question_focus: str | None = None
     message_type: str = "followup"
+    response_mode: str | None = None
+    judgment_changed: bool = False
+    judgment_action: str | None = None
+    answer_source: str | None = None
+    llm_response_kind: str | None = None
     recommendation_changed: bool = False
     asked_fields_history: list[str] = Field(default_factory=list)
     final_result: dict = Field(default_factory=dict)
@@ -47,6 +52,20 @@ class PatientView(BaseModel):
     visit_id: str | None = None
     encounter_id: str | None = None
     visit_state: VisitLifecycleState | None = None
+    primary_disposition: str | None = None
+    disposition: dict = Field(default_factory=dict)
+    outpatient_flow_finished: bool = False
+    outpatient_finished_at: str | None = None
+    rare_event_profile: dict = Field(default_factory=dict)
+    rare_event_triggered_by: str | None = None
+    rare_event_type: str | None = None
+    rare_event_seed: str | None = None
+    report_acuity_level: str | None = None
+    report_cross_specialty_clues: list[dict] = Field(default_factory=list)
+    recommended_department: str | None = None
+    recommended_department_reason: str | None = None
+    requires_new_registration: bool = False
+    carry_forward_summary: dict = Field(default_factory=dict)
     active_agent_type: str | None = None
     session_refs: dict = Field(default_factory=dict)
     dialogue_source_agent: str | None = None

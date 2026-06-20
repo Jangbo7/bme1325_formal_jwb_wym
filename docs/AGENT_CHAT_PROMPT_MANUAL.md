@@ -1,83 +1,207 @@
-# 分诊 / 医生 Agent 聊天 Prompt 与 RAG 手册
+﻿# 分诊 / 医生 Agent Prompt 与规则手册
 
-**版本**：v1.0
-**日期**：2026-05-22
+**版本**：v2.0  
+**更新日期**：2026-06-20
 
 ## 1. 目的
 
-这份手册用于总结当前项目里分诊与医生类 agent 的聊天规则、prompt 结构、RAG 规则，以及这些规则在当前实现中的实际作用方式。
+这份文档只描述当前仓库里仍在维护的聊天型 agent 提示词与规则来源，帮助协作者判断：
 
-本文侧重于当前已落地的三条链路：
+- 哪些 prompt 仍是主线实现
+- 哪些规则文件是当前 source of truth
+- 新 agent 应该接入哪套结构
+- 调试时优先看哪些入口
 
-- 分诊 agent (`triage`)
-- 门诊内科医生 agent (`internal_medicine`)
-- ICU 医生 agent (`icu_doctor`)
+本文聚焦以下 agent：
 
-## 2. 共用原则
+- `triage`
+- `internal_medicine`
+- `surgery`
+- `icu_doctor`
 
-三类 agent 共享以下实现原则：
+`patient_agent`、`npc_patient` 会消费部分问诊结果，但不属于本文的主说明范围。
 
-1. **LLM 不是唯一来源**：所有 agent 都保留规则回退，不把大模型结果当成唯一真相。
-2. **RAG 只做证据和约束**：检索到的规则用于补强判断、生成追问、生成初步 plan，不直接取代业务逻辑。
-3. **优先结构化输出**：能返回 JSON 的地方，尽量强制 JSON，便于后续校验和持久化。
-4. **对话要受控**：
-   - 不允许开放式闲聊
-   - 不允许随意诊断承诺
-   - 不允许重复追问同一信息太多次
-5. **失败可退化**：LLM 不可用、返回格式不对、或者内容不合法时，必须退回规则结果或固定模板。
+## 2. 当前有效规则
 
-## 3. 分诊 Agent：`triage`
+### 2.1 LLM 不是唯一决策源
 
-### 3.1 聊天目标
+所有主线 agent 都保留规则回退。LLM 负责自然语言理解、追问生成和结构化结果生成，但：
 
-分诊 agent 的目标不是给完整治疗方案，而是：
+- 不能绕过状态机
+- 不能绕过 repository 持久化
+- 不能直接定义最终流程去向
 
-- 收集主诉、症状、起病时间、体温、疼痛评分、过敏史等关键信息
-- 基于现有信息给出分诊等级、优先级、建议科室
-- 生成自然、简短、面向患者的追问或结论
+### 2.2 结构化结果优先于自由文本
 
-### 3.2 Prompt 规则
+当前实现默认要求模型输出可校验 JSON，常见字段包括：
 
-#### 3.2.1 追问 prompt
-
-当前分诊追问由 `build_follow_up_system_prompt()` 和 `build_follow_up_user_prompt()` 组合生成。
-
-核心约束是：
-
-- 只能围绕缺失字段追问
-- 不要给诊断或治疗建议
-- 单次最多两句
-- 中文为主，可以保留少量英文科室名
-- 如果当前建议没有变化，不要重复科室和优先级
-- 风险较高时，可以先给一句短提示，再问一个关键问题
-
-#### 3.2.2 初始 / 综合判断 prompt
-
-分诊阶段的综合判断会把以下内容传给模型：
-
-- 病人当前信息
-- 短期对话记忆
-- 长期病人记忆
-- agent 私有记忆
-- 检索到的规则
-
-模型需要返回严格 JSON，字段至少包括：
-
-- `triage_level`
 - `priority`
 - `department`
-- `note`
+- `test_required` / `needs_second_consultation`
+- `primary_disposition`
+- `recommended_department`
+- `disposition_advice`
 
-### 3.3 分诊 RAG 规则
+自由文本主要用于：
 
-分诊 RAG 主要来自 [backend/rag/rule_store.json](../backend/rag/rule_store.json) 和 [backend/app/agents/triage/rules.py](../backend/app/agents/triage/rules.py)。
+- 给患者的自然语言回复
+- 面向调试页的解释性展示
 
-#### 3.3.1 检索方式
+### 2.3 规则分层已经从旧 `docs/*.md` 迁移
 
-规则检索会根据以下信息打分：
+当前应优先使用：
 
-- 关键词命中
-- `conditions.symptoms_any`
+- `backend/app/agents/clinical_policy/cards/*.yaml`
+- `backend/rag/*.json`
+- `backend/app/agents/*/rules.py`
+
+旧的 `docs/*_card.md`、`docs/round_one_two.md` 已不再是主线规则源，不应继续作为新功能依据。
+
+### 2.4 记忆分层仍然有效
+
+当前聊天型 agent 仍按三层信息工作：
+
+- 患者共享事实：患者记录、visit 数据、共享 memory
+- agent 私有进度：session memory、追问进度、asked fields、final result
+- 检索规则：RAG / clinical policy cards
+
+不要把这三类信息重新混成一份 prompt 文本源。
+
+## 3. 各 agent 的当前来源
+
+### 3.1 `triage`
+
+主要源码：
+
+- `backend/app/agents/triage/service.py`
+- `backend/app/agents/triage/prompts.py`
+- `backend/app/agents/triage/rules.py`
+- `backend/rag/rule_store.json`
+
+当前职责：
+
+- 收集主诉和关键缺失字段
+- 产出分诊等级、优先级、目标科室
+- 在高风险时直接给出急诊或 ICU 升级路由
+
+当前约束：
+
+- 追问必须围绕缺失字段
+- 不给治疗方案
+- 输出需兼容后续 `disposition` 和状态机
+
+### 3.2 `internal_medicine`
+
+主要源码：
+
+- `backend/app/agents/internal_medicine/prompts.py`
+- `backend/app/agents/internal_medicine/rules.py`
+- `backend/app/agents/internal_medicine/service.py`
+- `backend/app/agents/clinical_policy/cards/internal_medicine_initial_consultation.yaml`
+
+当前职责：
+
+- 门诊首轮与二轮问诊
+- 根据是否需要检查、门诊处置、升级转诊来组织输出
+- 和 `encounter_orchestration`、`disposition`、`test_simulator` 联动
+
+当前特点：
+
+- 已经不是单纯“聊天页 demo”
+- 输出必须兼容 `needs_tests`、`needs_second_consultation`、`primary_disposition`
+
+### 3.3 `surgery`
+
+主要源码：
+
+- `backend/app/agents/surgery/prompts.py`
+- `backend/app/agents/surgery/rules.py`
+- `backend/app/agents/surgery/service.py`
+- `backend/app/agents/clinical_policy/cards/surgery_initial_consultation.yaml`
+- `backend/app/agents/clinical_policy/cards/surgery_round2_result_review.yaml`
+
+当前状态：
+
+- 已接入统一 doctor debug registry
+- 与 `internal_medicine` 一样走门诊问诊与 disposition 链路
+- 仍有一条已知缺陷：部分 urgent / emergency escalation 结论会在无检查路径上继续落到缴费
+
+### 3.4 `icu_doctor`
+
+主要源码：
+
+- `backend/app/agents/icu_doctor/prompts.py`
+- `backend/app/agents/icu_doctor/rules.py`
+- `backend/rag/icu_rules.json`
+
+当前定位：
+
+- 保留为 ICU 专项链路
+- 与 `doctor-agent-debug` 的主线门诊问诊体系不同
+- 仍可运行，但不是目前 runtime console / Fullview 联动的主叙事链
+
+## 4. Prompt 与规则的真实落点
+
+### 4.1 临床规则
+
+当前临床约束主要来自：
+
+- triage: `backend/rag/rule_store.json`
+- ICU: `backend/rag/icu_rules.json`
+- 门诊医生：`backend/app/agents/clinical_policy/cards/*.yaml` + 各自 `rules.py`
+
+### 4.2 问诊提示词
+
+当前 prompt 应主要从各 agent 自己的 `prompts.py` 维护，不要把规则散写到：
+
+- 根目录临时 markdown
+- 旧 `docs/*_card.md`
+- 前端页面脚本里
+
+### 4.3 流程语义
+
+聊天结果最终要落到这几层结构：
+
+- `VisitLifecycleState`
+- `PatientLifecycleState`
+- `StandardOutpatientState`
+- `disposition`
+- runtime projection
+
+所以 prompt 修改不能只看语言表现，必须同时检查状态流和测试。
+
+## 5. 当前调试入口
+
+### 5.1 正式后台控制面
+
+- `GET /runtime-console`
+- `GET /fullview-sync-monitor`
+
+这两个页面用于运行态控制和 Fullview 同步观测，不直接负责单个问诊 prompt 调试。
+
+### 5.2 问诊调试入口
+
+- `GET /triage-agent-debug`
+- `GET /doctor-agent-debug`
+- `GET /internal-medicine-agent-debug`：兼容别名
+- `GET /patient-agent-chat-debug`
+
+其中：
+
+- 新的门诊医生类 agent 应优先复用 `doctor-agent-debug`
+- 不应再新增一套平行的独立 doctor debug 页面
+
+## 6. 协作约定
+
+新增或修改 prompt / 规则时，按这个顺序检查：
+
+1. 修改对应 agent 的 `prompts.py`、`rules.py` 或 `clinical_policy/cards`
+2. 检查输出字段是否仍兼容 service 校验
+3. 检查是否影响 `disposition`、状态机和 runtime projection
+4. 补充或更新对应测试
+5. 最后再看调试页表现
+
+不要把旧文档里的 prose 规则当成可执行规范。当前规范应始终以后端源码和测试为准。
 - 心率、体温、疼痛评分等生命体征
 
 如果没有命中任何高分规则，会回退到默认规则。

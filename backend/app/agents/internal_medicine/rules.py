@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 from app.agents.clinical_policy import ClinicalPolicyRuntimeContext
-from app.agents.department_runtime.conclusions import normalize_round2_conclusion
+from app.agents.department_runtime.conclusions import normalize_round2_conclusion, preserve_round2_escalation_floor
 from app.agents.department_runtime.replies import normalize_prescription_plan
 
 
@@ -328,7 +328,7 @@ def _normalize_string_list(value, fallback: list[str] | None = None) -> list[str
 
 
 def _detect_icu_red_flags(payload: dict) -> list[str]:
-    symptoms_text = f"{payload.get('symptoms', '')} {payload.get('chief_complaint', '')}".lower()
+    symptoms_text = f"{payload.get('symptoms', '')} {payload.get('chief_complaint', '')} {payload.get('message', '')}".lower()
     vitals = payload.get("vitals") or {}
     flags = []
 
@@ -697,6 +697,89 @@ def _build_round2_internal_medicine_result(payload: dict) -> dict | None:
         "test_reason": "",
         "primary_disposition": "outpatient_management",
     }
+    escalation_clues = dict(report_summary.get("escalation_clues") or {})
+    referral_clues = list(report_summary.get("cross_specialty_clues") or [])
+
+    if escalation_clues.get("to_icu"):
+        reason = str(escalation_clues.get("reason") or "Report-level findings suggest ICU-level deterioration risk.").strip()
+        return {
+            **base_result,
+            "priority": "H",
+            "diagnosis_level": 3,
+            "department": "Emergency",
+            "primary_disposition": "icu_escalation",
+            "clinical_impression": "The report no longer supports routine outpatient review and raises concern for ICU-level instability.",
+            "final_assessment_summary": "Immediate emergency/ICU escalation is more appropriate than continued outpatient internal medicine review.",
+            "disposition_advice": reason,
+            "patient_plan": "Go for immediate emergency reassessment now so the team can decide ICU monitoring or rescue care.",
+            "patient_facing_plan": "The current report suggests a higher-risk deterioration pattern, so outpatient follow-up is no longer appropriate.",
+            "recommended_department": "ICU",
+            "recommended_department_reason": reason,
+            "handoff_reason": reason,
+            "return_precautions": [reason],
+            "followup_recommendation": {
+                "observation_required": False,
+                "observation_setting": "none",
+                "revisit_required": False,
+                "revisit_window": "",
+                "revisit_conditions": [],
+            },
+            "red_flags": [reason],
+            "icu_escalation": True,
+        }
+    if escalation_clues.get("to_emergency"):
+        reason = str(escalation_clues.get("reason") or "Report-level findings suggest urgent emergency reassessment.").strip()
+        return {
+            **base_result,
+            "priority": "H",
+            "diagnosis_level": 3,
+            "department": "Emergency",
+            "primary_disposition": "emergency_escalation",
+            "clinical_impression": "The report now suggests a higher-risk issue that should leave the routine internal medicine loop.",
+            "final_assessment_summary": "Emergency reassessment is more appropriate than continued outpatient internal medicine review.",
+            "disposition_advice": reason,
+            "patient_plan": "Go for immediate emergency reassessment now.",
+            "patient_facing_plan": "The current report is no longer reassuring enough for routine outpatient follow-up.",
+            "recommended_department": "Emergency",
+            "recommended_department_reason": reason,
+            "handoff_reason": reason,
+            "return_precautions": [reason],
+            "followup_recommendation": {
+                "observation_required": False,
+                "observation_setting": "none",
+                "revisit_required": False,
+                "revisit_window": "",
+                "revisit_conditions": [],
+            },
+            "red_flags": [reason],
+        }
+    if referral_clues:
+        referral = dict(referral_clues[0] or {})
+        target_department = str(referral.get("target_department") or referral.get("department") or "").strip()
+        referral_reason = str(referral.get("reason") or "The remaining issue fits another specialty better after this internal medicine loop.").strip()
+        if target_department:
+            return {
+                **base_result,
+                "primary_disposition": "specialty_referral",
+                "clinical_impression": "The report suggests the remaining issue is better handled by another specialty after the internal medicine loop closes.",
+                "final_assessment_summary": "Internal medicine can close the current outpatient assessment, but the next registration should be with a more suitable specialty.",
+                "disposition_advice": f"Re-register with {target_department} after completing this internal medicine visit.",
+                "patient_plan": f"Complete this internal medicine loop, then re-register with {target_department} for further assessment.",
+                "patient_facing_plan": f"Based on the report, the remaining issue is better suited for {target_department} follow-up than repeated internal medicine review.",
+                "recommended_department": target_department,
+                "recommended_department_reason": referral_reason,
+                "handoff_reason": referral_reason,
+                "requires_new_registration": True,
+                "carry_forward_summary": {
+                    "origin_department": "Internal Medicine",
+                    "target_department": target_department,
+                    "current_assessment": "Current internal medicine assessment is complete for this loop.",
+                    "referral_reason": referral_reason,
+                    "completed_workup": list(report.get("test_items") or []),
+                    "next_department_focus": referral_reason,
+                },
+                "return_precautions": [referral_reason],
+            }
 
     if h_pylori_positive:
         return {
@@ -878,6 +961,10 @@ def final_result_changed(previous: dict | None, current: dict | None) -> bool:
         "needs_second_consultation",
         "needs_second_internal_medicine_consultation",
         "recommended_department",
+        "recommended_department_reason",
+        "handoff_reason",
+        "requires_new_registration",
+        "carry_forward_summary",
         "primary_disposition",
         "medication_recommendation",
         "admission_recommendation",
@@ -937,7 +1024,11 @@ def validate_internal_medicine_result(
                     "needs_medication": llm_result.get("needs_medication"),
                     "recommended_department": llm_result.get("recommended_department"),
                     "recommended_department_reason": llm_result.get("recommended_department_reason"),
+                    "handoff_reason": llm_result.get("handoff_reason"),
+                    "requires_new_registration": llm_result.get("requires_new_registration"),
+                    "carry_forward_summary": llm_result.get("carry_forward_summary"),
                     "disposition_advice": llm_result.get("disposition_advice"),
+                    "icu_escalation": llm_result.get("icu_escalation"),
                 }
             )
     except Exception:
@@ -969,4 +1060,9 @@ def validate_internal_medicine_result(
         )
     else:
         normalized = normalize_round2_conclusion(normalized, consultation_round=consultation_round or 2)
+        normalized = preserve_round2_escalation_floor(
+            normalized,
+            fallback_result=fallback,
+            consultation_round=consultation_round or 2,
+        )
     return normalized

@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 
+from app.agents.clinical_policy import ClinicalPolicyValidatorResult
 from app.agents.internal_medicine.patient_reply import build_patient_reply
-from app.agents.internal_medicine.policy import build_internal_medicine_policy_fallback
+from app.agents.internal_medicine.policy import (
+    build_internal_medicine_policy_fallback,
+    validate_internal_medicine_policy_snapshot,
+)
 from app.agents.internal_medicine.prompts import (
     build_final_message,
     build_follow_up_llm_messages,
@@ -128,6 +132,109 @@ def test_internal_medicine_policy_fallback_message_is_chinese():
     assert "请" in assistant_message
     assert "Please" not in assistant_message
     assert "urgent assessment" not in assistant_message
+
+
+def test_internal_medicine_policy_validator_ignores_patient_medication_history_false_positive():
+    snapshot = {
+        "agent_role": "internal_medicine_agent",
+        "consultation_stage": "history_taking",
+        "chief_complaint": "头晕乏力 2 天",
+        "key_symptoms_collected": ["降压药一直按时吃，没有自己调整过剂量", "血压 100/65 左右"],
+        "missing_information": [],
+        "red_flags": [],
+        "urgency": "routine",
+        "follow_up_questions": ["您这两天自己量的血压具体是多少？"],
+        "patient_summary": "患者表示一直按时吃药，没有自己调整过剂量。",
+        "next_action": "ask_follow_up",
+    }
+    validation_result = ClinicalPolicyValidatorResult(
+        ok=False,
+        violations=[
+            "forbidden action detected: prescribe_medication",
+            "forbidden action detected: change_dosage",
+        ],
+        normalized_output=dict(snapshot),
+        fallback_reason="forbidden action detected: prescribe_medication; forbidden action detected: change_dosage",
+    )
+
+    result = validate_internal_medicine_policy_snapshot(snapshot, None, {}, validation_result=validation_result)
+
+    assert result.ok is True
+    assert result.violations == []
+
+
+def test_internal_medicine_policy_validator_keeps_real_medication_directive_violation():
+    snapshot = {
+        "agent_role": "internal_medicine_agent",
+        "consultation_stage": "history_taking",
+        "chief_complaint": "头晕乏力 2 天",
+        "key_symptoms_collected": ["降压药一直按时吃，没有自己调整过剂量"],
+        "missing_information": [],
+        "red_flags": [],
+        "urgency": "routine",
+        "follow_up_questions": ["建议先把降压药剂量减半，再观察今天的血压变化。"],
+        "patient_summary": "患者表示一直按时吃药，没有自己调整过剂量。",
+        "next_action": "ask_follow_up",
+    }
+    validation_result = ClinicalPolicyValidatorResult(
+        ok=False,
+        violations=["forbidden action detected: change_dosage"],
+        normalized_output=dict(snapshot),
+        fallback_reason="forbidden action detected: change_dosage",
+    )
+
+    result = validate_internal_medicine_policy_snapshot(snapshot, None, {}, validation_result=validation_result)
+
+    assert result.ok is False
+    assert result.violations == ["forbidden action detected: change_dosage"]
+
+
+def test_internal_medicine_policy_fallback_uses_snapshot_red_flags_when_result_is_empty():
+    class _PolicyRuntime:
+        def __init__(self):
+            self.payload = None
+
+        def build_safe_fallback(self, policy_runtime_context, payload, reason):
+            del policy_runtime_context, reason
+            self.payload = payload
+            return {
+                "next_action": "escalate_urgency",
+                "missing_information": [],
+                "red_flags": list(payload.get("red_flags") or []),
+                "follow_up_questions": [],
+            }
+
+    runtime = _PolicyRuntime()
+    memory = SimpleNamespace(
+        shared_memory={"clinical_memory": {"chief_complaint": "头晕", "symptoms": ["头晕"]}},
+        private_memory={"missing_fields": []},
+    )
+    validation_result = ClinicalPolicyValidatorResult(
+        ok=False,
+        violations=["forbidden action detected: prescribe_medication"],
+        normalized_output={
+            "red_flags": ["neurological_alert"],
+            "follow_up_questions": ["请描述是否有肢体无力。"],
+        },
+        fallback_reason="forbidden action detected: prescribe_medication",
+    )
+
+    result = build_internal_medicine_policy_fallback(
+        None,
+        {},
+        "validator_failed",
+        snapshot={"red_flags": ["older_flag"]},
+        validation_result=validation_result,
+        memory=memory,
+        consultation_result={},
+        policy_runtime=runtime,
+    )
+
+    assistant_message = result["assistant_payload"]["assistant_message"]
+    assert runtime.payload["red_flags"] == ["neurological_alert"]
+    assert result["consultation_result"]["red_flags"] == ["neurological_alert"]
+    assert result["consultation_result"]["priority"] == "H"
+    assert "Please" not in assistant_message
 
 
 def test_internal_medicine_round2_patient_reply_is_natural_and_mentions_prescription_plan():

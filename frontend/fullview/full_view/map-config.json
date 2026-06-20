@@ -1,0 +1,3214 @@
+{
+  "version": 1,
+  "description": "Full hospital floor map. Room x/y/w/h and item x/y/w/h use tile units. Room items are relative to each room top-left corner.",
+  "floors": [
+    {
+      "id": 1,
+      "label": "1F Emergency",
+      "shortLabel": "1F",
+      "subtitle": "Aligned emergency floor with intake, rescue, consult rooms, entrance, and bottom-right elevator.",
+      "departmentKinds": [
+        "emergency"
+      ],
+      "rooms": [
+        {
+          "id": "ed_entrance",
+          "kind": "entrance",
+          "label": "Main Entrance",
+          "x": 6,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#b99163",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_entrance",
+          "roomCode": "1F-Room1",
+          "display_room_id": "1F-Room1",
+          "display_name": "Main Entrance",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_registration",
+          "kind": "registration",
+          "label": "ED Registration",
+          "x": 19,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#d85e5e",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "reception",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_registration",
+          "roomCode": "1F-Room2",
+          "display_room_id": "1F-Room2",
+          "display_name": "ED Registration",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_triage",
+          "kind": "triage",
+          "label": "ED Triage",
+          "x": 32,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#e05f5f",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_triage",
+          "roomCode": "1F-Room3",
+          "display_room_id": "1F-Room3",
+          "display_name": "ED Triage",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_red_resus",
+          "kind": "rescue",
+          "label": "Red Resus",
+          "x": 45,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#d84b4b",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "ed_red_resus",
+          "roomCode": "1F-Room4",
+          "display_room_id": "1F-Room4",
+          "display_name": "Red Resus",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 1,
+            "max_beds": 1,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_trauma",
+          "kind": "emergency",
+          "label": "Trauma Room",
+          "x": 58,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#c96b58",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "ed_trauma",
+          "roomCode": "1F-Room5",
+          "display_room_id": "1F-Room5",
+          "display_name": "Trauma Room",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 1,
+            "max_beds": 1,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_major",
+          "kind": "emergency",
+          "label": "Major Injuries",
+          "x": 6,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#d9736d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "ed_major",
+          "roomCode": "1F-Room6",
+          "display_room_id": "1F-Room6",
+          "display_name": "Major Injuries",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 1,
+            "max_beds": 1,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_minor",
+          "kind": "emergency",
+          "label": "Minor Injuries",
+          "x": 19,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#df8a72",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_minor",
+          "roomCode": "1F-Room7",
+          "display_room_id": "1F-Room7",
+          "display_name": "Minor Injuries",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_diagnostic",
+          "kind": "lab",
+          "label": "Diagnostic Room",
+          "x": 32,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#67b7cf",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_diagnostic",
+          "roomCode": "1F-Room8",
+          "display_room_id": "1F-Room8",
+          "display_name": "Diagnostic Room",
+          "department_id": "laboratory",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_doctor_room",
+          "kind": "doctor_office",
+          "label": "ED Doctor Room",
+          "x": 45,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#dca768",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_doctor_room",
+          "roomCode": "1F-Room9",
+          "display_room_id": "1F-Room9",
+          "display_name": "ED Doctor Room",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_bedside_nurse",
+          "kind": "nurse_station",
+          "label": "Bedside Nurse",
+          "x": 58,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#e08aac",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "reception",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_bedside_nurse",
+          "roomCode": "1F-Room10",
+          "display_room_id": "1F-Room10",
+          "display_name": "Bedside Nurse",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_observation",
+          "kind": "emergency",
+          "label": "Observation",
+          "x": 6,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#d9736d",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "ed_observation",
+          "roomCode": "1F-Room11",
+          "display_room_id": "1F-Room11",
+          "display_name": "Observation",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 1,
+            "max_beds": 1,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_waiting",
+          "kind": "waiting",
+          "label": "ED Waiting",
+          "x": 19,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#e7d1a1",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "sofa",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_waiting",
+          "roomCode": "1F-Room12",
+          "display_room_id": "1F-Room12",
+          "display_name": "ED Waiting",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_handoff",
+          "kind": "emergency_consult",
+          "label": "Handoff Desk",
+          "x": 32,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#c79b69",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_handoff",
+          "roomCode": "1F-Room13",
+          "display_room_id": "1F-Room13",
+          "display_name": "Handoff Desk",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ed_pager",
+          "kind": "emergency",
+          "label": "Pager Queue",
+          "x": 45,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#cf6f8c",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ed_pager",
+          "roomCode": "1F-Room14",
+          "display_room_id": "1F-Room14",
+          "display_name": "Pager Queue",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "elevator_1",
+          "kind": "elevator",
+          "label": "1F Elevator",
+          "x": 62,
+          "y": 32,
+          "w": 10,
+          "h": 10,
+          "accent": "#d7b07b",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 3.5,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "elevator",
+              "x": 3.2,
+              "y": 3.7,
+              "w": 3.6,
+              "h": 1.6
+            }
+          ],
+          "room_id": "elevator_1",
+          "roomCode": "1F-Room15",
+          "display_room_id": "1F-Room15",
+          "display_name": "1F Elevator",
+          "department_id": "emergency",
+          "floor_id": 1,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": true
+        }
+      ],
+      "floor_id": 1,
+      "short_label": "1F",
+      "department_kinds": [
+        "emergency"
+      ]
+    },
+    {
+      "id": 2,
+      "label": "2F Outpatient",
+      "shortLabel": "2F",
+      "subtitle": "Outpatient office grid aligned with registration, triage, consultation, lab, and pharmacy nodes.",
+      "departmentKinds": [
+        "outpatient",
+        "pharmacy",
+        "lab"
+      ],
+      "rooms": [
+        {
+          "id": "registration_2",
+          "kind": "registration",
+          "label": "Registration",
+          "x": 6,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#6d8fe8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "reception",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "registration_2",
+          "roomCode": "2F-Room1",
+          "display_room_id": "2F-Room1",
+          "display_name": "Registration",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "payment_2",
+          "kind": "registration",
+          "label": "Payment",
+          "x": 19,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#b99163",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "payment_2",
+          "roomCode": "2F-Room2",
+          "display_room_id": "2F-Room2",
+          "display_name": "Payment",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "triage_2",
+          "kind": "triage",
+          "label": "Triage",
+          "x": 32,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#74a7e8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "triage_2",
+          "roomCode": "2F-Room3",
+          "display_room_id": "2F-Room3",
+          "display_name": "Triage",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "consultation_a_2",
+          "kind": "consultation",
+          "label": "Consultation A",
+          "x": 45,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#6d8fe8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "consultation_a_2",
+          "roomCode": "2F-Room4",
+          "display_room_id": "2F-Room4",
+          "display_name": "Consultation A",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "consultation_b_2",
+          "kind": "consultation",
+          "label": "Consultation B",
+          "x": 58,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#6d8fe8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "consultation_b_2",
+          "roomCode": "2F-Room5",
+          "display_room_id": "2F-Room5",
+          "display_name": "Consultation B",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "internal_2",
+          "kind": "internal_medicine",
+          "label": "Internal Med",
+          "x": 6,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#7f9ee8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.2,
+              "h": 1.2
+            }
+          ],
+          "room_id": "internal_2",
+          "roomCode": "2F-Room6",
+          "display_room_id": "2F-Room6",
+          "display_name": "Internal Med",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "surgery_2",
+          "kind": "surgery",
+          "label": "Surgery",
+          "x": 19,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#7f9ee8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.2,
+              "h": 1.2
+            }
+          ],
+          "room_id": "surgery_2",
+          "roomCode": "2F-Room7",
+          "display_room_id": "2F-Room7",
+          "display_name": "Surgery",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "pediatrics_2",
+          "kind": "pediatrics",
+          "label": "Pediatrics",
+          "x": 32,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#7f9ee8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.2,
+              "h": 1.2
+            }
+          ],
+          "room_id": "pediatrics_2",
+          "roomCode": "2F-Room8",
+          "display_room_id": "2F-Room8",
+          "display_name": "Pediatrics",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "fever_2",
+          "kind": "fever",
+          "label": "Fever Clinic",
+          "x": 45,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#d9736d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.2,
+              "h": 1.2
+            }
+          ],
+          "room_id": "fever_2",
+          "roomCode": "2F-Room9",
+          "display_room_id": "2F-Room9",
+          "display_name": "Fever Clinic",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "obgyn_2",
+          "kind": "obgyn",
+          "label": "OB-GYN",
+          "x": 58,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#d68db4",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.2,
+              "h": 1.2
+            }
+          ],
+          "room_id": "obgyn_2",
+          "roomCode": "2F-Room10",
+          "display_room_id": "2F-Room10",
+          "display_name": "OB-GYN",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "lab_2",
+          "kind": "lab",
+          "label": "Laboratory",
+          "x": 6,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#55b8c8",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "lab_2",
+          "roomCode": "2F-Room11",
+          "display_room_id": "2F-Room11",
+          "display_name": "Laboratory",
+          "department_id": "laboratory",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "pharmacy_2",
+          "kind": "pharmacy_pickup",
+          "label": "Pharmacy",
+          "x": 19,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#87b96b",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "cabinet",
+              "x": 3,
+              "y": 3,
+              "w": 4.2,
+              "h": 1.4
+            }
+          ],
+          "room_id": "pharmacy_2",
+          "roomCode": "2F-Room12",
+          "display_room_id": "2F-Room12",
+          "display_name": "Pharmacy",
+          "department_id": "pharmacy",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "doctor_entry_2",
+          "kind": "doctor_entry",
+          "label": "Doctor Entry",
+          "x": 32,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#6f8fd7",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "doctor_entry_2",
+          "roomCode": "2F-Room13",
+          "display_room_id": "2F-Room13",
+          "display_name": "Doctor Entry",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "outpatient_waiting",
+          "kind": "waiting",
+          "label": "OP Waiting",
+          "x": 45,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#e7d1a1",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "sofa",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "outpatient_waiting",
+          "roomCode": "2F-Room14",
+          "display_room_id": "2F-Room14",
+          "display_name": "OP Waiting",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "elevator_2",
+          "kind": "elevator",
+          "label": "2F Elevator",
+          "x": 62,
+          "y": 32,
+          "w": 10,
+          "h": 10,
+          "accent": "#d7b07b",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 3.5,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "elevator",
+              "x": 3.2,
+              "y": 3.7,
+              "w": 3.6,
+              "h": 1.6
+            }
+          ],
+          "room_id": "elevator_2",
+          "roomCode": "2F-Room15",
+          "display_room_id": "2F-Room15",
+          "display_name": "2F Elevator",
+          "department_id": "outpatient",
+          "floor_id": 2,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": true
+        }
+      ],
+      "floor_id": 2,
+      "short_label": "2F",
+      "department_kinds": [
+        "outpatient",
+        "pharmacy",
+        "lab"
+      ]
+    },
+    {
+      "id": 3,
+      "label": "3F ICU",
+      "shortLabel": "3F",
+      "subtitle": "Aligned ICU floor with station, monitored beds, support, and bottom-right elevator.",
+      "departmentKinds": [
+        "icu"
+      ],
+      "rooms": [
+        {
+          "id": "icu_admission",
+          "kind": "icu_station",
+          "label": "ICU Admission",
+          "x": 6,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#d46d8e",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "reception",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "icu_admission",
+          "roomCode": "3F-Room1",
+          "display_room_id": "3F-Room1",
+          "display_name": "ICU Admission",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "icu_station",
+          "kind": "icu_station",
+          "label": "ICU Nurse",
+          "x": 19,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#d46d8e",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "reception",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "icu_station",
+          "roomCode": "3F-Room2",
+          "display_room_id": "3F-Room2",
+          "display_name": "ICU Nurse",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "icu_beds_a",
+          "kind": "icu",
+          "label": "ICU Beds1",
+          "x": 32,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#db7895",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "icu_beds_a",
+          "roomCode": "3F-Room3",
+          "display_room_id": "3F-Room3",
+          "display_name": "ICU Beds1",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "icu_beds_b",
+          "kind": "icu",
+          "label": "ICU Beds2",
+          "x": 45,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#db7895",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "icu_beds_b",
+          "roomCode": "3F-Room4",
+          "display_room_id": "3F-Room4",
+          "display_name": "ICU Beds2",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "icu_isolation",
+          "kind": "icu",
+          "label": "Isolation Beds",
+          "x": 58,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#cf6f8c",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "icu_isolation",
+          "roomCode": "3F-Room5",
+          "display_room_id": "3F-Room5",
+          "display_name": "Isolation Beds",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "monitor_center",
+          "kind": "monitor",
+          "label": "Monitor Center",
+          "x": 6,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#79bcc8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "monitor_center",
+          "roomCode": "3F-Room6",
+          "display_room_id": "3F-Room6",
+          "display_name": "Monitor Center",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "intervention_bay",
+          "kind": "icu",
+          "label": "Intervention Bay",
+          "x": 19,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#d9736d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "intervention_bay",
+          "roomCode": "3F-Room7",
+          "display_room_id": "3F-Room7",
+          "display_name": "Intervention Bay",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "risk_sentinel",
+          "kind": "monitor",
+          "label": "Risk Alerts",
+          "x": 32,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#dca768",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "risk_sentinel",
+          "roomCode": "3F-Room8",
+          "display_room_id": "3F-Room8",
+          "display_name": "Risk Alerts",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "clinical_summary",
+          "kind": "doctor_office",
+          "label": "Clinical Summary",
+          "x": 45,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#c79b69",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "clinical_summary",
+          "roomCode": "3F-Room9",
+          "display_room_id": "3F-Room9",
+          "display_name": "Clinical Summary",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ward_coordinator",
+          "kind": "doctor_office",
+          "label": "Coordinator",
+          "x": 58,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#a992f7",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ward_coordinator",
+          "roomCode": "3F-Room10",
+          "display_room_id": "3F-Room10",
+          "display_name": "Coordinator",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "icu_support",
+          "kind": "waiting",
+          "label": "Family Support",
+          "x": 6,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#e7d1a1",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "sofa",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "icu_support",
+          "roomCode": "3F-Room11",
+          "display_room_id": "3F-Room11",
+          "display_name": "Family Support",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "icu_medication",
+          "kind": "pharmacy",
+          "label": "ICU Medication",
+          "x": 19,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#87b96b",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "cabinet",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "icu_medication",
+          "roomCode": "3F-Room12",
+          "display_room_id": "3F-Room12",
+          "display_name": "ICU Medication",
+          "department_id": "pharmacy",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "icu_equipment",
+          "kind": "monitor",
+          "label": "Equipment",
+          "x": 32,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#67b7cf",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "icu_equipment",
+          "roomCode": "3F-Room13",
+          "display_room_id": "3F-Room13",
+          "display_name": "Equipment",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "icu_transfer",
+          "kind": "icu_station",
+          "label": "Transfer Desk",
+          "x": 45,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#b99163",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "icu_transfer",
+          "roomCode": "3F-Room14",
+          "display_room_id": "3F-Room14",
+          "display_name": "Transfer Desk",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "elevator_3",
+          "kind": "elevator",
+          "label": "3F Elevator",
+          "x": 62,
+          "y": 32,
+          "w": 10,
+          "h": 10,
+          "accent": "#d7b07b",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 3.5,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "elevator",
+              "x": 3.2,
+              "y": 3.7,
+              "w": 3.6,
+              "h": 1.6
+            }
+          ],
+          "room_id": "elevator_3",
+          "roomCode": "3F-Room15",
+          "display_room_id": "3F-Room15",
+          "display_name": "3F Elevator",
+          "department_id": "icu",
+          "floor_id": 3,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": true
+        }
+      ],
+      "floor_id": 3,
+      "short_label": "3F",
+      "department_kinds": [
+        "icu"
+      ]
+    },
+    {
+      "id": 4,
+      "label": "4F MDT",
+      "shortLabel": "4F",
+      "subtitle": "Aligned MDT floor with meeting, imaging review, specialist planning, and elevator.",
+      "departmentKinds": [
+        "mdt"
+      ],
+      "rooms": [
+        {
+          "id": "mdt_call",
+          "kind": "mdt",
+          "label": "MDT Call",
+          "x": 6,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#9b87f5",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "mdt_call",
+          "roomCode": "4F-Room1",
+          "display_room_id": "4F-Room1",
+          "display_name": "MDT Call",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "head_doctor",
+          "kind": "doctor_office",
+          "label": "Head Doctor",
+          "x": 19,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#c79b69",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "head_doctor",
+          "roomCode": "4F-Room2",
+          "display_room_id": "4F-Room2",
+          "display_name": "Head Doctor",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "mdt_meeting",
+          "kind": "mdt_meeting",
+          "label": "Conference",
+          "x": 32,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#a992f7",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "table",
+              "x": 2,
+              "y": 3,
+              "w": 5,
+              "h": 1.8
+            }
+          ],
+          "room_id": "mdt_meeting",
+          "roomCode": "4F-Room3",
+          "display_room_id": "4F-Room3",
+          "display_name": "Conference",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "imaging_review",
+          "kind": "imaging_review",
+          "label": "Imaging Review",
+          "x": 45,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#67b7cf",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "imaging_review",
+          "roomCode": "4F-Room4",
+          "display_room_id": "4F-Room4",
+          "display_name": "Imaging Review",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "final_plan",
+          "kind": "doctor_office",
+          "label": "Final Plan",
+          "x": 58,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#dca768",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "final_plan",
+          "roomCode": "4F-Room5",
+          "display_room_id": "4F-Room5",
+          "display_name": "Final Plan",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "anesthesia_room",
+          "kind": "specialist",
+          "label": "Anesthesia",
+          "x": 6,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#8fb7e8",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "anesthesia_room",
+          "roomCode": "4F-Room6",
+          "display_room_id": "4F-Room6",
+          "display_name": "Anesthesia",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "cardiology_room",
+          "kind": "specialist",
+          "label": "Cardiology",
+          "x": 19,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#d46d8e",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "cardiology_room",
+          "roomCode": "4F-Room7",
+          "display_room_id": "4F-Room7",
+          "display_name": "Cardiology",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "hbp_room",
+          "kind": "specialist",
+          "label": "HBP Surgery",
+          "x": 32,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#dca768",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "hbp_room",
+          "roomCode": "4F-Room8",
+          "display_room_id": "4F-Room8",
+          "display_name": "HBP Surgery",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "neurosurgery_room",
+          "kind": "specialist",
+          "label": "Neurosurgery",
+          "x": 45,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#7b82ad",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "neurosurgery_room",
+          "roomCode": "4F-Room9",
+          "display_room_id": "4F-Room9",
+          "display_name": "Neurosurgery",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "orthopaedics_room",
+          "kind": "specialist",
+          "label": "Orthopaedics",
+          "x": 58,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "orthopaedics_room",
+          "roomCode": "4F-Room10",
+          "display_room_id": "4F-Room10",
+          "display_name": "Orthopaedics",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "mdt_records",
+          "kind": "doctor_office",
+          "label": "Records",
+          "x": 6,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#c79b69",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "cabinet",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "mdt_records",
+          "roomCode": "4F-Room11",
+          "display_room_id": "4F-Room11",
+          "display_name": "Records",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "mdt_lounge",
+          "kind": "waiting",
+          "label": "Consult Waiting",
+          "x": 19,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#e7d1a1",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "sofa",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "mdt_lounge",
+          "roomCode": "4F-Room12",
+          "display_room_id": "4F-Room12",
+          "display_name": "Consult Waiting",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "mdt_memory",
+          "kind": "mdt",
+          "label": "Plan Memory",
+          "x": 32,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#b184d0",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "mdt_memory",
+          "roomCode": "4F-Room13",
+          "display_room_id": "4F-Room13",
+          "display_name": "Plan Memory",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "mdt_kb",
+          "kind": "doctor_office",
+          "label": "Knowledge Base",
+          "x": 45,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#b7c58b",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "cabinet",
+              "x": 3,
+              "y": 3,
+              "w": 3.5,
+              "h": 1.2
+            }
+          ],
+          "room_id": "mdt_kb",
+          "roomCode": "4F-Room14",
+          "display_room_id": "4F-Room14",
+          "display_name": "Knowledge Base",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "elevator_4",
+          "kind": "elevator",
+          "label": "4F Elevator",
+          "x": 62,
+          "y": 32,
+          "w": 10,
+          "h": 10,
+          "accent": "#d7b07b",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 3.5,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "elevator",
+              "x": 3.2,
+              "y": 3.7,
+              "w": 3.6,
+              "h": 1.6
+            }
+          ],
+          "room_id": "elevator_4",
+          "roomCode": "4F-Room15",
+          "display_room_id": "4F-Room15",
+          "display_name": "4F Elevator",
+          "department_id": "mdt",
+          "floor_id": 4,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": true
+        }
+      ],
+      "floor_id": 4,
+      "short_label": "4F",
+      "department_kinds": [
+        "mdt"
+      ]
+    },
+    {
+      "id": 5,
+      "label": "5F Ward",
+      "shortLabel": "5F",
+      "subtitle": "Aligned inpatient floor with nurse station, wards, doctor office, and elevator.",
+      "departmentKinds": [
+        "ward"
+      ],
+      "rooms": [
+        {
+          "id": "ward_admission",
+          "kind": "registration",
+          "label": "Ward Admission",
+          "x": 6,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#b99163",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "ward_admission",
+          "roomCode": "5F-Room1",
+          "display_room_id": "5F-Room1",
+          "display_name": "Ward Admission",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "nurse_station",
+          "kind": "nurse_station",
+          "label": "Nurse Station",
+          "x": 19,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#66bfa2",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "reception",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "nurse_station",
+          "roomCode": "5F-Room2",
+          "display_room_id": "5F-Room2",
+          "display_name": "Nurse Station",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "resp_ward",
+          "kind": "ward",
+          "label": "Resp Ward",
+          "x": 32,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "resp_ward",
+          "roomCode": "5F-Room3",
+          "display_room_id": "5F-Room3",
+          "display_name": "Resp Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "card_ward",
+          "kind": "ward",
+          "label": "Cardio Ward",
+          "x": 45,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "card_ward",
+          "roomCode": "5F-Room4",
+          "display_room_id": "5F-Room4",
+          "display_name": "Cardio Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "gastro_ward",
+          "kind": "ward",
+          "label": "Gastro Ward",
+          "x": 58,
+          "y": 6,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "gastro_ward",
+          "roomCode": "5F-Room5",
+          "display_room_id": "5F-Room5",
+          "display_name": "Gastro Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "neuro_ward",
+          "kind": "ward",
+          "label": "Neuro Ward",
+          "x": 6,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "neuro_ward",
+          "roomCode": "5F-Room6",
+          "display_room_id": "5F-Room6",
+          "display_name": "Neuro Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "endo_ward",
+          "kind": "ward",
+          "label": "Endo Ward",
+          "x": 19,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "endo_ward",
+          "roomCode": "5F-Room7",
+          "display_room_id": "5F-Room7",
+          "display_name": "Endo Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "gensurg_ward",
+          "kind": "ward",
+          "label": "Gen Surg Ward",
+          "x": 32,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "gensurg_ward",
+          "roomCode": "5F-Room8",
+          "display_room_id": "5F-Room8",
+          "display_name": "Gen Surg Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "ortho_ward",
+          "kind": "ward",
+          "label": "Ortho Ward",
+          "x": 45,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "ortho_ward",
+          "roomCode": "5F-Room9",
+          "display_room_id": "5F-Room9",
+          "display_name": "Ortho Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "obgyn_ward",
+          "kind": "ward",
+          "label": "OB-GYN Ward",
+          "x": 58,
+          "y": 17,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "bottom",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "obgyn_ward",
+          "roomCode": "5F-Room10",
+          "display_room_id": "5F-Room10",
+          "display_name": "OB-GYN Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "peds_ward",
+          "kind": "ward",
+          "label": "Peds Ward",
+          "x": 6,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#76c59d",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 2,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            },
+            {
+              "type": "bed",
+              "x": 7,
+              "y": 5.2,
+              "w": 3.4,
+              "h": 1.3
+            }
+          ],
+          "room_id": "peds_ward",
+          "roomCode": "5F-Room11",
+          "display_room_id": "5F-Room11",
+          "display_name": "Peds Ward",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 4,
+            "max_beds": 4,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "doctor_office",
+          "kind": "doctor_office",
+          "label": "Doctor Office",
+          "x": 19,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#dca768",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "doctor_office",
+          "roomCode": "5F-Room12",
+          "display_room_id": "5F-Room12",
+          "display_name": "Doctor Office",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "diagnostic_center",
+          "kind": "lab",
+          "label": "Diagnostic Center",
+          "x": 32,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#55b8c8",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "screen",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "diagnostic_center",
+          "roomCode": "5F-Room13",
+          "display_room_id": "5F-Room13",
+          "display_name": "Diagnostic Center",
+          "department_id": "laboratory",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "discharge_desk",
+          "kind": "registration",
+          "label": "Discharge Desk",
+          "x": 45,
+          "y": 28,
+          "w": 11,
+          "h": 8,
+          "accent": "#c79b69",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 4,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "desk",
+              "x": 3,
+              "y": 3,
+              "w": 3.4,
+              "h": 1.2
+            }
+          ],
+          "room_id": "discharge_desk",
+          "roomCode": "5F-Room14",
+          "display_room_id": "5F-Room14",
+          "display_name": "Discharge Desk",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": false
+        },
+        {
+          "id": "elevator_5",
+          "kind": "elevator",
+          "label": "5F Elevator",
+          "x": 62,
+          "y": 32,
+          "w": 10,
+          "h": 10,
+          "accent": "#d7b07b",
+          "doors": [
+            {
+              "side": "top",
+              "offset": 3.5,
+              "length": 3
+            }
+          ],
+          "items": [
+            {
+              "type": "elevator",
+              "x": 3.2,
+              "y": 3.7,
+              "w": 3.6,
+              "h": 1.6
+            }
+          ],
+          "room_id": "elevator_5",
+          "roomCode": "5F-Room15",
+          "display_room_id": "5F-Room15",
+          "display_name": "5F Elevator",
+          "department_id": "ward",
+          "floor_id": 5,
+          "capacity": {
+            "beds": 0,
+            "max_beds": 0,
+            "queue": 0
+          },
+          "protected": true
+        }
+      ],
+      "floor_id": 5,
+      "short_label": "5F",
+      "department_kinds": [
+        "ward"
+      ]
+    }
+  ],
+  "updatedAt": "2026-06-11T12:42:09.724Z"
+}

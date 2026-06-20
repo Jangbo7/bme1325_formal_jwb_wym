@@ -1,3 +1,4 @@
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -30,6 +31,7 @@ from app.api.routes.department_runtime_debug import router as department_runtime
 from app.api.routes.encounters import router as encounters_router
 from app.api.routes.departments import router as departments_router
 from app.api.routes.events import router as events_router
+from app.api.routes.fullview_sync import router as fullview_sync_router
 from app.api.routes.icu import router as icu_router
 from app.api.routes.internal_medicine_agent_debug import router as internal_medicine_agent_debug_router
 from app.api.routes.internal_medicine import router as internal_medicine_router
@@ -41,6 +43,7 @@ from app.api.routes.patient_agent_debug import router as patient_agent_debug_rou
 from app.api.routes.openemr import router as openemr_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.queues import router as queues_router
+from app.api.routes.runtime_console import router as runtime_console_router
 from app.api.routes.scene_snapshot import router as scene_snapshot_router
 from app.api.routes.runtime_stats_html import router as runtime_stats_html_router
 from app.api.routes.surgery import router as surgery_router
@@ -70,6 +73,7 @@ from app.events.subscribers.department_runtime import DepartmentRuntimeProjector
 from app.events.subscribers.openemr_sync import OpenEMRSyncSubscriber
 from app.events.subscribers.patient_projection import PatientProjectionSubscriber
 from app.events.types import (
+    ENCOUNTER_OPENED,
     ICU_CONSULTATION_COMPLETED,
     INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
     PATIENT_STATE_CHANGED,
@@ -83,20 +87,28 @@ from app.events.types import (
 )
 from app.repositories.agent_memory import AgentMemoryRepository
 from app.repositories.department_runtime import DepartmentRuntimeRepository
+from app.repositories.fullview_sync import FullviewSyncRepository
 from app.repositories.medical_records import MedicalRecordRepository
 from app.repositories.patient_agent_cases import PatientAgentCaseRepository
 from app.repositories.patients import PatientRepository
 from app.repositories.queues import QueueRepository
+from app.repositories.runtime_console import RuntimeConsoleRepository
 from app.repositories.sessions import SessionRepository
 from app.repositories.visits import VisitRepository
 from app.repositories.runtime_stage_samples import RuntimeStageSampleRepository
 from app.integrations.openemr import EMRService, OpenEMRClient
+from app.integrations.fullview import FullviewClient
 from app.services import (
     DepartmentRuntimeService,
     EncounterOrchestrationService,
+    FullviewMappingService,
+    FullviewEventListener,
+    FullviewSyncSubscriber,
+    FullviewSyncWorker,
     NpcPatientSimulator,
     OutpatientProcedureService,
     PatientAgentService,
+    RuntimeConsoleService,
     SceneSnapshotService,
 )
 from app.services.hospital_supervisor import HospitalSupervisor
@@ -107,8 +119,6 @@ def create_container():
     settings = get_settings()
     db = Database(settings["database_url"])
     db.init_schema()
-    if settings["reset_on_server_start"]:
-        db.reset_runtime_data()
 
     patient_repo = PatientRepository(db)
     session_repo = SessionRepository(db)
@@ -117,6 +127,15 @@ def create_container():
     medical_record_repo = MedicalRecordRepository(db)
     patient_agent_case_repo = PatientAgentCaseRepository(db)
     department_runtime_repo = DepartmentRuntimeRepository(db)
+    fullview_sync_repo = FullviewSyncRepository(db)
+    fullview_sync_repo.set_visual_cooldown_enabled(
+        settings["fullview_sync_enabled"]
+        and settings["fullview_step_gate_enabled"]
+    )
+    fullview_sync_repo.set_admission_gap_seconds(
+        settings["fullview_admission_gap_seconds"]
+    )
+    runtime_console_repo = RuntimeConsoleRepository(db)
     queue_repo = QueueRepository(db)
     visit_repo = VisitRepository(db)
     bus = EventBus()
@@ -270,6 +289,51 @@ def create_container():
         patient_repo=patient_repo,
         visit_repo=visit_repo,
         queue_repo=queue_repo,
+        agent_memory_repo=memory_repo,
+    )
+    fullview_client = FullviewClient(
+        base_url=settings["fullview_base_url"],
+        timeout_seconds=settings["fullview_timeout_seconds"],
+    )
+    fullview_mapping_service = FullviewMappingService(
+        visit_repo=visit_repo,
+        patient_repo=patient_repo,
+        department_runtime_repo=department_runtime_repo,
+        sync_repo=fullview_sync_repo,
+        discharge_linger_seconds=settings["fullview_discharge_linger_seconds"],
+    )
+    fullview_sync_worker = FullviewSyncWorker(
+        repo=fullview_sync_repo,
+        client=fullview_client,
+        enabled=settings["fullview_sync_enabled"],
+        poll_interval_seconds=settings["fullview_poll_interval_seconds"],
+        max_attempts=settings["fullview_max_attempts"],
+        visual_cooldown_multiplier=settings[
+            "fullview_visual_cooldown_multiplier"
+        ],
+        admission_gap_seconds=settings["fullview_admission_gap_seconds"],
+    )
+    fullview_event_listener = FullviewEventListener(
+        repo=fullview_sync_repo,
+        client=fullview_client,
+        enabled=settings["fullview_sync_enabled"],
+        interval_seconds=settings["fullview_event_listener_interval_seconds"],
+        observe_timeout_seconds=settings["fullview_event_observe_timeout_seconds"],
+        cleanup_idle_seconds=settings["fullview_cleanup_idle_seconds"],
+        worker=fullview_sync_worker,
+    )
+    fullview_sync_subscriber = FullviewSyncSubscriber(
+        fullview_mapping_service,
+        fullview_sync_worker,
+    )
+    runtime_console_service = RuntimeConsoleService(
+        repo=runtime_console_repo,
+        department_runtime_service=department_runtime_service,
+        fullview_client=fullview_client,
+        fullview_sync_repo=fullview_sync_repo,
+        fullview_event_listener=fullview_event_listener,
+        fullview_sync_enabled=settings["fullview_sync_enabled"],
+        fullview_step_gate_enabled=settings["fullview_step_gate_enabled"],
     )
     scene_snapshot_service = SceneSnapshotService(
         patient_repo=patient_repo,
@@ -352,6 +416,13 @@ def create_container():
             "patient_agent_service": patient_agent_service,
             "patient_agent_case_repo": patient_agent_case_repo,
             "department_runtime_service": department_runtime_service,
+            "runtime_console_service": runtime_console_service,
+            "fullview_sync_repo": fullview_sync_repo,
+            "fullview_sync_enabled": settings["fullview_sync_enabled"],
+            "fullview_step_gate_enabled": (
+                settings["fullview_sync_enabled"]
+                and settings["fullview_step_gate_enabled"]
+            ),
             "flow_decision_engine": flow_decision_engine,
             "flow_executor": flow_executor,
         }
@@ -408,6 +479,8 @@ def create_container():
     bus.subscribe(TRIAGE_COMPLETED, department_runtime_projector.handle_triage_completed)
     bus.subscribe(PATIENT_STATE_CHANGED, department_runtime_projector.handle_patient_state_changed)
     bus.subscribe(VISIT_STATE_CHANGED, department_runtime_projector.handle_visit_state_changed)
+    bus.subscribe(ENCOUNTER_OPENED, fullview_sync_subscriber.handle_encounter_opened)
+    bus.subscribe(VISIT_STATE_CHANGED, fullview_sync_subscriber.handle_visit_state_changed)
     bus.subscribe(QUEUE_TICKET_CREATED, department_runtime_projector.handle_queue_ticket_created)
     bus.subscribe(QUEUE_TICKET_CALLED, department_runtime_projector.handle_queue_ticket_called)
     bus.subscribe(QUEUE_TICKET_COMPLETED, department_runtime_projector.handle_queue_ticket_completed)
@@ -425,6 +498,8 @@ def create_container():
         "medical_record_repo": medical_record_repo,
         "patient_agent_case_repo": patient_agent_case_repo,
         "department_runtime_repo": department_runtime_repo,
+        "fullview_sync_repo": fullview_sync_repo,
+        "runtime_console_repo": runtime_console_repo,
         "queue_repo": queue_repo,
         "visit_repo": visit_repo,
         "encounter_orchestration_service": encounter_orchestration_service,
@@ -440,7 +515,12 @@ def create_container():
         "npc_patient_debug_controller": npc_patient_debug_controller,
         "patient_agent_service": patient_agent_service,
         "department_runtime_service": department_runtime_service,
-        "runtime_stage_sample_repo": runtime_stage_sample_repo,
+
+        "fullview_mapping_service": fullview_mapping_service,
+        "fullview_sync_worker": fullview_sync_worker,
+        "fullview_event_listener": fullview_event_listener,
+        "runtime_console_service": runtime_console_service,
+
         "outpatient_procedure_service": outpatient_procedure_service,
         "scene_snapshot_service": scene_snapshot_service,
         "patient_agent_debug_controller": patient_agent_debug_controller,
@@ -464,12 +544,28 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.container = container
+        startup_cleanup_task = None
+        if container["settings"]["reset_on_server_start"]:
+            startup_cleanup_task = asyncio.create_task(
+                asyncio.to_thread(
+                    container["runtime_console_service"].cleanup_runtime_patients,
+                    None,
+                    reset_local=True,
+                )
+            )
+            app.state.startup_cleanup_task = startup_cleanup_task
+        container["fullview_event_listener"].start()
         container["npc_simulator"].start()
+        container["fullview_sync_worker"].start()
         try:
             yield
         finally:
+            container["fullview_sync_worker"].stop()
+            container["fullview_event_listener"].stop()
             container["npc_simulator"].stop()
             container["multi_patient_debug_controller"].shutdown()
+            if startup_cleanup_task is not None and not startup_cleanup_task.done():
+                startup_cleanup_task.cancel()
 
     app = FastAPI(title="Hospital Agent Backend", version="0.1.0", lifespan=lifespan)
     app.state.container = container
@@ -658,9 +754,11 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(hospital_runtime_debug_router)
     app.include_router(department_runtime_debug_router)
+    app.include_router(runtime_console_router)
     app.include_router(departments_router)
     app.include_router(encounters_router)
     app.include_router(events_router)
+    app.include_router(fullview_sync_router)
     app.include_router(scene_snapshot_router)
     app.include_router(runtime_stats_html_router)
     app.include_router(visits_router)

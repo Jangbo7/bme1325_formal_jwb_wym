@@ -68,6 +68,8 @@ def test_triage_level_1_routes_to_icu_placeholder(monkeypatch, api_client_factor
         assert triage_route_hint.get("target") == "ICU"
         assert triage_route_hint.get("source") == "triage_level"
         assert triage_route_hint.get("placeholder") is True
+        assert visit["disposition"]["category"] == "icu_rescue"
+        assert visit["outpatient_flow_finished"] is True
 
         events = _drain_events(subscriber)
         assert any(
@@ -106,6 +108,8 @@ def test_triage_level_2_routes_to_emergency_placeholder(api_client_factory):
     triage_route_hint = (visit.get("data") or {}).get("triage_route_hint") or {}
     assert triage_route_hint.get("target") == "ED"
     assert triage_route_hint.get("placeholder") is True
+    assert visit["disposition"]["category"] == "emergency_escalation"
+    assert visit["outpatient_flow_finished"] is True
 
 
 def test_triage_level_4_keeps_normal_outpatient_chain(api_client_factory):

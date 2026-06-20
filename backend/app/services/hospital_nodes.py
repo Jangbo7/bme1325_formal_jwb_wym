@@ -2,10 +2,22 @@ from __future__ import annotations
 
 from app.departments.registry import list_departments
 from app.schemas.hospital_runtime import HospitalNode
-from app.services.department_resources import list_department_resource_configs
+
+from app.services.department_resources import get_department_gate_capacity, list_department_resource_configs
 
 
 SYSTEM_NODES = [
+    HospitalNode(
+        node_id="triage",
+        node_type="system",
+        name="Triage",
+        capacity=8,
+        supports_queue=False,
+        supports_consultation=False,
+        supported_actions=["begin_triage", "triage_completed", "followup_requested"],
+        entry_conditions=["arrived", "triaging", "waiting_followup", "in_triage"],
+        exit_conditions=["triaged", "in_emergency", "in_icu_rescue"],
+    ),
     HospitalNode(
         node_id="testing",
         node_type="system",
@@ -32,9 +44,9 @@ SYSTEM_NODES = [
         name="Payment",
         supports_queue=False,
         supports_consultation=False,
-        supported_actions=["request_medical_payment", "pay_medical", "complete_visit"],
+        supported_actions=["request_medical_payment", "pay_medical", "plan_disposition"],
         entry_conditions=["waiting_payment"],
-        exit_conditions=["medical_payment_completed", "completed"],
+        exit_conditions=["medical_payment_completed", "disposition_pending"],
     ),
     HospitalNode(
         node_id="pharmacy",
@@ -57,6 +69,7 @@ def build_department_nodes() -> list[HospitalNode]:
                 node_id=department["id"],
                 node_type="department",
                 name=department["label"],
+                capacity=get_department_gate_capacity(department["id"]),
                 supports_queue=True,
                 supports_consultation=True,
                 supported_actions=list(department.get("supported_actions") or []),

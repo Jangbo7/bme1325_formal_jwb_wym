@@ -469,6 +469,8 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
     doctor_round2_create_data = get_data(doctor_round2_create_resp)
     assert doctor_round2_create_data["visit_state"] == "waiting_payment"
     assert doctor_round2_create_data["dialogue"]["status"] == "completed"
+    assert doctor_round2_create_data["patient"]["outpatient_flow_finished"] is False
+    assert doctor_round2_create_data["patient"]["disposition"]["category"] in {"outpatient_treatment", "followup_booking"}
     assert doctor_round2_create_data["session_id"] != doctor_create_data["session_id"]
 
     doctor_round2_message_1_resp = client.post(
@@ -482,8 +484,10 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
         },
     )
     assert doctor_round2_message_1_resp.status_code == 200
-    assert get_data(doctor_round2_message_1_resp)["visit_state"] == "waiting_payment"
-    assert get_data(doctor_round2_message_1_resp)["dialogue"]["status"] == "completed"
+    doctor_round2_message_1_data = get_data(doctor_round2_message_1_resp)
+    assert doctor_round2_message_1_data["visit_state"] == "waiting_payment"
+    assert doctor_round2_message_1_data["dialogue"]["status"] == "completed"
+    assert doctor_round2_message_1_data["patient"]["outpatient_flow_finished"] is False
 
     doctor_round2_message_2_resp = client.post(
         f"/api/v1/internal-medicine-sessions/{doctor_round2_create_data['session_id']}/messages",
@@ -496,8 +500,42 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
         },
     )
     assert doctor_round2_message_2_resp.status_code == 200
-    assert get_data(doctor_round2_message_2_resp)["visit_state"] == "waiting_payment"
-    assert get_data(doctor_round2_message_2_resp)["dialogue"]["status"] == "completed"
+    doctor_round2_message_2_data = get_data(doctor_round2_message_2_resp)
+    assert doctor_round2_message_2_data["visit_state"] == "waiting_payment"
+    assert doctor_round2_message_2_data["dialogue"]["status"] == "completed"
+    assert doctor_round2_message_2_data["patient"]["outpatient_flow_finished"] is False
+
+    pay_medical_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "pay_medical"},
+    )
+    assert pay_medical_resp.status_code == 200
+    assert get_data(pay_medical_resp)["encounter"]["state"].lower() == "medical_payment_completed"
+
+    plan_disposition_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "plan_disposition"},
+    )
+    assert plan_disposition_resp.status_code == 200
+    assert get_data(plan_disposition_resp)["encounter"]["state"].lower() == "disposition_pending"
+
+    choose_pharmacy_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "choose_pharmacy"},
+    )
+    assert choose_pharmacy_resp.status_code == 200
+    assert get_data(choose_pharmacy_resp)["encounter"]["state"].lower() == "waiting_pharmacy"
+
+    dispense_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "dispense_medication"},
+    )
+    assert dispense_resp.status_code == 200
+    assert get_data(dispense_resp)["encounter"]["state"].lower() == "completed"
 
     simulated_report_resp = client.get(f"/api/v1/visits/{visit_id}/simulated-report", headers=headers())
     assert simulated_report_resp.status_code == 200
@@ -686,7 +724,41 @@ def test_surgery_procedure_only_path_reaches_round2_with_completed_procedure(tmp
     round2_data = get_data(round2_create_resp)
     assert round2_data["visit_state"] == "waiting_payment"
     assert round2_data["dialogue"]["status"] == "completed"
+    assert round2_data["patient"]["outpatient_flow_finished"] is False
+    assert round2_data["patient"]["disposition"]["category"] in {"outpatient_treatment", "followup_booking"}
     assert round2_data["dialogue"]["final_result"]["procedure_recommendation"]["surgery_evaluation_recommended"] is False
+
+    pay_medical_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "pay_medical"},
+    )
+    assert pay_medical_resp.status_code == 200
+    assert get_data(pay_medical_resp)["encounter"]["state"].lower() == "medical_payment_completed"
+
+    plan_disposition_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "plan_disposition"},
+    )
+    assert plan_disposition_resp.status_code == 200
+    assert get_data(plan_disposition_resp)["encounter"]["state"].lower() == "disposition_pending"
+
+    choose_pharmacy_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "choose_pharmacy"},
+    )
+    assert choose_pharmacy_resp.status_code == 200
+    assert get_data(choose_pharmacy_resp)["encounter"]["state"].lower() == "waiting_pharmacy"
+
+    dispense_resp = client.post(
+        f"/api/v1/encounters/{visit_id}/events",
+        headers=headers(),
+        json={"event": "dispense_medication"},
+    )
+    assert dispense_resp.status_code == 200
+    assert get_data(dispense_resp)["encounter"]["state"].lower() == "completed"
 
     final_visit_resp = client.get(f"/api/v1/visits/{visit_id}", headers=headers())
     final_visit_data = get_data(final_visit_resp)["visit"]["data"]

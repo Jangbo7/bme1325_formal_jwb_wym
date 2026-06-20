@@ -37,6 +37,8 @@ from app.services.consultation_registry import (
     list_consultation_agents,
     resolve_consultation_agent_for_visit,
 )
+from app.services.debug_department_policy import resolve_locked_debug_department
+from app.services.disposition import build_triage_disposition, now_iso as disposition_now_iso
 
 
 def now_iso() -> str:
@@ -819,11 +821,14 @@ class TriageService:
         visit_for_assignment = self.visit_repo.get(visit_id) if visit_id else None
         preassigned_id = (visit_for_assignment or {}).get("assigned_department_id")
         preassigned_name = (visit_for_assignment or {}).get("assigned_department_name")
+        locked_department = resolve_locked_debug_department(visit_for_assignment)
         if missing_fields:
             assigned_department = {
                 "id": preassigned_id,
                 "label": preassigned_name,
             } if preassigned_id and preassigned_name else None
+        elif locked_department is not None:
+            assigned_department = locked_department
         elif preassigned_id and preassigned_name and preassigned_id == resolve_department(
             triage_result.get("department"),
             triage_result.get("priority", "M"),
@@ -851,11 +856,13 @@ class TriageService:
         if not missing_fields and visit_state_row:
             route_hint = self.resolve_triage_route_hint(triage_result)
             if route_hint:
+                disposition = build_triage_disposition(triage_result, route_hint)
                 triage_route_hint = {
                     "target": route_hint["target"],
                     "source": "triage_level",
                     "placeholder": True,
                 }
+                route_timestamp = disposition_now_iso()
                 visit_state_row = self.transition_visit_state(
                     visit_id,
                     route_hint["event"],
@@ -865,6 +872,14 @@ class TriageService:
                     extra_data={
                         "triage_session_id": session_id,
                         "triage_route_hint": triage_route_hint,
+                        "primary_disposition": (
+                            "icu_rescue"
+                            if route_hint["event"] == "route_to_icu_rescue"
+                            else "emergency_escalation"
+                        ),
+                        "disposition": disposition,
+                        "outpatient_flow_finished": True,
+                        "outpatient_finished_at": route_timestamp,
                     },
                     event_payload={
                         "placeholder": True,

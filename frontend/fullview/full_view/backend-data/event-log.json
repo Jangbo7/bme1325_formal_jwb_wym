@@ -1,0 +1,3720 @@
+{
+  "lastSeq": 94,
+  "events": [
+    {
+      "eventSeq": 1,
+      "accepted": false,
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patientId": "P-ER-001",
+      "request": {
+        "requestId": "console-1781177357815",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-001",
+        "fromRoomId": "ed_pager",
+        "toRoomId": "ed_entrance",
+        "context": {
+          "reason": ""
+        }
+      },
+      "reasonCode": "TARGET_NOT_ALLOWED",
+      "message": "Target room is not allowed by the selected movement rule."
+    },
+    {
+      "eventSeq": 2,
+      "accepted": false,
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patientId": "P-ER-001",
+      "request": {
+        "requestId": "console-1781177374079",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-001",
+        "fromRoomId": "ed_pager",
+        "toRoomId": "ed_minor",
+        "context": {
+          "reason": ""
+        }
+      },
+      "reasonCode": "TARGET_NOT_ALLOWED",
+      "message": "Target room is not allowed by the selected movement rule."
+    },
+    {
+      "eventSeq": 3,
+      "accepted": true,
+      "eventId": "ED_WAITING_TO_CONSULT_ROOM",
+      "patientId": "P-ER-002",
+      "request": {
+        "requestId": "console-1781179039827",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "ED_WAITING_TO_CONSULT_ROOM",
+        "patientId": "P-ER-002",
+        "fromRoomId": "ed_waiting",
+        "toRoomId": "ed_minor",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_waiting",
+        "toRoomId": "ed_minor",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 4,
+      "accepted": true,
+      "eventId": "ED_TO_WARD_MOVE",
+      "patientId": "P-ER-001",
+      "request": {
+        "requestId": "console-1781179077008",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "ED_TO_WARD_MOVE",
+        "patientId": "P-ER-001",
+        "fromRoomId": "ed_pager",
+        "toRoomId": "ward_admission",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "wheelchair",
+        "escortRoles": [
+          "porter"
+        ],
+        "equipment": [],
+        "fromRoomId": "ed_pager",
+        "toRoomId": "ward_admission",
+        "viaRoomIds": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_5"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "wheelchair"
+      }
+    },
+    {
+      "eventSeq": 5,
+      "accepted": true,
+      "eventId": "WARD_TO_DIAGNOSTIC_MOVE",
+      "patientId": "P-WD-002",
+      "request": {
+        "requestId": "console-1781179558842",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "WARD_TO_DIAGNOSTIC_MOVE",
+        "patientId": "P-WD-002",
+        "fromRoomId": "resp_ward",
+        "toRoomId": "diagnostic_center",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "wheelchair",
+        "escortRoles": [
+          "porter"
+        ],
+        "equipment": [],
+        "fromRoomId": "resp_ward",
+        "toRoomId": "diagnostic_center",
+        "viaRoomIds": [],
+        "finalForm": "wheelchair",
+        "patientFormDuringMove": "wheelchair"
+      }
+    },
+    {
+      "eventSeq": 6,
+      "accepted": true,
+      "eventId": "WARD_DIAGNOSTIC_RETURN",
+      "patientId": "P-WD-002",
+      "request": {
+        "requestId": "console-1781179597075",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "WARD_DIAGNOSTIC_RETURN",
+        "patientId": "P-WD-002",
+        "fromRoomId": "diagnostic_center",
+        "toRoomId": "resp_ward",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "wheelchair",
+        "escortRoles": [
+          "porter"
+        ],
+        "equipment": [],
+        "fromRoomId": "diagnostic_center",
+        "toRoomId": "resp_ward",
+        "viaRoomIds": [],
+        "finalForm": "bed",
+        "patientFormDuringMove": "wheelchair"
+      }
+    },
+    {
+      "eventSeq": 7,
+      "accepted": true,
+      "eventId": "ED_ENTRANCE_TO_REGISTRATION",
+      "patientId": "P-ST-ER-001",
+      "request": {
+        "requestId": "stress-01",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ED_ENTRANCE_TO_REGISTRATION",
+        "patientId": "P-ST-ER-001",
+        "fromRoomId": "ed_entrance",
+        "toRoomId": "ed_registration",
+        "context": {
+          "reason": "stress ED arrival registration"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_entrance",
+        "toRoomId": "ed_registration",
+        "viaRoomIds": [],
+        "finalForm": "walking",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 8,
+      "accepted": true,
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patientId": "P-ST-ER-002",
+      "request": {
+        "requestId": "stress-02",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ST-ER-002",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_triage",
+        "context": {
+          "reason": "stress ED triage"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_triage",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 9,
+      "accepted": true,
+      "eventId": "ED_WAITING_TO_CONSULT_ROOM",
+      "patientId": "P-ST-ER-005",
+      "request": {
+        "requestId": "stress-03",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ED_WAITING_TO_CONSULT_ROOM",
+        "patientId": "P-ST-ER-005",
+        "fromRoomId": "ed_waiting",
+        "toRoomId": "ed_minor",
+        "context": {
+          "reason": "stress ED waiting call"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_waiting",
+        "toRoomId": "ed_minor",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 10,
+      "accepted": true,
+      "eventId": "ED_TO_ICU_MOVE",
+      "patientId": "P-ST-ER-003",
+      "request": {
+        "requestId": "stress-04",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ED_TO_ICU_MOVE",
+        "patientId": "P-ST-ER-003",
+        "fromRoomId": "ed_red_resus",
+        "toRoomId": "icu_admission",
+        "context": {
+          "reason": "critical ED to ICU transfer"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "fromRoomId": "ed_red_resus",
+        "toRoomId": "icu_admission",
+        "viaRoomIds": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_3"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "eventSeq": 11,
+      "accepted": true,
+      "eventId": "ICU_ADMISSION_TO_BED",
+      "patientId": "P-ST-ER-003",
+      "request": {
+        "requestId": "stress-05",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ICU_ADMISSION_TO_BED",
+        "patientId": "P-ST-ER-003",
+        "fromRoomId": "icu_admission",
+        "toRoomId": "icu_isolation",
+        "context": {
+          "reason": "ICU isolation bed assignment"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "icu_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "fromRoomId": "icu_admission",
+        "toRoomId": "icu_isolation",
+        "viaRoomIds": [],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "eventSeq": 12,
+      "accepted": true,
+      "eventId": "ED_TO_WARD_MOVE",
+      "patientId": "P-ST-ER-004",
+      "request": {
+        "requestId": "stress-06",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ED_TO_WARD_MOVE",
+        "patientId": "P-ST-ER-004",
+        "fromRoomId": "ed_major",
+        "toRoomId": "ward_admission",
+        "context": {
+          "reason": "ED to ward admission"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "wheelchair",
+        "escortRoles": [
+          "porter"
+        ],
+        "equipment": [],
+        "fromRoomId": "ed_major",
+        "toRoomId": "ward_admission",
+        "viaRoomIds": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_5"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "wheelchair"
+      }
+    },
+    {
+      "eventSeq": 13,
+      "accepted": true,
+      "eventId": "WARD_ADMISSION_TO_BED",
+      "patientId": "P-ST-ER-004",
+      "request": {
+        "requestId": "stress-07",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "WARD_ADMISSION_TO_BED",
+        "patientId": "P-ST-ER-004",
+        "fromRoomId": "ward_admission",
+        "toRoomId": "gastro_ward",
+        "context": {
+          "reason": "ward bed assignment"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ward_admission",
+        "toRoomId": "gastro_ward",
+        "viaRoomIds": [],
+        "finalForm": "bed",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 14,
+      "accepted": true,
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patientId": "P-ST-OP-001",
+      "request": {
+        "requestId": "stress-08",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ST-OP-001",
+        "fromRoomId": "registration_2",
+        "toRoomId": "triage_2",
+        "context": {
+          "reason": "outpatient triage"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "triage_2",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 15,
+      "accepted": true,
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patientId": "P-ST-OP-001",
+      "request": {
+        "requestId": "stress-09",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-ST-OP-001",
+        "fromRoomId": "triage_2",
+        "toRoomId": "surgery_2",
+        "context": {
+          "reason": "outpatient consult routing"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "triage_2",
+        "toRoomId": "surgery_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 16,
+      "accepted": true,
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patientId": "P-ST-OP-002",
+      "request": {
+        "requestId": "stress-10",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-ST-OP-002",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "fever_2",
+        "context": {
+          "reason": "waiting to fever clinic"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "fever_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 17,
+      "accepted": true,
+      "eventId": "OP_CONSULT_TO_PAYMENT",
+      "patientId": "P-ST-OP-003",
+      "request": {
+        "requestId": "stress-11",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "OP_CONSULT_TO_PAYMENT",
+        "patientId": "P-ST-OP-003",
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "payment_2",
+        "context": {
+          "reason": "consult to payment"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "payment_2",
+        "viaRoomIds": [],
+        "finalForm": "walking",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 18,
+      "accepted": true,
+      "eventId": "OP_PAYMENT_TO_LAB",
+      "patientId": "P-ST-OP-003",
+      "request": {
+        "requestId": "stress-12",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "OP_PAYMENT_TO_LAB",
+        "patientId": "P-ST-OP-003",
+        "fromRoomId": "payment_2",
+        "toRoomId": "lab_2",
+        "context": {
+          "reason": "payment to lab"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "payment_2",
+        "toRoomId": "lab_2",
+        "viaRoomIds": [],
+        "finalForm": "walking",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 19,
+      "accepted": true,
+      "eventId": "OP_TO_WARD_MOVE",
+      "patientId": "P-ST-OP-004",
+      "request": {
+        "requestId": "stress-13",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "OP_TO_WARD_MOVE",
+        "patientId": "P-ST-OP-004",
+        "fromRoomId": "internal_2",
+        "toRoomId": "ward_admission",
+        "context": {
+          "reason": "outpatient admission decision"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "internal_2",
+        "toRoomId": "ward_admission",
+        "viaRoomIds": [
+          "elevator_2",
+          "elevator_5"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 20,
+      "accepted": true,
+      "eventId": "WARD_ADMISSION_TO_BED",
+      "patientId": "P-ST-OP-004",
+      "request": {
+        "requestId": "stress-14",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "WARD_ADMISSION_TO_BED",
+        "patientId": "P-ST-OP-004",
+        "fromRoomId": "ward_admission",
+        "toRoomId": "neuro_ward",
+        "context": {
+          "reason": "ward bed assignment after outpatient"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ward_admission",
+        "toRoomId": "neuro_ward",
+        "viaRoomIds": [],
+        "finalForm": "bed",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 21,
+      "accepted": true,
+      "eventId": "OP_TO_ICU_MOVE",
+      "patientId": "P-ST-OP-005",
+      "request": {
+        "requestId": "stress-15",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "OP_TO_ICU_MOVE",
+        "patientId": "P-ST-OP-005",
+        "fromRoomId": "consultation_b_2",
+        "toRoomId": "icu_admission",
+        "context": {
+          "reason": "outpatient emergency escalation"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "fromRoomId": "consultation_b_2",
+        "toRoomId": "icu_admission",
+        "viaRoomIds": [
+          "elevator_2",
+          "elevator_3"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "eventSeq": 22,
+      "accepted": true,
+      "eventId": "ICU_ADMISSION_TO_BED",
+      "patientId": "P-ST-OP-005",
+      "request": {
+        "requestId": "stress-16",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ICU_ADMISSION_TO_BED",
+        "patientId": "P-ST-OP-005",
+        "fromRoomId": "icu_admission",
+        "toRoomId": "intervention_bay",
+        "context": {
+          "reason": "ICU intervention bay assignment"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "icu_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "fromRoomId": "icu_admission",
+        "toRoomId": "intervention_bay",
+        "viaRoomIds": [],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "eventSeq": 23,
+      "accepted": true,
+      "eventId": "ICU_ADMISSION_TO_BED",
+      "patientId": "P-ST-ICU-001",
+      "request": {
+        "requestId": "stress-17",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ICU_ADMISSION_TO_BED",
+        "patientId": "P-ST-ICU-001",
+        "fromRoomId": "icu_admission",
+        "toRoomId": "icu_beds_b",
+        "context": {
+          "reason": "direct ICU admission to bed"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "icu_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "fromRoomId": "icu_admission",
+        "toRoomId": "icu_beds_b",
+        "viaRoomIds": [],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "eventSeq": 24,
+      "accepted": true,
+      "eventId": "WARD_ADMISSION_TO_BED",
+      "patientId": "P-ST-WD-001",
+      "request": {
+        "requestId": "stress-18",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "WARD_ADMISSION_TO_BED",
+        "patientId": "P-ST-WD-001",
+        "fromRoomId": "ward_admission",
+        "toRoomId": "endo_ward",
+        "context": {
+          "reason": "direct ward admission to bed"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ward_admission",
+        "toRoomId": "endo_ward",
+        "viaRoomIds": [],
+        "finalForm": "bed",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "eventSeq": 25,
+      "accepted": true,
+      "eventId": "ICU_TO_EXAM_OR_INTERVENTION",
+      "patientId": "P-ICU-001",
+      "request": {
+        "requestId": "stress-19",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "ICU_TO_EXAM_OR_INTERVENTION",
+        "patientId": "P-ICU-001",
+        "fromRoomId": "icu_beds_a",
+        "toRoomId": "icu_equipment",
+        "context": {
+          "reason": "existing ICU patient to equipment check"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "icu_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "fromRoomId": "icu_beds_a",
+        "toRoomId": "icu_equipment",
+        "viaRoomIds": [],
+        "finalForm": "stretcher",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "eventSeq": 26,
+      "accepted": true,
+      "eventId": "WARD_TO_DIAGNOSTIC_MOVE",
+      "patientId": "P-ST-WD-002",
+      "request": {
+        "requestId": "stress-20",
+        "source": "stress-test-console-seed",
+        "operatorId": "manual-stress-admin",
+        "eventId": "WARD_TO_DIAGNOSTIC_MOVE",
+        "patientId": "P-ST-WD-002",
+        "fromRoomId": "resp_ward",
+        "toRoomId": "diagnostic_center",
+        "context": {
+          "reason": "ward patient CT with retained bed"
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "fromRoomId": "resp_ward",
+        "toRoomId": "diagnostic_center",
+        "viaRoomIds": [],
+        "finalForm": "stretcher",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "event_seq": 27,
+      "eventSeq": 27,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-004",
+      "patientId": "P-ER-004",
+      "request": {
+        "requestId": "test-intake-emergency",
+        "source": "console-intake-test",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-004",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_triage",
+        "context": {
+          "reason": "button validation",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_triage",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_triage",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 28,
+      "eventSeq": 28,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-006",
+      "patientId": "P-OP-006",
+      "request": {
+        "requestId": "test-intake-outpatient",
+        "source": "console-intake-test",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-006",
+        "fromRoomId": "registration_2",
+        "toRoomId": "triage_2",
+        "context": {
+          "reason": "button validation",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "triage_2",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "triage_2",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 29,
+      "eventSeq": 29,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-005",
+      "patientId": "P-ER-005",
+      "request": {
+        "requestId": "console-intake-emergency-1781189719879",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-005",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_triage",
+        "context": {
+          "reason": "emergency patient intake",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_triage",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_triage",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 30,
+      "eventSeq": 30,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-007",
+      "patientId": "P-OP-007",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189722478",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-007",
+        "fromRoomId": "registration_2",
+        "toRoomId": "triage_2",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "triage_2",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "triage_2",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 31,
+      "eventSeq": 31,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-008",
+      "patientId": "P-OP-008",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189723679",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-008",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 32,
+      "eventSeq": 32,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-009",
+      "patientId": "P-OP-009",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189726295",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-009",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 33,
+      "eventSeq": 33,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-010",
+      "patientId": "P-OP-010",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189727061",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-010",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 34,
+      "eventSeq": 34,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-011",
+      "patientId": "P-OP-011",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189727661",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-011",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 35,
+      "eventSeq": 35,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-012",
+      "patientId": "P-OP-012",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189728061",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-012",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 36,
+      "eventSeq": 36,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-013",
+      "patientId": "P-OP-013",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189728344",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-013",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 37,
+      "eventSeq": 37,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-014",
+      "patientId": "P-OP-014",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189728561",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-014",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 38,
+      "eventSeq": 38,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-015",
+      "patientId": "P-OP-015",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189728727",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-015",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 39,
+      "eventSeq": 39,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-016",
+      "patientId": "P-OP-016",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189728893",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-016",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 40,
+      "eventSeq": 40,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-017",
+      "patientId": "P-OP-017",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189729060",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-017",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 41,
+      "eventSeq": 41,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-018",
+      "patientId": "P-OP-018",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189729244",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-018",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 42,
+      "eventSeq": 42,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-019",
+      "patientId": "P-OP-019",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189729410",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-019",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 43,
+      "eventSeq": 43,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-020",
+      "patientId": "P-OP-020",
+      "request": {
+        "requestId": "console-intake-outpatient-1781189729610",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-020",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 44,
+      "eventSeq": 44,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-006",
+      "patientId": "P-ER-006",
+      "request": {
+        "requestId": "console-intake-emergency-1781189730110",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-006",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "context": {
+          "reason": "emergency patient intake",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 45,
+      "eventSeq": 45,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-007",
+      "patientId": "P-ER-007",
+      "request": {
+        "requestId": "console-intake-emergency-1781189730276",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-007",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "context": {
+          "reason": "emergency patient intake",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 46,
+      "eventSeq": 46,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-008",
+      "patientId": "P-ER-008",
+      "request": {
+        "requestId": "console-intake-emergency-1781189730443",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-008",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "context": {
+          "reason": "emergency patient intake",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 47,
+      "eventSeq": 47,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-009",
+      "patientId": "P-ER-009",
+      "request": {
+        "requestId": "console-intake-emergency-1781189730593",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-009",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "context": {
+          "reason": "emergency patient intake",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 48,
+      "eventSeq": 48,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-010",
+      "patientId": "P-ER-010",
+      "request": {
+        "requestId": "console-intake-emergency-1781189730793",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-010",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "context": {
+          "reason": "emergency patient intake",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 49,
+      "eventSeq": 49,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-011",
+      "patientId": "P-ER-011",
+      "request": {
+        "requestId": "console-intake-emergency-1781189730960",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-011",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "context": {
+          "reason": "emergency patient intake",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 50,
+      "eventSeq": 50,
+      "accepted": true,
+      "event_id": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-ER-012",
+      "patientId": "P-ER-012",
+      "request": {
+        "requestId": "console-intake-emergency-1781189731260",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "ED_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-ER-012",
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "context": {
+          "reason": "emergency patient intake",
+          "entryDepartment": "emergency"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "ed_registration",
+        "to_room_id": "ed_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "ed_registration",
+        "toRoomId": "ed_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 51,
+      "eventSeq": 51,
+      "accepted": true,
+      "event_id": "ED_TO_DIAGNOSTIC_MOVE",
+      "eventId": "ED_TO_DIAGNOSTIC_MOVE",
+      "patient_id": "P-ER-006",
+      "patientId": "P-ER-006",
+      "request": {
+        "requestId": "console-1781190026929",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "ED_TO_DIAGNOSTIC_MOVE",
+        "patientId": "P-ER-006",
+        "fromRoomId": "ed_waiting",
+        "toRoomId": "ed_diagnostic",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escort_roles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen"
+        ],
+        "from_room_id": "ed_waiting",
+        "to_room_id": "ed_diagnostic",
+        "via_room_ids": [],
+        "final_form": "stretcher",
+        "patient_form_during_move": "stretcher"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen"
+        ],
+        "fromRoomId": "ed_waiting",
+        "toRoomId": "ed_diagnostic",
+        "viaRoomIds": [],
+        "finalForm": "stretcher",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "event_seq": 52,
+      "eventSeq": 52,
+      "accepted": true,
+      "event_id": "ED_TO_WARD_MOVE",
+      "eventId": "ED_TO_WARD_MOVE",
+      "patient_id": "P-ER-006",
+      "patientId": "P-ER-006",
+      "request": {
+        "requestId": "console-1781190050426",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "ED_TO_WARD_MOVE",
+        "patientId": "P-ER-006",
+        "fromRoomId": "ed_diagnostic",
+        "toRoomId": "ward_admission",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "wheelchair",
+        "escort_roles": [
+          "porter"
+        ],
+        "equipment": [],
+        "from_room_id": "ed_diagnostic",
+        "to_room_id": "ward_admission",
+        "via_room_ids": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_5"
+        ],
+        "final_form": "bed",
+        "patient_form_during_move": "wheelchair"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "wheelchair",
+        "escortRoles": [
+          "porter"
+        ],
+        "equipment": [],
+        "fromRoomId": "ed_diagnostic",
+        "toRoomId": "ward_admission",
+        "viaRoomIds": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_5"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "wheelchair"
+      }
+    },
+    {
+      "event_seq": 53,
+      "eventSeq": 53,
+      "accepted": true,
+      "event_id": "OP_TO_WARD_MOVE",
+      "eventId": "OP_TO_WARD_MOVE",
+      "patient_id": "P-OP-004",
+      "patientId": "P-OP-004",
+      "request": {
+        "requestId": "verify-auto-ward-bed",
+        "source": "codex-verification",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TO_WARD_MOVE",
+        "patientId": "P-OP-004",
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "ward_admission",
+        "context": {
+          "reason": "verify auto final ward bed"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escort_roles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "from_room_id": "consultation_a_2",
+        "to_room_id": "card_ward",
+        "requested_to_room_id": "ward_admission",
+        "via_room_ids": [
+          "elevator_2",
+          "elevator_5",
+          "ward_admission"
+        ],
+        "final_form": "bed",
+        "patient_form_during_move": "stretcher"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "card_ward",
+        "requestedToRoomId": "ward_admission",
+        "viaRoomIds": [
+          "elevator_2",
+          "elevator_5",
+          "ward_admission"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher"
+      }
+    },
+    {
+      "event_seq": 54,
+      "eventSeq": 54,
+      "accepted": true,
+      "event_id": "OP_TO_ICU_MOVE",
+      "eventId": "OP_TO_ICU_MOVE",
+      "patient_id": "P-ICU-001",
+      "patientId": "P-ICU-001",
+      "request": {
+        "requestId": "console-1781193628732",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TO_ICU_MOVE",
+        "patientId": "P-ICU-001",
+        "fromRoomId": "icu_beds_a",
+        "toRoomId": "icu_admission",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escort_roles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "from_room_id": "icu_beds_a",
+        "to_room_id": "icu_beds_a",
+        "requested_to_room_id": "icu_admission",
+        "via_room_ids": [
+          "elevator_2",
+          "elevator_3",
+          "icu_admission"
+        ],
+        "final_form": "bed",
+        "patient_form_during_move": "stretcher",
+        "porter_id": "porter-3f-04",
+        "porter_staff_id": "POT-3F-004",
+        "porter_name": "Porter Ana Liu",
+        "porter_start": {
+          "floor": 3,
+          "floorId": 3,
+          "tileX": 38.6,
+          "tileY": 4.5,
+          "x": 1235.2,
+          "y": 144.0
+        },
+        "porter_return": {
+          "floor": 3,
+          "floorId": 3,
+          "tileX": 37.5,
+          "tileY": 15.4,
+          "x": 1200.0,
+          "y": 492.8
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "fromRoomId": "icu_beds_a",
+        "toRoomId": "icu_beds_a",
+        "requestedToRoomId": "icu_admission",
+        "viaRoomIds": [
+          "elevator_2",
+          "elevator_3",
+          "icu_admission"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher",
+        "porterId": "porter-3f-04",
+        "porterStaffId": "POT-3F-004",
+        "porterName": "Porter Ana Liu",
+        "porterStart": {
+          "floor": 3,
+          "floorId": 3,
+          "tileX": 38.6,
+          "tileY": 4.5,
+          "x": 1235.2,
+          "y": 144.0
+        },
+        "porterReturn": {
+          "floor": 3,
+          "floorId": 3,
+          "tileX": 37.5,
+          "tileY": 15.4,
+          "x": 1200.0,
+          "y": 492.8
+        }
+      }
+    },
+    {
+      "event_seq": 55,
+      "eventSeq": 55,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-002",
+      "patientId": "P-OP-002",
+      "request": {
+        "requestId": "console-1781195215051",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-002",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 56,
+      "eventSeq": 56,
+      "accepted": true,
+      "event_id": "OP_PATIENT_EXIT_HOSPITAL",
+      "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+      "patient_id": "P-OP-002",
+      "patientId": "P-OP-002",
+      "request": {
+        "requestId": "console-1781195236216",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+        "patientId": "P-OP-002",
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "payment_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "consultation_a_2",
+        "to_room_id": "payment_2",
+        "requested_to_room_id": "payment_2",
+        "via_room_ids": [],
+        "final_form": "hidden",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "payment_2",
+        "requestedToRoomId": "payment_2",
+        "viaRoomIds": [],
+        "finalForm": "hidden",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 57,
+      "eventSeq": 57,
+      "accepted": true,
+      "event_id": "OP_PATIENT_EXIT_HOSPITAL",
+      "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+      "patient_id": "P-OP-002",
+      "patientId": "P-OP-002",
+      "request": {
+        "requestId": "console-1781195257050",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+        "patientId": "P-OP-002",
+        "fromRoomId": "payment_2",
+        "toRoomId": "ed_entrance",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "payment_2",
+        "to_room_id": "ed_entrance",
+        "requested_to_room_id": "ed_entrance",
+        "via_room_ids": [],
+        "final_form": "hidden",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "payment_2",
+        "toRoomId": "ed_entrance",
+        "requestedToRoomId": "ed_entrance",
+        "viaRoomIds": [],
+        "finalForm": "hidden",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 58,
+      "eventSeq": 58,
+      "accepted": true,
+      "event_id": "OP_PATIENT_EXIT_HOSPITAL",
+      "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+      "patient_id": "P-OP-013",
+      "patientId": "P-OP-013",
+      "request": {
+        "requestId": "console-1781195276316",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+        "patientId": "P-OP-013",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "hidden",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "hidden",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 59,
+      "eventSeq": 59,
+      "accepted": true,
+      "event_id": "OP_PATIENT_EXIT_HOSPITAL",
+      "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+      "patient_id": "P-OP-015",
+      "patientId": "P-OP-015",
+      "request": {
+        "requestId": "console-1781195280699",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+        "patientId": "P-OP-015",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "ed_entrance",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "ed_entrance",
+        "requested_to_room_id": "ed_entrance",
+        "via_room_ids": [],
+        "final_form": "hidden",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "ed_entrance",
+        "requestedToRoomId": "ed_entrance",
+        "viaRoomIds": [],
+        "finalForm": "hidden",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 60,
+      "eventSeq": 60,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-014",
+      "patientId": "P-OP-014",
+      "request": {
+        "requestId": "console-1781195282900",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-014",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 61,
+      "eventSeq": 61,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-016",
+      "patientId": "P-OP-016",
+      "request": {
+        "requestId": "console-1781195284699",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-016",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 62,
+      "eventSeq": 62,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-011",
+      "patientId": "P-OP-011",
+      "request": {
+        "requestId": "console-1781195286282",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-011",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 63,
+      "eventSeq": 63,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-009",
+      "patientId": "P-OP-009",
+      "request": {
+        "requestId": "console-1781195288433",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-009",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 64,
+      "eventSeq": 64,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-008",
+      "patientId": "P-OP-008",
+      "request": {
+        "requestId": "console-1781195289983",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-008",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 65,
+      "eventSeq": 65,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-018",
+      "patientId": "P-OP-018",
+      "request": {
+        "requestId": "console-1781195291516",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-018",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 66,
+      "eventSeq": 66,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-019",
+      "patientId": "P-OP-019",
+      "request": {
+        "requestId": "console-1781195293216",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-019",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 67,
+      "eventSeq": 67,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-012",
+      "patientId": "P-OP-012",
+      "request": {
+        "requestId": "console-1781195295066",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-012",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 68,
+      "eventSeq": 68,
+      "accepted": true,
+      "event_id": "OP_CONSULT_TO_PAYMENT",
+      "eventId": "OP_CONSULT_TO_PAYMENT",
+      "patient_id": "P-ST-OP-003",
+      "patientId": "P-ST-OP-003",
+      "request": {
+        "requestId": "console-1781195423201",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_CONSULT_TO_PAYMENT",
+        "patientId": "P-ST-OP-003",
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "payment_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "consultation_a_2",
+        "to_room_id": "payment_2",
+        "requested_to_room_id": "payment_2",
+        "via_room_ids": [],
+        "final_form": "walking",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "payment_2",
+        "requestedToRoomId": "payment_2",
+        "viaRoomIds": [],
+        "finalForm": "walking",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "eventSeq": 69,
+      "event_seq": 69,
+      "accepted": true,
+      "eventId": "ROOM_QUEUE_REPAIR",
+      "event_id": "ROOM_QUEUE_REPAIR",
+      "patientId": null,
+      "patient_id": null,
+      "snapshotRefresh": true,
+      "message": "Normalized busy outpatient consultation rooms and queued overflow patients.",
+      "request": {
+        "source": "maintenance",
+        "operatorId": "codex",
+        "timestamp": 1781196213
+      }
+    },
+    {
+      "event_seq": 70,
+      "eventSeq": 70,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-003",
+      "patientId": "P-OP-003",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-003"
+      }
+    },
+    {
+      "event_seq": 71,
+      "eventSeq": 71,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-001",
+      "patientId": "P-OP-001",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-001"
+      }
+    },
+    {
+      "event_seq": 72,
+      "eventSeq": 72,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-ST-OP-002",
+      "patientId": "P-ST-OP-002",
+      "request": {
+        "source": "console",
+        "patientId": "P-ST-OP-002"
+      }
+    },
+    {
+      "event_seq": 73,
+      "eventSeq": 73,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-ST-OP-004",
+      "patientId": "P-ST-OP-004",
+      "request": {
+        "source": "console",
+        "patientId": "P-ST-OP-004"
+      }
+    },
+    {
+      "event_seq": 74,
+      "eventSeq": 74,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-ST-OP-005",
+      "patientId": "P-ST-OP-005",
+      "request": {
+        "source": "console",
+        "patientId": "P-ST-OP-005"
+      }
+    },
+    {
+      "event_seq": 75,
+      "eventSeq": 75,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-009",
+      "patientId": "P-OP-009",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-009"
+      }
+    },
+    {
+      "event_seq": 76,
+      "eventSeq": 76,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-010",
+      "patientId": "P-OP-010",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-010"
+      }
+    },
+    {
+      "event_seq": 77,
+      "eventSeq": 77,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-011",
+      "patientId": "P-OP-011",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-011"
+      }
+    },
+    {
+      "event_seq": 78,
+      "eventSeq": 78,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-012",
+      "patientId": "P-OP-012",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-012"
+      }
+    },
+    {
+      "event_seq": 79,
+      "eventSeq": 79,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-014",
+      "patientId": "P-OP-014",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-014"
+      }
+    },
+    {
+      "event_seq": 80,
+      "eventSeq": 80,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-016",
+      "patientId": "P-OP-016",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-016"
+      }
+    },
+    {
+      "event_seq": 81,
+      "eventSeq": 81,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-017",
+      "patientId": "P-OP-017",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-017"
+      }
+    },
+    {
+      "event_seq": 82,
+      "eventSeq": 82,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-018",
+      "patientId": "P-OP-018",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-018"
+      }
+    },
+    {
+      "event_seq": 83,
+      "eventSeq": 83,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-019",
+      "patientId": "P-OP-019",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-019"
+      }
+    },
+    {
+      "eventSeq": 84,
+      "event_seq": 84,
+      "accepted": true,
+      "eventId": "RELATIVE_POSITION_REFLOW",
+      "event_id": "RELATIVE_POSITION_REFLOW",
+      "patientId": null,
+      "patient_id": null,
+      "snapshotRefresh": true,
+      "message": "Reflowed room occupants using room-relative slots to reduce overlap.",
+      "request": {
+        "source": "maintenance",
+        "operatorId": "codex",
+        "timestamp": 1781197053
+      }
+    },
+    {
+      "event_seq": 85,
+      "eventSeq": 85,
+      "accepted": true,
+      "event_id": "PATIENT_DELETE",
+      "eventId": "PATIENT_DELETE",
+      "patient_id": "P-OP-013",
+      "patientId": "P-OP-013",
+      "request": {
+        "source": "console",
+        "patientId": "P-OP-013"
+      }
+    },
+    {
+      "event_seq": 86,
+      "eventSeq": 86,
+      "accepted": false,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-020",
+      "patientId": "P-OP-020",
+      "request": {
+        "requestId": "console-1781197546991",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-020",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "reasonCode": "CONSULT_ROOM_BUSY_QUEUED",
+      "message": "Target consultation room is occupied; patient has been added to this room queue."
+    },
+    {
+      "event_seq": 87,
+      "eventSeq": 87,
+      "accepted": true,
+      "event_id": "OP_CONSULT_TO_PAYMENT",
+      "eventId": "OP_CONSULT_TO_PAYMENT",
+      "patient_id": "P-OP-008",
+      "patientId": "P-OP-008",
+      "request": {
+        "requestId": "console-1781197560206",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_CONSULT_TO_PAYMENT",
+        "patientId": "P-OP-008",
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "payment_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "consultation_a_2",
+        "to_room_id": "payment_2",
+        "requested_to_room_id": "payment_2",
+        "via_room_ids": [],
+        "final_form": "walking",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "consultation_a_2",
+        "toRoomId": "payment_2",
+        "requestedToRoomId": "payment_2",
+        "viaRoomIds": [],
+        "finalForm": "walking",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 88,
+      "eventSeq": 88,
+      "accepted": true,
+      "event_id": "CONSULT_QUEUE_ADVANCE",
+      "eventId": "CONSULT_QUEUE_ADVANCE",
+      "patient_id": "P-OP-020",
+      "patientId": "P-OP-020",
+      "request": {
+        "source": "consult-queue",
+        "operatorId": "hospital-backend",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-020",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2"
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "consultation_a_2",
+        "requested_to_room_id": "consultation_a_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking"
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "consultation_a_2",
+        "requestedToRoomId": "consultation_a_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking"
+      }
+    },
+    {
+      "event_seq": 89,
+      "eventSeq": 89,
+      "accepted": true,
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "patient_id": "P-OP-021",
+      "patientId": "P-OP-021",
+      "request": {
+        "requestId": "console-intake-outpatient-1781197652957",
+        "source": "console-intake",
+        "operatorId": "manual-admin",
+        "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+        "patientId": "P-OP-021",
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "context": {
+          "reason": "outpatient patient intake",
+          "entryDepartment": "outpatient"
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "registration_2",
+        "to_room_id": "outpatient_waiting",
+        "requested_to_room_id": "outpatient_waiting",
+        "via_room_ids": [],
+        "final_form": "waiting",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "registration_2",
+        "toRoomId": "outpatient_waiting",
+        "requestedToRoomId": "outpatient_waiting",
+        "viaRoomIds": [],
+        "finalForm": "waiting",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 90,
+      "eventSeq": 90,
+      "accepted": true,
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "patient_id": "P-OP-021",
+      "patientId": "P-OP-021",
+      "request": {
+        "requestId": "console-1781197671140",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+        "patientId": "P-OP-021",
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "fever_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "outpatient_waiting",
+        "to_room_id": "fever_2",
+        "requested_to_room_id": "fever_2",
+        "via_room_ids": [],
+        "final_form": "consultation",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "outpatient_waiting",
+        "toRoomId": "fever_2",
+        "requestedToRoomId": "fever_2",
+        "viaRoomIds": [],
+        "finalForm": "consultation",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 91,
+      "eventSeq": 91,
+      "accepted": true,
+      "event_id": "OP_CONSULT_TO_PHARMACY",
+      "eventId": "OP_CONSULT_TO_PHARMACY",
+      "patient_id": "P-OP-021",
+      "patientId": "P-OP-021",
+      "request": {
+        "requestId": "console-1781197704990",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "OP_CONSULT_TO_PHARMACY",
+        "patientId": "P-OP-021",
+        "fromRoomId": "fever_2",
+        "toRoomId": "pharmacy_2",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escort_roles": [],
+        "equipment": [],
+        "from_room_id": "fever_2",
+        "to_room_id": "pharmacy_2",
+        "requested_to_room_id": "pharmacy_2",
+        "via_room_ids": [],
+        "final_form": "walking",
+        "patient_form_during_move": "walking",
+        "porter_id": null,
+        "porter_staff_id": null,
+        "porter_name": null,
+        "porter_start": null,
+        "porter_return": null
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "walking",
+        "escortRoles": [],
+        "equipment": [],
+        "fromRoomId": "fever_2",
+        "toRoomId": "pharmacy_2",
+        "requestedToRoomId": "pharmacy_2",
+        "viaRoomIds": [],
+        "finalForm": "walking",
+        "patientFormDuringMove": "walking",
+        "porterId": null,
+        "porterStaffId": null,
+        "porterName": null,
+        "porterStart": null,
+        "porterReturn": null
+      }
+    },
+    {
+      "event_seq": 92,
+      "eventSeq": 92,
+      "accepted": true,
+      "event_id": "ED_TO_WARD_MOVE",
+      "eventId": "ED_TO_WARD_MOVE",
+      "patient_id": "P-ER-003",
+      "patientId": "P-ER-003",
+      "request": {
+        "requestId": "console-1781197751740",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "ED_TO_WARD_MOVE",
+        "patientId": "P-ER-003",
+        "fromRoomId": "ed_waiting",
+        "toRoomId": "ward_admission",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escort_roles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "from_room_id": "ed_waiting",
+        "to_room_id": "gastro_ward",
+        "requested_to_room_id": "ward_admission",
+        "via_room_ids": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_5",
+          "ward_admission"
+        ],
+        "final_form": "bed",
+        "patient_form_during_move": "stretcher",
+        "porter_id": "porter-1f-07",
+        "porter_staff_id": "POT-1F-007",
+        "porter_name": "Porter Kai Song",
+        "porter_start": {
+          "floor": 1,
+          "floorId": 1,
+          "tileX": 23.0,
+          "tileY": 26.4,
+          "x": 736.0,
+          "y": 844.8
+        },
+        "porter_return": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 63.5,
+          "tileY": 15.4,
+          "x": 2032.0,
+          "y": 492.8
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "ed_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "fromRoomId": "ed_waiting",
+        "toRoomId": "gastro_ward",
+        "requestedToRoomId": "ward_admission",
+        "viaRoomIds": [
+          "ed_handoff",
+          "elevator_1",
+          "elevator_5",
+          "ward_admission"
+        ],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher",
+        "porterId": "porter-1f-07",
+        "porterStaffId": "POT-1F-007",
+        "porterName": "Porter Kai Song",
+        "porterStart": {
+          "floor": 1,
+          "floorId": 1,
+          "tileX": 23.0,
+          "tileY": 26.4,
+          "x": 736.0,
+          "y": 844.8
+        },
+        "porterReturn": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 63.5,
+          "tileY": 15.4,
+          "x": 2032.0,
+          "y": 492.8
+        }
+      }
+    },
+    {
+      "event_seq": 93,
+      "eventSeq": 93,
+      "accepted": true,
+      "event_id": "WARD_TO_DIAGNOSTIC_MOVE",
+      "eventId": "WARD_TO_DIAGNOSTIC_MOVE",
+      "patient_id": "P-ER-003",
+      "patientId": "P-ER-003",
+      "request": {
+        "requestId": "console-1781198089142",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "WARD_TO_DIAGNOSTIC_MOVE",
+        "patientId": "P-ER-003",
+        "fromRoomId": "gastro_ward",
+        "toRoomId": "diagnostic_center",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escort_roles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "from_room_id": "gastro_ward",
+        "to_room_id": "diagnostic_center",
+        "requested_to_room_id": "diagnostic_center",
+        "via_room_ids": [],
+        "final_form": "stretcher",
+        "patient_form_during_move": "stretcher",
+        "porter_id": "porter-1f-07",
+        "porter_staff_id": "POT-1F-007",
+        "porter_name": "Porter Kai Song",
+        "porter_start": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 64.6,
+          "tileY": 15.4,
+          "x": 2067.2,
+          "y": 492.8
+        },
+        "porter_return": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 37.5,
+          "tileY": 26.6,
+          "x": 1200.0,
+          "y": 851.2
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "fromRoomId": "gastro_ward",
+        "toRoomId": "diagnostic_center",
+        "requestedToRoomId": "diagnostic_center",
+        "viaRoomIds": [],
+        "finalForm": "stretcher",
+        "patientFormDuringMove": "stretcher",
+        "porterId": "porter-1f-07",
+        "porterStaffId": "POT-1F-007",
+        "porterName": "Porter Kai Song",
+        "porterStart": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 64.6,
+          "tileY": 15.4,
+          "x": 2067.2,
+          "y": 492.8
+        },
+        "porterReturn": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 37.5,
+          "tileY": 26.6,
+          "x": 1200.0,
+          "y": 851.2
+        }
+      }
+    },
+    {
+      "event_seq": 94,
+      "eventSeq": 94,
+      "accepted": true,
+      "event_id": "WARD_DIAGNOSTIC_RETURN",
+      "eventId": "WARD_DIAGNOSTIC_RETURN",
+      "patient_id": "P-ER-003",
+      "patientId": "P-ER-003",
+      "request": {
+        "requestId": "console-1781198119324",
+        "source": "console",
+        "operatorId": "manual-admin",
+        "eventId": "WARD_DIAGNOSTIC_RETURN",
+        "patientId": "P-ER-003",
+        "fromRoomId": "diagnostic_center",
+        "toRoomId": "gastro_ward",
+        "context": {
+          "reason": ""
+        }
+      },
+      "animation_plan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escort_roles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "from_room_id": "diagnostic_center",
+        "to_room_id": "gastro_ward",
+        "requested_to_room_id": "gastro_ward",
+        "via_room_ids": [],
+        "final_form": "bed",
+        "patient_form_during_move": "stretcher",
+        "porter_id": "porter-1f-07",
+        "porter_staff_id": "POT-1F-007",
+        "porter_name": "Porter Kai Song",
+        "porter_start": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 36.0,
+          "tileY": 26.6,
+          "x": 1152.0,
+          "y": 851.2
+        },
+        "porter_return": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 63.5,
+          "tileY": 15.4,
+          "x": 2032.0,
+          "y": 492.8
+        }
+      },
+      "animationPlan": {
+        "kind": "patient-move",
+        "transport": "stretcher",
+        "escortRoles": [
+          "porter",
+          "ward_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "fromRoomId": "diagnostic_center",
+        "toRoomId": "gastro_ward",
+        "requestedToRoomId": "gastro_ward",
+        "viaRoomIds": [],
+        "finalForm": "bed",
+        "patientFormDuringMove": "stretcher",
+        "porterId": "porter-1f-07",
+        "porterStaffId": "POT-1F-007",
+        "porterName": "Porter Kai Song",
+        "porterStart": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 36.0,
+          "tileY": 26.6,
+          "x": 1152.0,
+          "y": 851.2
+        },
+        "porterReturn": {
+          "floor": 5,
+          "floorId": 5,
+          "tileX": 63.5,
+          "tileY": 15.4,
+          "x": 2032.0,
+          "y": 492.8
+        }
+      }
+    }
+  ],
+  "last_seq": 6
+}

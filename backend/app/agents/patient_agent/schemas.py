@@ -5,6 +5,26 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class PatientRareEventProfile(BaseModel):
+    patient_special_event_enabled: bool = False
+    patient_special_event_type: str | None = None
+    special_event_intensity: str | None = None
+    special_event_reveal_phase: str | None = None
+    report_special_signal_enabled: bool = False
+    report_special_signal_type: str | None = None
+    triggered_by: str = "none"
+    event_type: str | None = None
+    target_department: str | None = None
+    target_department_id: str | None = None
+    target_department_reason: str | None = None
+    patient_signal_instruction: str | None = None
+    report_signal_instruction: str | None = None
+    report_escalation_target: str | None = None
+    report_escalation_reason: str | None = None
+    alignment_keywords: list[str] = Field(default_factory=list)
+    seed: str | None = None
+
+
 class PatientProfileCard(BaseModel):
     name: str
     age: int
@@ -33,6 +53,7 @@ class PatientCaseCard(BaseModel):
     hidden_diagnosis_hint: str
     patient_goals: list[str] = Field(default_factory=list)
     forbidden_reveals: list[str] = Field(default_factory=list)
+    rare_event_profile: PatientRareEventProfile | None = None
 
 
 class PatientReplyContext(BaseModel):

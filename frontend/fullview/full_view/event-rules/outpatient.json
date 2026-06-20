@@ -1,0 +1,632 @@
+{
+  "mode": "patient-movement-only",
+  "id": "outpatient",
+  "label": "Outpatient Patient Moves",
+  "sourceFile": "outpatient-move-rules",
+  "updatedAt": "2026-06-11T10:11:36.749Z",
+  "rules": [
+    {
+      "id": "outpatient-move-1",
+      "name": "门诊登记后前往分诊或候诊",
+      "eventId": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING",
+      "classification": "门诊移动",
+      "trigger": "患者完成挂号登记。",
+      "rooms": [
+        "registration_2",
+        "triage_2",
+        "outpatient_waiting"
+      ],
+      "roomsText": "registration_2、triage_2、outpatient_waiting",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "患者在 registration_2；身份信息完整；分诊台可用则去 triage_2，否则去 outpatient_waiting。",
+      "actions": "移动患者到 triage_2 或 outpatient_waiting。",
+      "successState": "患者状态为 REGISTERED；当前位置更新。",
+      "blocking": "登记信息缺失时患者留在 registration_2。",
+      "visualization": "患者从 registration_2 走到 triage_2 或 outpatient_waiting。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "registration_2",
+        "to": [
+          "triage_2",
+          "outpatient_waiting"
+        ],
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "waiting",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "waiting",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_REGISTRATION_TO_TRIAGE_OR_WAITING"
+    },
+    {
+      "id": "outpatient-move-2",
+      "name": "门诊分诊后前往对应诊室",
+      "eventId": "OP_TRIAGE_TO_CONSULT_ROOM",
+      "classification": "门诊移动",
+      "trigger": "患者完成门诊分诊，需要进入专科诊室。",
+      "rooms": [
+        "triage_2",
+        "outpatient_waiting",
+        "consultation_a_2",
+        "consultation_b_2",
+        "internal_2",
+        "surgery_2",
+        "pediatrics_2",
+        "fever_2",
+        "obgyn_2"
+      ],
+      "roomsText": "triage_2、outpatient_waiting、consultation_a_2、consultation_b_2、internal_2、surgery_2、pediatrics_2、fever_2、obgyn_2",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "目标诊室空闲；患者已 REGISTERED 或 TRIAGED。",
+      "actions": "按推荐科室移动患者到目标诊室。",
+      "successState": "患者状态变为 IN_CONSULTATION；候诊队列减少；诊室占用。",
+      "blocking": "目标诊室占用时患者留在 outpatient_waiting。",
+      "visualization": "患者从 waiting/triage 走到对应小诊室，与医生交谈。",
+      "movement": {
+        "schema": "patient-move",
+        "from": [
+          "triage_2",
+          "outpatient_waiting"
+        ],
+        "to": [
+          "consultation_a_2",
+          "consultation_b_2",
+          "internal_2",
+          "surgery_2",
+          "pediatrics_2",
+          "fever_2",
+          "obgyn_2"
+        ],
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "consultation",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "consultation",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_TRIAGE_TO_CONSULT_ROOM"
+    },
+    {
+      "id": "outpatient-move-3",
+      "name": "诊室开检查后前往缴费",
+      "eventId": "OP_CONSULT_TO_PAYMENT",
+      "classification": "门诊移动",
+      "trigger": "医生开立检查或治疗项目，需要先缴费。",
+      "rooms": [
+        "consultation_a_2",
+        "consultation_b_2",
+        "internal_2",
+        "surgery_2",
+        "pediatrics_2",
+        "fever_2",
+        "obgyn_2",
+        "payment_2"
+      ],
+      "roomsText": "consultation_a_2、consultation_b_2、internal_2、surgery_2、pediatrics_2、fever_2、obgyn_2、payment_2",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "医嘱存在；缴费窗口可服务或可排队。",
+      "actions": "释放诊室并移动患者到 payment_2。",
+      "successState": "患者进入待检查缴费状态；原诊室释放。",
+      "blocking": "未找到应缴项目时患者留在原诊室。",
+      "visualization": "患者从诊室走到 payment_2。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_consult_room",
+        "to": "payment_2",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "walking",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "walking",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_CONSULT_TO_PAYMENT"
+    },
+    {
+      "id": "outpatient-move-4",
+      "name": "缴费后前往检验科",
+      "eventId": "OP_PAYMENT_TO_LAB",
+      "classification": "门诊移动",
+      "trigger": "患者检查项目缴费完成。",
+      "rooms": [
+        "payment_2",
+        "lab_2"
+      ],
+      "roomsText": "payment_2、lab_2",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "检查项目已支付；lab_2 可服务或可排队。",
+      "actions": "移动患者到 lab_2。",
+      "successState": "患者状态变为 IN_EXAM。",
+      "blocking": "lab_2 忙时患者进入检查等待队列。",
+      "visualization": "患者从 payment_2 走到 lab_2。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "payment_2",
+        "to": "lab_2",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "walking",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "walking",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_PAYMENT_TO_LAB"
+    },
+    {
+      "id": "outpatient-move-5",
+      "name": "检查完成后返回候诊区等待复诊",
+      "eventId": "OP_LAB_RETURN_TO_WAITING",
+      "classification": "门诊移动",
+      "trigger": "门诊检查完成并生成或等待结果。",
+      "rooms": [
+        "lab_2",
+        "outpatient_waiting"
+      ],
+      "roomsText": "lab_2、outpatient_waiting",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "患者在 lab_2；检查任务完成。",
+      "actions": "移动患者回 outpatient_waiting。",
+      "successState": "患者进入复诊队列。",
+      "blocking": "检查结果异常或身份核验失败时患者留在 lab_2。",
+      "visualization": "患者从 lab_2 返回 outpatient_waiting。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "lab_2",
+        "to": "outpatient_waiting",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "waiting",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "waiting",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_LAB_RETURN_TO_WAITING"
+    },
+    {
+      "id": "outpatient-move-6",
+      "name": "复诊叫号进入原诊室",
+      "eventId": "OP_SECOND_CONSULT_MOVE",
+      "classification": "门诊移动",
+      "trigger": "检查结果可用，患者等待医生复诊。",
+      "rooms": [
+        "outpatient_waiting",
+        "consultation_a_2",
+        "consultation_b_2",
+        "internal_2",
+        "surgery_2",
+        "pediatrics_2",
+        "fever_2",
+        "obgyn_2"
+      ],
+      "roomsText": "outpatient_waiting、consultation_a_2、consultation_b_2、internal_2、surgery_2、pediatrics_2、fever_2、obgyn_2",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "检查结果可用；目标诊室空闲。",
+      "actions": "从复诊队列移动患者到原诊室或对应专科诊室。",
+      "successState": "患者状态变为 IN_CONSULTATION。",
+      "blocking": "诊室占用时患者继续留在 outpatient_waiting。",
+      "visualization": "患者从 waiting 回到诊室。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "outpatient_waiting",
+        "to": "current_consult_room",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "consultation",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "consultation",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_SECOND_CONSULT_MOVE"
+    },
+    {
+      "id": "outpatient-move-7",
+      "name": "诊疗后前往药房",
+      "eventId": "OP_CONSULT_TO_PHARMACY",
+      "classification": "门诊移动",
+      "trigger": "医生开立处方且患者完成必要支付。",
+      "rooms": [
+        "consultation_a_2",
+        "consultation_b_2",
+        "internal_2",
+        "surgery_2",
+        "pediatrics_2",
+        "fever_2",
+        "obgyn_2",
+        "pharmacy_2"
+      ],
+      "roomsText": "consultation_a_2、consultation_b_2、internal_2、surgery_2、pediatrics_2、fever_2、obgyn_2、pharmacy_2",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "处方存在；药费已支付；药房可服务或可排队。",
+      "actions": "释放诊室并移动患者到 pharmacy_2。",
+      "successState": "患者进入取药流程。",
+      "blocking": "处方缺失、未支付或库存不足时患者不移动。",
+      "visualization": "患者从诊室走到 pharmacy_2。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_consult_room",
+        "to": "pharmacy_2",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "walking",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "walking",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_CONSULT_TO_PHARMACY"
+    },
+    {
+      "id": "outpatient-move-8",
+      "name": "门诊患者完成就诊离开医院",
+      "eventId": "OP_PATIENT_EXIT_HOSPITAL",
+      "classification": "门诊离院",
+      "trigger": "患者无待检查、待缴费、待取药或待转诊事项。",
+      "rooms": [
+        "pharmacy_2",
+        "outpatient_waiting",
+        "consultation_a_2",
+        "consultation_b_2"
+      ],
+      "roomsText": "pharmacy_2、outpatient_waiting、consultation_a_2、consultation_b_2",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "所有门诊任务完成。",
+      "actions": "患者从当前房间移动至楼层出口或隐藏。",
+      "successState": "患者状态变为 COMPLETED；相关资源释放。",
+      "blocking": "仍有未完成事项时禁止离院。",
+      "visualization": "患者从当前房间离开地图。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_room",
+        "to": "exit",
+        "via": [],
+        "transport": "walking",
+        "acuity": "routine",
+        "patientFormDuringMove": "walking",
+        "finalForm": "hidden",
+        "escortRequired": false,
+        "escortRoles": [],
+        "equipment": [],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": false,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": false,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "walking",
+        "final_form": "hidden",
+        "escort_required": false,
+        "escort_roles": []
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_PATIENT_EXIT_HOSPITAL"
+    },
+    {
+      "id": "outpatient-move-9",
+      "name": "门诊转住院",
+      "eventId": "OP_TO_WARD_MOVE",
+      "classification": "跨部门移动",
+      "trigger": "门诊医生判断患者需要入院。",
+      "rooms": [
+        "doctor_entry_2",
+        "elevator_2",
+        "elevator_5",
+        "ward_admission"
+      ],
+      "roomsText": "doctor_entry_2、elevator_2、elevator_5、ward_admission",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "住院部有匹配床位；入院资料完整；患者适合普通转运。",
+      "actions": "锁定住院床位，患者经 elevator_2 到 elevator_5，再到 ward_admission 或目标病房。",
+      "successState": "患者状态变为 ADMITTED；门诊诊室释放；住院床位占用。",
+      "blocking": "住院无床时患者留在门诊或进入待入院队列。",
+      "visualization": "患者从 2F 经电梯移动到 5F。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_consult_room",
+        "to": "ward_admission",
+        "via": [
+          "elevator_2",
+          "elevator_5"
+        ],
+        "transport": "stretcher",
+        "acuity": "routine",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": false
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "continue_without_escort"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "outpatient_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_TO_WARD_MOVE"
+    },
+    {
+      "id": "outpatient-move-10",
+      "name": "门诊转 ICU",
+      "eventId": "OP_TO_ICU_MOVE",
+      "classification": "跨部门移动",
+      "trigger": "门诊发现极危重患者，需要直接 ICU 接收。",
+      "rooms": [
+        "triage_2",
+        "elevator_2",
+        "elevator_3",
+        "icu_admission",
+        "icu_beds_a",
+        "icu_beds_b",
+        "icu_isolation"
+      ],
+      "roomsText": "triage_2、elevator_2、elevator_3、icu_admission、icu_beds_a、icu_beds_b、icu_isolation",
+      "agents": "患者、医生/护士、BedManager 或叫号/转运系统。",
+      "prechecks": "ICU 有空床；ICU 接收确认；患者适合转运。",
+      "actions": "锁定 ICU 床位，患者经 elevator_2 到 elevator_3，再进入 ICU。",
+      "successState": "患者状态变为 ADMITTED；ICU 床位占用；门诊资源释放。",
+      "blocking": "ICU 满床时患者留在门诊或转急诊抢救。",
+      "visualization": "患者以 stretcher 形式从 2F 转到 3F ICU。",
+      "movement": {
+        "schema": "patient-move",
+        "from": "current_room",
+        "to": "icu_admission",
+        "via": [
+          "elevator_2",
+          "elevator_3"
+        ],
+        "transport": "stretcher",
+        "acuity": "critical",
+        "patientFormDuringMove": "stretcher",
+        "finalForm": "bed",
+        "escortRequired": true,
+        "escortRoles": [
+          "porter",
+          "outpatient_nurse"
+        ],
+        "equipment": [
+          "portable_monitor",
+          "oxygen",
+          "transport_bag"
+        ],
+        "pathPolicy": {
+          "requiresPath": true,
+          "useElevator": true,
+          "avoidWalls": true,
+          "hallwayPreference": "center",
+          "stopAtDoorBeforeEntering": true
+        },
+        "resourcePolicy": {
+          "lockBeforeMove": true,
+          "releaseSourceOnArrival": true,
+          "occupyTargetOnArrival": true,
+          "keepSourceReservedUntilArrival": true
+        },
+        "failurePolicy": {
+          "onNoPath": "stay_source",
+          "onResourceBlocked": "stay_source",
+          "onEscortUnavailable": "stay_source"
+        },
+        "patient_form_during_move": "stretcher",
+        "final_form": "bed",
+        "escort_required": true,
+        "escort_roles": [
+          "porter",
+          "outpatient_nurse"
+        ]
+      },
+      "sourceFile": "patient-movement-curated",
+      "event_id": "OP_TO_ICU_MOVE"
+    }
+  ]
+}

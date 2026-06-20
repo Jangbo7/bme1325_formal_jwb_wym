@@ -66,6 +66,7 @@ class StateTransitionEvent(str, Enum):
     PAY_MEDICAL = "pay_medical"
     PLAN_DISPOSITION = "plan_disposition"
     CHOOSE_PHARMACY = "choose_pharmacy"
+    DISPENSE_MEDICATION = "dispense_medication"
     CHOOSE_OUTPATIENT_TREATMENT = "choose_outpatient_treatment"
     CHOOSE_FOLLOWUP_BOOKING = "choose_followup_booking"
     CHOOSE_REFERRAL = "choose_referral"

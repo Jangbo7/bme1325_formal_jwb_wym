@@ -1,3 +1,4 @@
+from app.agents.department_runtime.prompting import build_shared_consultation_user_prompt
 from app.agents.internal_medicine.prompts import build_follow_up_llm_messages as build_internal_follow_up_llm_messages
 from app.agents.surgery.prompts import (
     build_consultation_system_prompt as build_surgery_system_prompt,
@@ -107,3 +108,34 @@ def test_internal_medicine_round2_followup_prompt_remains_chinese():
     assert "二轮" in messages[0]["content"]
     assert "问诊轮次" in messages[1]["content"]
     assert "second-round follow-up assistant" not in messages[0]["content"]
+
+
+def test_shared_prompt_marks_referral_handoff_as_fresh_receiving_doctor_visit():
+    prompt = build_shared_consultation_user_prompt(
+        {
+            "profile": {"name": "Patient"},
+            "clinical_memory": {"chief_complaint": None, "symptoms": []},
+        },
+        "Pain is still present today.",
+        ["chief_complaint"],
+        payload={
+            "consultation_round": 1,
+            "consultation_context": {
+                "intake_mode": "referral_handoff",
+                "doctor_memory_policy": "chart_only",
+            },
+            "chart_view": {
+                "handoff": {
+                    "special_event_type": "specialty_referral",
+                    "recommended_department": "Surgery",
+                }
+            },
+        },
+        language="en",
+        round1_response_keys="department, priority",
+        default_response_keys="primary_disposition",
+    )
+
+    assert "receiving-doctor consultation after referral" in prompt
+    assert "Consultation context" in prompt
+    assert "Doctor chart view" in prompt

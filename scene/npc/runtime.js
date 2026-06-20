@@ -714,12 +714,12 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
   function createHospitalNpc(patient) {
     const spawnOffsets = [
       { x: 0, y: 0 },
-      { x: 26, y: 18 },
-      { x: -26, y: 20 },
-      { x: 34, y: -14 },
-      { x: -34, y: -12 },
-      { x: 12, y: 30 },
-      { x: -12, y: 28 },
+
+      { x: 18, y: 12 },
+      { x: -18, y: 14 },
+      { x: 24, y: -8 },
+      { x: -24, y: -6 },
+
     ];
     const offset = spawnOffsets[hospitalSpawnSequence % spawnOffsets.length];
     hospitalSpawnSequence += 1;
@@ -757,11 +757,13 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
       removeOnArrival: false,
       statusSummary: "",
       backendTargetKey: "",
+
       stepSeconds: 2,
       nextStepAt: "",
       backendPhase: "",
       backendRuntimeStatus: "",
       arrivedAtTargetAt: 0,
+
     };
   }
 
@@ -786,23 +788,12 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
 
   function assignHospitalNpcDestination(npc, patient) {
     npc.waitLabel = patient.displayLabel || npc.waitLabel;
-    npc.stepSeconds = Number.isFinite(Number(patient.stepSeconds)) ? Math.max(0.1, Number(patient.stepSeconds)) : 2;
-    npc.speed = patient.finished ? 72 : Math.max(48, Math.min(160, 220 / npc.stepSeconds));
+
+    npc.speed = patient.finished ? 62 : 48;
     npc.statusSummary = patient.statusSummary || "";
-    npc.nextStepAt = patient.nextStepAt || "";
-    npc.backendPhase = patient.phase || "";
-    npc.backendRuntimeStatus = patient.runtimeStatus || "";
-    const nextTargetKey = `${patient.roomKind}|${patient.finished ? "finished" : "active"}|${patient.visitState}|${patient.currentNodeId || ""}|${patient.targetNodeId || ""}|${patient.nextStepAt || ""}`;
+    const nextTargetKey = `${patient.roomKind}|${patient.finished ? "finished" : "active"}|${patient.visitState}|${patient.currentNodeId || ""}|${patient.targetNodeId || ""}`;
     if (npc.backendTargetKey === nextTargetKey) return;
-    if (
-      npc.targetRoomKind === patient.roomKind
-      && npc.targetRoomId
-      && !patient.finished
-      && npc.path.length
-    ) {
-      npc.backendTargetKey = nextTargetKey;
-      return;
-    }
+
     npc.backendTargetKey = nextTargetKey;
     if (patient.finished) {
       assignDestinationToPoint(
@@ -822,7 +813,9 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
     npc.targetRoomKind = patient.roomKind;
     npc.removeOnArrival = false;
     npc.blockedMs = 0;
+
     npc.arrivedAtTargetAt = 0;
+
   }
 
   function syncHospitalPatients(scenePatients = []) {
@@ -909,7 +902,9 @@ export function createNpcRuntime({ rooms, roomBounds, doors, canMoveTo, canPathf
       npc.targetRoomId = null;
       npc.targetRoomKind = null;
       npc.blockedMs = 0;
+
       npc.arrivedAtTargetAt = performance.now();
+
     }
   }
 

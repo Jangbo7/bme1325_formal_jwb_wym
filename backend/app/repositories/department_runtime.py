@@ -39,7 +39,7 @@ class DepartmentRuntimeRepository:
                     current_counterparty, current_dialogue_preview, entered_department_at, updated_at,
                     source_of_truth_version, finished_at, phase, status, last_error, step_count, next_step_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+
                 ON CONFLICT(patient_id, visit_id) DO UPDATE SET
                     assigned_department_id = excluded.assigned_department_id,
                     assigned_department_name = excluded.assigned_department_name,

@@ -156,8 +156,12 @@ def test_multi_patient_debug_legacy_mode_supports_configured_limit_and_departmen
     assert any((item["step_count"] or 0) > 0 for item in snapshot["patients"])
     assert snapshot["supervisor_mode"] == "engine_driven"
     assert snapshot["fairness_policy"] == "oldest_due_first"
+    assert snapshot["currently_blocked_patients"] >= 0
     for department_id in department_ids:
         assert snapshot["department_coverage"].get(department_id, 0) >= 1
+    assigned_department_ids = {item["assigned_department_id"] for item in snapshot["patients"]}
+    for department_id in department_ids:
+        assert department_id in assigned_department_ids
 
     stop_resp = post_json(client, "/api/v1/multi-patient-debug/stop")
     assert stop_resp.status_code == 200
@@ -228,12 +232,15 @@ def test_multi_patient_debug_probabilistic_mode_zero_probability_forces_all_offl
     assert snapshot["active_count"] <= 4
     assert len(snapshot["patients"]) == snapshot["total_spawned"]
     assert all(item["mode"] == "legacy_probabilistic_llm" for item in snapshot["patients"])
+    assert all(item["patient_source"] == "scripted" for item in snapshot["patients"])
     assert all(item["llm_mode"] == "offline" for item in snapshot["patients"])
     assert all(item["llm_probability"] == 0.0 for item in snapshot["patients"])
 
 
-def test_multi_patient_debug_probabilistic_mode_one_probability_forces_all_online(tmp_path, monkeypatch):
+def test_multi_patient_debug_probabilistic_mode_one_probability_spawns_generated_patients_as_unassigned(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
+    generated_departments: list[str | None] = []
+    install_fake_patient_agent(client, captured_departments=generated_departments)
     controller = client.app.state.container["multi_patient_debug_controller"]
 
     start_resp = post_json(
@@ -242,25 +249,36 @@ def test_multi_patient_debug_probabilistic_mode_one_probability_forces_all_onlin
         {
             "mode": "legacy_probabilistic_llm",
             "spawn_interval_seconds": 0.0,
-            "step_interval_seconds": 0.1,
+            "step_interval_seconds": 10.0,
             "max_active_patients": 4,
             "llm_probability": 1.0,
         },
     )
     assert start_resp.status_code == 200
 
-    for _ in range(30):
-        controller.tick_once()
-        time.sleep(0.01)
+    controller.tick_once()
 
     snapshot = get_data(client.get("/api/v1/multi-patient-debug/snapshot", headers=api_headers()))
     assert snapshot["llm_probability"] == 1.0
-    assert snapshot["total_spawned"] >= 4
-    assert snapshot["active_count"] <= 4
-    assert len(snapshot["patients"]) == snapshot["total_spawned"]
+    assert snapshot["total_spawned"] == 1
+    assert snapshot["active_count"] == 1
+    assert len(snapshot["patients"]) == 1
     assert all(item["mode"] == "legacy_probabilistic_llm" for item in snapshot["patients"])
+    assert all(item["execution_runner_kind"] == "intelligent" for item in snapshot["patients"])
+    assert all(item["patient_source"] == "generated" for item in snapshot["patients"])
     assert all(item["llm_mode"] == "online" for item in snapshot["patients"])
     assert all(item["llm_probability"] == 1.0 for item in snapshot["patients"])
+    assert all(item["assigned_department_id"] is None for item in snapshot["patients"])
+    assert all(item["target_node_id"] is None for item in snapshot["patients"])
+    assert all(item["latest_consultation_response_source"] is None for item in snapshot["patients"])
+    assert snapshot["patients"][0]["display_stage"] in {"triage", "unassigned", "pending_registration"}
+    assert snapshot["patients"][0]["dispatch_state"] == "ready"
+    assert snapshot["patients"][0]["resource_assignment"]["department_id"] is None
+    assert snapshot["patients"][0]["blocking"] is None
+    assert snapshot["patients"][0]["generation_hint_department_id"] is not None
+    assert snapshot["patients"][0]["generation_hint_department_name"] is not None
+    assert snapshot["patients"][0]["case_summary"]["generation_hint_department_id"] == snapshot["patients"][0]["generation_hint_department_id"]
+    assert generated_departments == [snapshot["patients"][0]["generation_hint_department_id"]]
 
 
 def test_multi_patient_debug_rejects_invalid_llm_probability(tmp_path, monkeypatch):
@@ -309,10 +327,16 @@ def test_multi_patient_debug_intelligent_mode_works_with_fake_agent(tmp_path, mo
     assert all(item["execution_runner_kind"] == "intelligent" for item in snapshot["patients"])
     assert all(item["department_agent_enabled"] is True for item in snapshot["patients"])
     assert set(generated_departments) == {"internal", "surgery"}
-    assert set(item["assigned_department_id"] for item in snapshot["patients"]) == {"internal", "surgery"}
+
+    assert set(item["generation_hint_department_id"] for item in snapshot["patients"]) == {"internal", "surgery"}
+    assert set(item["assigned_department_id"] for item in snapshot["patients"]).issubset({"internal", "surgery"})
+
     assert all(item["case_summary"] is not None for item in snapshot["patients"])
     assert all(item["assigned_department_id"] is not None for item in snapshot["patients"])
     assert all("next_step_at" in item for item in snapshot["patients"])
+    assert all(item["display_stage"] is not None for item in snapshot["patients"])
+    assert all(item["dispatch_state"] is not None for item in snapshot["patients"])
+    assert all(item["resource_assignment"] is not None for item in snapshot["patients"])
 
     stop_resp = post_json(client, "/api/v1/multi-patient-debug/stop")
     assert stop_resp.status_code == 200
@@ -331,6 +355,10 @@ def test_multi_patient_debug_page_is_available(tmp_path, monkeypatch):
     response = client.get("/multi-patient-debug")
     assert response.status_code == 200
     assert "Multi Patient Debug" in response.text
+    assert 'id="patientFilter"' in response.text
+    assert "multi-patient-debug-open-details" in response.text
+    assert "card--rare-event" in response.text
+    assert "Special event color" in response.text
 
 
 def test_multi_patient_debug_department_mixed_mode_uses_multiple_agent_types(tmp_path, monkeypatch):
@@ -437,7 +465,10 @@ def test_multi_patient_debug_department_mixed_script_only_departments_never_use_
 
 def test_multi_patient_debug_intelligent_mode_accepts_new_agent_enabled_department_via_capability_config(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
-    install_fake_patient_agent(client)
+
+    generated_departments: list[str | None] = []
+    install_fake_patient_agent(client, captured_departments=generated_departments)
+
     controller = client.app.state.container["multi_patient_debug_controller"]
 
     monkeypatch.setitem(
@@ -471,7 +502,10 @@ def test_multi_patient_debug_intelligent_mode_accepts_new_agent_enabled_departme
     assert snapshot["total_spawned"] == 1
     assert snapshot["patients"][0]["mode"] == "intelligent_agent"
     assert snapshot["patients"][0]["execution_runner_kind"] == "intelligent"
-    assert snapshot["patients"][0]["assigned_department_id"] == "ophthalmology"
+
+    assert snapshot["patients"][0]["generation_hint_department_id"] == "ophthalmology"
+    assert generated_departments == ["ophthalmology"]
+    assert snapshot["patients"][0]["assigned_department_id"] in {"ophthalmology", "internal", "surgery"}
     assert snapshot["patients"][0]["department_agent_enabled"] is True
     assert snapshot["patients"][0]["department_capability_class"] == "agent_enabled"
 

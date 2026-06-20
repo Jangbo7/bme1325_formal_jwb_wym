@@ -17,8 +17,9 @@ class Database:
         self.lock = threading.Lock()
 
     def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, check_same_thread=False)
+        conn = sqlite3.connect(self.path, timeout=10.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=10000")
         return conn
 
     @staticmethod
@@ -75,6 +76,8 @@ class Database:
         with self.lock:
             conn = self.connect()
             try:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
                 conn.executescript(
                     """
                     CREATE TABLE IF NOT EXISTS patients (
@@ -266,15 +269,127 @@ class Database:
                         updated_at TEXT NOT NULL
                     );
 
-                    CREATE TABLE IF NOT EXISTS runtime_stage_samples (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        sampled_at TEXT NOT NULL,
-                        window_label TEXT NOT NULL,
-                        phase_counts_json TEXT NOT NULL,
-                        room_counts_json TEXT NOT NULL,
-                        active_total INTEGER NOT NULL,
-                        historical_total INTEGER NOT NULL
+
+                    CREATE TABLE IF NOT EXISTS runtime_console_sessions (
+                        session_id TEXT PRIMARY KEY,
+                        status TEXT NOT NULL,
+                        running INTEGER NOT NULL DEFAULT 0,
+                        spawn_paused INTEGER NOT NULL DEFAULT 0,
+                        step_paused INTEGER NOT NULL DEFAULT 0,
+                        drain_mode INTEGER NOT NULL DEFAULT 0,
+                        mode TEXT NOT NULL DEFAULT 'runtime_console',
+                        started_at TEXT,
+                        ended_at TEXT,
+                        updated_at TEXT NOT NULL,
+                        global_config_json TEXT NOT NULL
                     );
+
+                    CREATE TABLE IF NOT EXISTS runtime_console_department_configs (
+                        session_id TEXT NOT NULL,
+                        department_id TEXT NOT NULL,
+                        department_name TEXT NOT NULL,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        spawn_weight REAL NOT NULL DEFAULT 1.0,
+                        allow_agent_patients INTEGER NOT NULL DEFAULT 0,
+                        allow_script_patients INTEGER NOT NULL DEFAULT 1,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (session_id, department_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS runtime_console_events (
+                        event_id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        severity TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        subject_type TEXT NOT NULL,
+                        subject_id TEXT NOT NULL,
+                        department_id TEXT,
+                        patient_id TEXT,
+                        npc_id TEXT,
+                        payload_json TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS fullview_sync_outbox (
+                        command_id TEXT PRIMARY KEY,
+                        transition_key TEXT NOT NULL UNIQUE,
+                        patient_id TEXT NOT NULL,
+                        encounter_id TEXT NOT NULL,
+                        sequence_no INTEGER NOT NULL,
+                        request_type TEXT NOT NULL,
+                        event_id TEXT,
+                        payload_json TEXT NOT NULL,
+                        idempotency_key TEXT NOT NULL UNIQUE,
+                        status TEXT NOT NULL,
+                        attempt_count INTEGER NOT NULL DEFAULT 0,
+                        next_attempt_at TEXT NOT NULL,
+                        response_json TEXT NOT NULL DEFAULT '{}',
+                        event_seq INTEGER,
+                        trace_id TEXT,
+                        reason_code TEXT,
+                        last_error TEXT,
+                        accepted_at TEXT,
+                        observed_at TEXT,
+                        observe_status TEXT NOT NULL DEFAULT 'pending',
+                        visual_cooldown_seconds REAL NOT NULL DEFAULT 0,
+                        visual_ready_at TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        UNIQUE(encounter_id, sequence_no)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_fullview_sync_ready
+                    ON fullview_sync_outbox(status, next_attempt_at, created_at);
+
+                    CREATE TABLE IF NOT EXISTS fullview_patient_projection (
+                        patient_id TEXT NOT NULL,
+                        encounter_id TEXT NOT NULL,
+                        current_room_id TEXT,
+                        sync_status TEXT NOT NULL,
+                        last_command_id TEXT,
+                        last_event_id TEXT,
+                        last_event_seq INTEGER,
+                        last_error TEXT,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (patient_id, encounter_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS fullview_listener_state (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        last_event_seq INTEGER NOT NULL DEFAULT 0,
+                        last_event_at TEXT,
+                        last_movement_observed_at TEXT,
+                        cleanup_barrier_until TEXT,
+                        updated_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS fullview_observed_events (
+                        event_seq INTEGER PRIMARY KEY,
+                        patient_id TEXT,
+                        event_type TEXT,
+                        event_id TEXT,
+                        payload_json TEXT NOT NULL,
+                        occurred_at TEXT,
+                        observed_at TEXT NOT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS fullview_cleanup_queue (
+                        patient_id TEXT PRIMARY KEY,
+                        encounter_id TEXT,
+                        command_id TEXT,
+                        status TEXT NOT NULL DEFAULT 'cleanup_pending',
+                        attempt_count INTEGER NOT NULL DEFAULT 0,
+                        next_attempt_at TEXT NOT NULL,
+                        last_error TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_fullview_cleanup_ready
+                    ON fullview_cleanup_queue(status, next_attempt_at, created_at);
+
                     """
                 )
                 self._ensure_column(conn, "patients", "visit_id", "TEXT")
@@ -345,6 +460,29 @@ class Database:
                 self._ensure_column(conn, "visits", "emr_sync_status", "TEXT")
                 self._ensure_column(conn, "visits", "emr_synced_at", "TEXT")
                 self._ensure_column(conn, "visits", "emr_sync_error", "TEXT")
+                self._ensure_column(conn, "fullview_sync_outbox", "visual_ready_at", "TEXT")
+                self._ensure_column(conn, "fullview_sync_outbox", "accepted_at", "TEXT")
+                self._ensure_column(conn, "fullview_sync_outbox", "observed_at", "TEXT")
+                self._ensure_column(conn, "fullview_sync_outbox", "observe_status", "TEXT NOT NULL DEFAULT 'pending'")
+                self._ensure_column(conn, "fullview_sync_outbox", "visual_cooldown_seconds", "REAL NOT NULL DEFAULT 0")
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO fullview_listener_state (
+                        id, last_event_seq, updated_at
+                    ) VALUES (1, 0, datetime('now'))
+                    """
+                )
+                conn.execute(
+                    """
+                    UPDATE fullview_sync_outbox
+                    SET status='observed',
+                        accepted_at=COALESCE(accepted_at, updated_at),
+                        observed_at=COALESCE(observed_at, updated_at),
+                        observe_status='observed',
+                        visual_ready_at=COALESCE(visual_ready_at, updated_at)
+                    WHERE status='accepted'
+                    """
+                )
                 if not self._agent_session_memory_has_composite_pk(conn):
                     self._migrate_agent_session_memory_to_composite_pk(conn)
                 conn.commit()
@@ -367,7 +505,14 @@ class Database:
             "patient_agent_cases",
             "department_patient_runtime",
             "department_runtime_summary",
-            "runtime_stage_samples",
+
+            "runtime_console_sessions",
+            "runtime_console_department_configs",
+            "runtime_console_events",
+            "fullview_sync_outbox",
+            "fullview_patient_projection",
+            "fullview_cleanup_queue",
+
         ]
 
         with self.lock:

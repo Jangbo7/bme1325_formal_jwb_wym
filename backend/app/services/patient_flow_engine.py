@@ -16,18 +16,21 @@ class FlowEngineContext:
 
 
 def _target_node_for_state(visit_state: str | None, assigned_department_id: str | None) -> str | None:
-    department_id = assigned_department_id or "internal"
+    department_id = assigned_department_id or "triage"
     if visit_state in {
         VisitLifecycleState.ARRIVED.value,
         VisitLifecycleState.TRIAGING.value,
         VisitLifecycleState.WAITING_FOLLOWUP.value,
+        VisitLifecycleState.IN_TRIAGE.value,
+    }:
+        return "triage"
+    if visit_state in {
         VisitLifecycleState.TRIAGED.value,
         VisitLifecycleState.REGISTERED.value,
         VisitLifecycleState.WAITING_CONSULTATION.value,
         VisitLifecycleState.IN_CONSULTATION.value,
         VisitLifecycleState.WAITING_SECOND_CONSULTATION.value,
         VisitLifecycleState.IN_SECOND_CONSULTATION.value,
-        VisitLifecycleState.RESULTS_READY.value,
     }:
         return department_id
     if visit_state in {
@@ -36,6 +39,7 @@ def _target_node_for_state(visit_state: str | None, assigned_department_id: str 
         VisitLifecycleState.TEST_PAYMENT_COMPLETED.value,
         VisitLifecycleState.IN_TEST.value,
         VisitLifecycleState.WAITING_RETURN_CONSULTATION.value,
+        VisitLifecycleState.RESULTS_READY.value,
     }:
         return "testing"
     if visit_state in {
@@ -47,6 +51,7 @@ def _target_node_for_state(visit_state: str | None, assigned_department_id: str 
         VisitLifecycleState.DIAGNOSIS_FINALIZED.value,
         VisitLifecycleState.WAITING_PAYMENT.value,
         VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
+        VisitLifecycleState.DISPOSITION_PENDING.value,
     }:
         return "payment"
     if visit_state == VisitLifecycleState.WAITING_PHARMACY.value:
@@ -82,7 +87,11 @@ class FlowDecisionEngine:
         visit_state = context.visit_state
         target_node = _target_node_for_state(visit_state, context.assigned_department_id)
         if planned.action == "finished":
-            return FlowDecision(next_action="complete_visit", target_node=target_node, reason="visit reached completed state")
+
+            return FlowDecision(next_action="complete_visit", target_node=target_node, reason="outpatient flow finished")
+        if planned.action == "halted":
+            return FlowDecision(next_action="idle", target_node=target_node, reason="automation stopped")
+
         if planned.action == "idle":
             return FlowDecision(next_action="idle", target_node=target_node, reason="no legal step")
         if planned.action == "register_visit":
@@ -100,29 +109,38 @@ class FlowDecisionEngine:
             next_action = "enter_round2_consult" if round_number == 2 else "enter_round1_consult"
             return FlowDecision(next_action=next_action, target_node=context.assigned_department_id, reason="consultation dialogue turn", payload=planned.payload)
         if planned.action == "create_triage_session":
-            return FlowDecision(next_action="enqueue_round1", target_node=context.assigned_department_id, reason="create triage session")
+            return FlowDecision(next_action="enqueue_round1", target_node=target_node, reason="create triage session")
         if planned.action == "reply_triage":
-            return FlowDecision(next_action="enqueue_round1", target_node=context.assigned_department_id, reason="triage follow-up turn")
+            return FlowDecision(next_action="enqueue_round1", target_node=target_node, reason="triage follow-up turn")
         if planned.action == "create_encounter":
-            return FlowDecision(next_action="register", target_node=context.assigned_department_id, reason="encounter bootstrap")
+            return FlowDecision(next_action="register", target_node=target_node, reason="encounter bootstrap")
         if planned.action == "trigger_encounter_event":
             event = (planned.payload or {}).get("event")
             if event == "queue_second_consultation":
-                return FlowDecision(next_action="enqueue_round2", target_node=context.assigned_department_id, reason=event, payload=planned.payload)
+                return FlowDecision(next_action="enqueue_round2", target_node="testing", reason=event, payload=planned.payload)
             if event == "start_second_consultation":
                 return FlowDecision(next_action="enter_round2_consult", target_node=context.assigned_department_id, reason=event, payload=planned.payload)
             if event in {"request_test_payment", "pay_test", "start_exam", "finish_exam", "results_ready"}:
                 return FlowDecision(next_action="send_to_test", target_node="testing", reason=event, payload=planned.payload)
             if event in {"start_outpatient_procedure", "finish_outpatient_procedure"}:
                 return FlowDecision(next_action="send_to_test", target_node="outpatient_procedure", reason=event, payload=planned.payload)
-            if event in {"pay_medical", "request_medical_payment"}:
-                return FlowDecision(next_action="settle_payment", target_node="payment", reason=event, payload=planned.payload)
-            if event in {"plan_disposition"}:
-                return FlowDecision(next_action="plan_disposition", target_node="payment", reason=event, payload=planned.payload)
-            if event in {"choose_pharmacy"}:
-                return FlowDecision(next_action="go_pharmacy", target_node="pharmacy", reason=event, payload=planned.payload)
-            if event in {"complete_visit"}:
-                return FlowDecision(next_action="complete_visit", target_node="pharmacy", reason=event, payload=planned.payload)
+
+            if event in {"pay_medical", "plan_disposition"}:
+                return FlowDecision(next_action="send_to_payment", target_node="payment", reason=event, payload=planned.payload)
+            if event in {"choose_pharmacy", "dispense_medication"}:
+                return FlowDecision(next_action="send_to_pharmacy", target_node="pharmacy", reason=event, payload=planned.payload)
+            if event == "complete_visit":
+                return FlowDecision(next_action="complete_visit", target_node=target_node, reason=event, payload=planned.payload)
+            if event in {
+                "choose_outpatient_treatment",
+                "choose_followup_booking",
+                "choose_referral",
+                "admit_patient",
+                "route_to_emergency",
+                "route_to_icu_rescue",
+            }:
+                return FlowDecision(next_action="transition_visit", target_node=target_node, reason=event, payload=planned.payload)
+
             return FlowDecision(next_action="idle", target_node=target_node, reason=f"unsupported event {event}", guard_result="blocked", payload=planned.payload)
         return FlowDecision(next_action="error", target_node=target_node, reason=f"unsupported planned action {planned.action}", guard_result="blocked")
 

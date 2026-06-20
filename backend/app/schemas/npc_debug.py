@@ -1,11 +1,25 @@
 from __future__ import annotations
 
-from typing import Literal
+import re
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 
-CounterpartyType = Literal["triage_agent", "internal_medicine_agent", "surgery_agent", "system"]
+_FORMAL_COUNTERPARTY_PATTERN = re.compile(r"^(?:[a-z0-9_]+_agent|system)$")
+_SCRIPTED_COUNTERPARTY_PATTERN = re.compile(r"^scripted_[a-z0-9_]+_consultation$")
+
+
+def _validate_counterparty(value: str) -> str:
+    counterparty = str(value).strip()
+    if _FORMAL_COUNTERPARTY_PATTERN.fullmatch(counterparty):
+        return counterparty
+    if _SCRIPTED_COUNTERPARTY_PATTERN.fullmatch(counterparty):
+        return counterparty
+    raise ValueError("counterparty must be 'system', a '*_agent', or 'scripted_{department}_consultation'")
+
+
+CounterpartyType = Annotated[str, AfterValidator(_validate_counterparty)]
 DialogueDirection = Literal["inbound", "outbound"]
 
 
@@ -31,6 +45,10 @@ class NpcDebugSnapshot(BaseModel):
     encounter_id: str | None = None
     active_session_id: str | None = None
     visit_state: str | None = None
+    primary_disposition: str | None = None
+    disposition: dict = Field(default_factory=dict)
+    outpatient_flow_finished: bool = False
+    outpatient_finished_at: str | None = None
     patient_lifecycle_state: str | None = None
     phase: str
     status: str

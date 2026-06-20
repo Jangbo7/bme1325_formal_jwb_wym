@@ -1,83 +1,267 @@
-﻿# 当前整体架构总览（用于可视化与后续协作）
+﻿# 当前整体架构总览
 
 ## 1. 文档目的
-这份文档用于总结当前项目的前端、后端、Agent 运行时、状态机、EventBus、记忆与队列系统的实际结构。
 
-适用场景：
-- 给 GPT / 其他模型生成架构图、系统图、时序图
-- 给新协作者快速解释当前系统
-- 作为后续新增独立 Agent（如门诊医生 Agent）的基线说明
+本文只描述当前仓库里仍有效的运行结构，供协作者快速回答三个问题：
 
-说明：
-- 本文描述的是“当前有效架构”，不是历史遗留结构。
-- `scene/.history/`、旧版扁平 JS 文件只视为历史残留，不是主要维护入口。
-- 当前主线 Agent 已扩展为 `triage`、`internal_medicine`、`icu_doctor`，并配有 `patient_agent`、`npc_patient`、`test_simulator`、`interactive_debug`、`multi_patient_debug`、`department_runtime`、`clinical_policy` 和 `openemr` 集成层等辅助模块。
-- 前端仍以分诊场景为主，但已经能同步展示内科会话、`simulated_report` 和病历卡时间线；没有单独成型的检验科操作页。
+- 现在有哪些正式入口
+- 哪些模块负责业务真值，哪些只是调试 / 展示层
+- 新改动应该落到哪里，而不是继续往旧文档和一次性脚本里堆
 
----
+如果你是第一次接触这个项目，或者你的目标是给前端 / 展示界面提供统一解释入口，建议先读：
 
-## 2. 系统一句话概述
-当前系统是一个“医院分诊 + 门诊内科问诊 + ICU 处理 + 辅助检查仿真”的模块化单体应用：
-- 前端使用原生 `HTML + CSS + Canvas + ES Modules`
-- 前端主要承担场景渲染、分诊对话、任务板、病历卡和状态同步
-- 后端使用 `FastAPI + LangGraph(可用) + SQLite Repository + EventBus`
-- 后端已拆出 `triage`、`internal_medicine`、`icu_doctor`、`patient_agent`、`npc_patient`、`test_simulator`、`interactive_debug`、`multi_patient_debug`、`department_runtime`、`clinical_policy` 和 `openemr` 等模块
-- 主线业务从“玩家分诊”扩展为“分诊 -> 内科/ICU 诊疗 -> 辅助检查仿真 -> 回诊/后续处理”
+- [门诊系统总览与前端展示接口说明](./门诊系统总览与前端展示接口说明.md)
 
----
+## 2. 一句话概述
 
-## 3. 技术栈
+当前仓库是一个以 `FastAPI + SQLite + EventBus + 显式状态机` 为核心的医院流程模拟系统，外面挂了三类前端/控制面：
 
-| 层级 | 当前技术 |
-|---|---|
-| 前端渲染 | HTML, CSS, Canvas |
-| 前端模块化 | ES Modules |
-| 前端交互 | 原生 DOM / 原生事件 |
-| 后端 API | FastAPI |
-| Agent 编排 | LangGraph（可用），同时保持 service/graph 分层 |
-| 数据契约 | Pydantic |
-| 持久化 | SQLite（通过 Repository 层封装） |
-| 事件机制 | 进程内同步 EventBus |
-| 状态控制 | 显式状态机 |
-| LLM 调用 | 仍以配置化 endpoint 为准，triage / internal_medicine / ICU / patient_agent / npc_patient 共用同类请求封装，仓库里同时存在主线与 legacy 直连路径 |
-| 测试 | pytest + 前端模块测试文件 |
+- `scene/`：原有场景前端，负责分诊与基础门诊互动
+- `frontend/fullview/`：以 subtree 形式接入的全院可视化前端
+- 后端自带 HTML 控制页：`runtime-console` 与 `fullview-sync-monitor`
 
----
+主线后端能力已经覆盖：
 
-## 4. 当前有效目录结构
+- triage
+- 门诊医生问诊：`internal_medicine`、`surgery`
+- ICU 专项链路：`icu_doctor`
+- patient / NPC / mixed runtime 调度
+- Fullview 同步与观察
+- OpenEMR 适配
 
-### 4.1 前端主结构
+## 3. 当前正式入口
+
+### 3.1 后端应用入口
+
+- `backend/app/main.py`
+- `backend/server.py`
+
+`app/main.py` 负责容器装配、仓储、状态机、EventBus、agent service、runtime console、Fullview 同步、OpenEMR 适配和全部路由注册。
+
+### 3.2 后端控制面
+
+- `GET /runtime-console`
+- `GET /fullview-sync-monitor`
+
+这两个页面是当前正式的运行态控制与观察面。
+
+### 3.3 交互 / 调试页面
+
+- `GET /triage-agent-debug`
+- `GET /doctor-agent-debug`
+- `GET /patient-agent-debug`
+- `GET /patient-agent-chat-debug`
+- `GET /npc-debug`
+- `GET /multi-patient-debug`
+- `GET /hospital-runtime-debug`
+- `GET /department-runtime-debug`
+
+其中：
+
+- `doctor-agent-debug` 是门诊医生类 agent 的统一调试入口
+- `internal-medicine-agent-debug` 仍保留为兼容别名
+- `runtime-console` 才是正式 runtime 控制面，不应再把旧 debug 页当成操作主界面
+- 如果要做一个面向评鉴展示的更好看 GUI，当前最合适的基底不是 `scene/` 单患者页，而是 `department-runtime-debug` 这一类 department-centric 运行态视图
+
+## 4. 前端结构
+
+### 4.1 `scene/` 仍然是有效前端
+
+当前 `scene/` 不是纯历史残留，下面这些路径仍在用：
+
 ```text
 scene/
-  index.html
   main.js
   constants.js
   gameLogic.js
   gameObjects.js
   render.js
-  utils.js
-  styles.css
-  main.js
   core/
     bootstrap.js
     state-debug-panel.js
   agent/
     client.js
-    store.js
     event-subscriber.js
+    store.js
     triage-form.js
     triage-dialogue.js
   queue/
     runtime.js
   npc/
     runtime.js
-    fixed-data.js
     fixed-runtime.js
+    fixed-data.js
   ui/
-    task-board.js
     medical-record.js
     npc-dialogue.js
+    task-board.js
 ```
+
+它的定位是：
+
+- 场景渲染
+- 分诊与基础门诊对话
+- 队列 / 病历卡 / 任务板展示
+- 消费后端投影结果
+
+### 4.2 `frontend/fullview/` 是独立边界
+
+`frontend/fullview/` 是上游 subtree，不应把主仓特有逻辑直接写进去。当前重点关注：
+
+```text
+frontend/fullview/full_view/
+  index.html
+  main.js
+  runtime.js
+  map-config.json
+  hospital-api.js
+  event-rules/
+  backend/
+```
+
+它负责：
+
+- 全院地图
+- 房间与移动规则
+- 后端 movement / transfer / discharge 请求的可视化承接
+
+## 5. 后端核心分层
+
+### 5.1 业务真值层
+
+- `backend/app/schemas/common.py`
+- `backend/app/domain/patient/state_machine.py`
+- `backend/app/domain/visit/state_machine.py`
+- `backend/app/schemas/orchestration.py`
+- `backend/app/services/encounter_orchestration.py`
+- `backend/app/services/disposition.py`
+
+这些文件定义：
+
+- patient / visit 生命周期
+- 标准门诊状态机
+- disposition 语义
+- encounter 级状态变迁事件
+
+如果这里没改，前端显示再花哨也不算真正改了流程。
+
+### 5.2 持久化与投影层
+
+- `backend/app/repositories/*`
+- `backend/app/services/runtime_projection.py`
+- `backend/app/services/department_runtime_service.py`
+- `backend/app/services/scene_snapshot_service.py`
+
+职责：
+
+- SQLite 持久化
+- 面向前端和调试面的 runtime projection
+- 部门态汇总
+- 场景快照输出
+
+### 5.3 事件层
+
+- `backend/app/events/bus.py`
+- `backend/app/events/types.py`
+- `backend/app/events/subscribers/*`
+- `backend/app/events/bridge.py`
+
+职责：
+
+- 事务后副作用
+- 审计
+- 病人 / 部门投影更新
+- OpenEMR 与 Redis mirror 扩展
+
+EventBus 负责传播结果，不负责决定主流程。
+
+## 6. Agent 与运行时模块
+
+### 6.1 业务 agent
+
+当前 `backend/app/agents/` 下主要模块：
+
+- `triage`
+- `internal_medicine`
+- `surgery`
+- `icu_doctor`
+- `patient_agent`
+- `npc_patient`
+- `test_simulator`
+- `clinical_policy`
+- `interactive_debug`
+- `multi_patient_debug`
+- `department_runtime`
+
+其中：
+
+- `internal_medicine` 与 `surgery` 已接入统一 doctor debug registry
+- `clinical_policy/cards/*.yaml` 是当前门诊医生规则的重要结构化来源
+- `test_simulator` 仍承担检查结果仿真
+
+### 6.2 Runtime 控制与调度
+
+当前有两套相关能力，但定位不同：
+
+- `backend/app/services/npc_simulator.py`
+  - 简单后台模拟器
+  - 适合基础自动生成 / 推进
+- `backend/app/services/hospital_supervisor.py`
+  - 当前正式 mixed runtime 调度核心
+  - 被 `runtime-console`、`department-runtime-debug`、`hospital-runtime-debug` 等页面使用
+
+`hospital_supervisor` 负责：
+
+- 活跃病人数控制
+- agent/scripted 比例控制
+- spawn / step 时钟
+- Fullview step gate
+- runtime event 记录
+
+### 6.3 Fullview 同步
+
+当前 Fullview 联动核心为：
+
+- `backend/app/services/fullview_mapping.py`
+- `backend/app/services/fullview_sync.py`
+- `backend/app/repositories/fullview_sync.py`
+- `backend/app/api/routes/fullview_sync.py`
+
+职责：
+
+- 把 visit / encounter 事件映射成 movement、transfer、discharge 请求
+- 管理 outbox、观察状态、视觉冷却和重试
+- 为 `runtime-console` 提供 step gate 能力
+
+## 7. 当前主数据流
+
+### 7.1 患者门诊主链路
+
+1. 前端或运行时创建患者 / 就诊
+2. triage 收集信息并完成分诊
+3. `encounter_orchestration` 推动注册、排队、问诊、检查、缴费、处置
+4. `disposition` 决定普通门诊结束、转急诊、转 ICU、转诊、住院等结果
+5. `runtime_projection` / `department_runtime_service` 输出给前端和调试页
+6. Fullview 同步层按事件驱动生成移动请求
+
+### 7.2 Runtime console 链路
+
+1. `runtime-console` 写入全局配置
+2. `hospital_supervisor` 启动 mixed runtime session
+3. agent/scripted 患者按时钟生成并推进
+4. 若开启 Fullview gate，则推进会等待 Fullview 接收 / 观察状态
+5. runtime 事件和病人列表通过 `/api/v1/runtime-console/*` 输出
+
+## 8. 协作约定
+
+做架构相关修改时，优先检查这几处：
+
+1. 状态机与 `disposition`
+2. 对应 service
+3. repository / projection
+4. 调试页和前端消费面
+
+不要把一次性申请单、历史 handoff 文档、旧 `docs/*_card.md` 再当成当前架构说明。
 
 ### 4.2 后端主结构
 ```text

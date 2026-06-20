@@ -56,6 +56,22 @@ class AgentMemoryRepository:
         finally:
             conn.close()
 
+    def peek_agent_session_memory(self, session_id: str, agent_type: str) -> dict | None:
+        conn = self.db.connect()
+        try:
+            row = conn.execute(
+                "SELECT data_json FROM agent_session_memory WHERE session_id = ? AND agent_type = ?",
+                (session_id, agent_type),
+            ).fetchone()
+            if not row:
+                return None
+            payload = Database.decode_json(row["data_json"], {})
+            payload["session_id"] = session_id
+            payload["agent_type"] = agent_type
+            return payload
+        finally:
+            conn.close()
+
     def get_agent_session_memory(self, session_id: str, patient_id: str, agent_type: str) -> dict:
         conn = self.db.connect()
         try:

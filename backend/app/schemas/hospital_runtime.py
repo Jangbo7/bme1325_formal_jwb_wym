@@ -59,6 +59,10 @@ class HospitalRuntimeSnapshot(BaseModel):
     node_step_delays: dict[str, float] = Field(default_factory=dict)
     dispatch_count: int = 0
     blocked_count: int = 0
+    blocked_attempt_count: int = 0
+    currently_blocked_patients: int = 0
+    department_coverage: dict[str, int] = Field(default_factory=dict)
+    active_by_department: dict[str, int] = Field(default_factory=dict)
     nodes: list[HospitalNodeRuntimeView] = Field(default_factory=list)
     departments: list[DepartmentRuntimeDepartmentView] = Field(default_factory=list)
     unassigned_patients: list[DepartmentRuntimePatientView] = Field(default_factory=list)

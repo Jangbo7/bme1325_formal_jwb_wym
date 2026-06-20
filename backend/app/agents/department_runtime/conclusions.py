@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 
@@ -8,10 +9,32 @@ ROUND2_PRIMARY_DISPOSITIONS = {
     "observe_then_revisit",
     "inpatient_admission_recommended",
     "emergency_escalation",
+    "icu_escalation",
     "specialty_referral",
 }
 
 ROUND2_PROCEDURE_URGENCIES = {"elective", "expedited", "urgent", "none"}
+ROUND2_ESCALATION_FIELDS = (
+    "priority",
+    "department",
+    "diagnosis_level",
+    "primary_disposition",
+    "clinical_impression",
+    "final_assessment_summary",
+    "disposition_advice",
+    "patient_plan",
+    "patient_facing_plan",
+    "recommended_department",
+    "recommended_department_reason",
+    "handoff_reason",
+    "return_precautions",
+    "followup_recommendation",
+    "admission_recommendation",
+    "red_flags",
+    "note",
+    "medication_or_action",
+    "icu_escalation",
+)
 
 
 def round2_response_keys() -> str:
@@ -20,7 +43,8 @@ def round2_response_keys() -> str:
         "medication_or_action, red_flags, test_required, test_category, test_items, test_reason, "
         "clinical_impression, final_assessment_summary, primary_disposition, medication_recommendation, "
         "admission_recommendation, procedure_recommendation, prescription_plan, followup_recommendation, "
-        "return_precautions, patient_facing_plan."
+        "return_precautions, patient_facing_plan, recommended_department, recommended_department_reason, "
+        "handoff_reason, requires_new_registration, carry_forward_summary."
     )
 
 
@@ -50,7 +74,7 @@ def normalize_round2_conclusion(result: dict, *, consultation_round: int) -> dic
             followup["observation_setting"] = "outpatient_home"
     elif primary_disposition == "inpatient_admission_recommended":
         admission["recommended"] = True
-    elif primary_disposition == "emergency_escalation":
+    elif primary_disposition in {"emergency_escalation", "icu_escalation"}:
         admission = {"recommended": False, "reason": ""}
         followup = {
             "observation_required": False,
@@ -81,8 +105,44 @@ def normalize_round2_conclusion(result: dict, *, consultation_round: int) -> dic
         normalized.get("return_precautions"),
         normalized.get("red_flags"),
     )
+    recommended_department = str(normalized.get("recommended_department") or "").strip()
+    recommended_department_reason = str(normalized.get("recommended_department_reason") or "").strip()
+    handoff_reason = str(
+        normalized.get("handoff_reason")
+        or recommended_department_reason
+        or normalized.get("disposition_advice")
+        or final_assessment_summary
+        or ""
+    ).strip()
+    priority = _normalize_round2_priority(
+        normalized.get("priority"),
+        primary_disposition=primary_disposition,
+    )
+    if primary_disposition == "icu_escalation":
+        if not recommended_department:
+            recommended_department = "ICU"
+        if not recommended_department_reason:
+            recommended_department_reason = handoff_reason or "Immediate ICU-level escalation is recommended."
+    elif primary_disposition == "emergency_escalation":
+        if not recommended_department:
+            recommended_department = "Emergency"
+        if not recommended_department_reason:
+            recommended_department_reason = handoff_reason or "Immediate emergency escalation is recommended."
+    requires_new_registration = _normalize_requires_new_registration(
+        normalized.get("requires_new_registration"),
+        primary_disposition=primary_disposition,
+    )
+    carry_forward_summary = _normalize_carry_forward_summary(
+        normalized.get("carry_forward_summary"),
+        department=str(normalized.get("department") or "").strip(),
+        recommended_department=recommended_department,
+        handoff_reason=handoff_reason,
+        final_assessment_summary=final_assessment_summary,
+        tests_suggested=_normalize_string_list(normalized.get("tests_suggested"), normalized.get("test_items")),
+    )
 
     normalized["final_assessment_summary"] = final_assessment_summary
+    normalized["priority"] = priority
     normalized["primary_disposition"] = primary_disposition
     normalized["medication_recommendation"] = medication
     normalized["admission_recommendation"] = admission
@@ -91,7 +151,31 @@ def normalize_round2_conclusion(result: dict, *, consultation_round: int) -> dic
     normalized["return_precautions"] = return_precautions
     normalized["patient_facing_plan"] = patient_facing_plan
     normalized["patient_plan"] = str(normalized.get("patient_plan") or patient_facing_plan)
+    normalized["recommended_department"] = recommended_department or None
+    normalized["recommended_department_reason"] = recommended_department_reason or None
+    normalized["handoff_reason"] = handoff_reason or None
+    normalized["requires_new_registration"] = requires_new_registration
+    normalized["carry_forward_summary"] = carry_forward_summary
+    normalized["icu_escalation"] = primary_disposition == "icu_escalation" or bool(normalized.get("icu_escalation"))
     return normalized
+
+
+def preserve_round2_escalation_floor(result: dict, *, fallback_result: dict | None, consultation_round: int) -> dict:
+    normalized_result = normalize_round2_conclusion(result, consultation_round=consultation_round)
+    if consultation_round < 2 or not isinstance(fallback_result, dict):
+        return normalized_result
+
+    normalized_fallback = normalize_round2_conclusion(fallback_result, consultation_round=consultation_round)
+    if _round2_escalation_rank(normalized_fallback.get("primary_disposition")) <= _round2_escalation_rank(
+        normalized_result.get("primary_disposition")
+    ):
+        return normalized_result
+
+    merged = dict(normalized_result)
+    for field in ROUND2_ESCALATION_FIELDS:
+        if field in normalized_fallback:
+            merged[field] = deepcopy(normalized_fallback.get(field))
+    return normalize_round2_conclusion(merged, consultation_round=consultation_round)
 
 
 def _normalize_primary_disposition(
@@ -110,7 +194,9 @@ def _normalize_primary_disposition(
     department = str(result.get("department") or "").strip().lower()
     recommended_department = str(result.get("recommended_department") or "").strip()
     priority = str(result.get("priority") or "").strip().upper()
-    if next_step_decision == "urgent_escalation" or department == "emergency" or priority == "H" or bool(result.get("icu_escalation")):
+    if bool(result.get("icu_escalation")) or department == "icu" or recommended_department.lower() == "icu":
+        return "icu_escalation"
+    if next_step_decision == "urgent_escalation" or department == "emergency" or priority == "H":
         return "emergency_escalation"
     if next_step_decision == "recommend_other_clinic" or recommended_department:
         return "specialty_referral"
@@ -121,6 +207,24 @@ def _normalize_primary_disposition(
     if medication["recommended"] or procedure["surgery_evaluation_recommended"] or str(result.get("disposition_advice") or "").strip():
         return "outpatient_management"
     return "outpatient_management"
+
+
+def _normalize_round2_priority(value: Any, *, primary_disposition: str) -> str:
+    if primary_disposition in {"emergency_escalation", "icu_escalation"}:
+        return "H"
+    priority = str(value or "").strip().upper()
+    if priority in {"H", "M", "L"}:
+        return priority
+    return "M"
+
+
+def _round2_escalation_rank(primary_disposition: Any) -> int:
+    disposition = str(primary_disposition or "").strip()
+    if disposition == "icu_escalation":
+        return 2
+    if disposition == "emergency_escalation":
+        return 1
+    return 0
 
 
 def _normalize_medication_recommendation(result: dict) -> dict:
@@ -179,8 +283,8 @@ def _normalize_followup_recommendation(result: dict) -> dict:
     explicit = _as_dict(result.get("followup_recommendation"))
     disposition_advice = str(result.get("disposition_advice") or "").lower()
     patient_plan = str(result.get("patient_plan") or "").lower()
-    observe_hint = any(token in f"{disposition_advice} {patient_plan}" for token in ("observe", "observation", "观察"))
-    revisit_hint = any(token in f"{disposition_advice} {patient_plan}" for token in ("revisit", "return visit", "复诊", "复查"))
+    observe_hint = any(token in f"{disposition_advice} {patient_plan}" for token in ("observe", "observation", "瑙傚療"))
+    revisit_hint = any(token in f"{disposition_advice} {patient_plan}" for token in ("revisit", "return visit", "澶嶈瘖", "澶嶆煡"))
     observation_required = _coerce_bool(explicit.get("observation_required"), default=observe_hint)
     observation_setting = str(explicit.get("observation_setting") or ("outpatient_home" if observation_required else "none")).strip()
     if observation_setting not in {"outpatient_home", "none"}:
@@ -195,6 +299,36 @@ def _normalize_followup_recommendation(result: dict) -> dict:
         "revisit_window": revisit_window,
         "revisit_conditions": revisit_conditions,
     }
+
+
+def _normalize_requires_new_registration(value: Any, *, primary_disposition: str) -> bool:
+    if primary_disposition == "specialty_referral":
+        return _coerce_bool(value, default=True)
+    return _coerce_bool(value, default=False)
+
+
+def _normalize_carry_forward_summary(
+    value: Any,
+    *,
+    department: str,
+    recommended_department: str,
+    handoff_reason: str,
+    final_assessment_summary: str,
+    tests_suggested: list[str],
+) -> dict:
+    if isinstance(value, dict):
+        normalized = dict(value)
+    else:
+        normalized = {}
+    if not normalized and not recommended_department:
+        return {}
+    normalized.setdefault("origin_department", department or None)
+    normalized.setdefault("target_department", recommended_department or None)
+    normalized.setdefault("current_assessment", final_assessment_summary or None)
+    normalized.setdefault("referral_reason", handoff_reason or None)
+    normalized.setdefault("completed_workup", tests_suggested)
+    normalized.setdefault("next_department_focus", handoff_reason or None)
+    return normalized
 
 
 def _normalize_string_list(value: Any, fallback: Any = None) -> list[str]:

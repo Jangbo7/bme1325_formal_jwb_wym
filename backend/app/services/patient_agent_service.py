@@ -58,6 +58,11 @@ class PatientAgentService:
         return PatientCaseCard.model_validate(self._decode_case(row))
 
     def summarize_case_for_debug(self, case_card: PatientCaseCard) -> dict:
+        rare_event_profile = (
+            case_card.rare_event_profile.model_dump()
+            if case_card.rare_event_profile is not None
+            else {}
+        )
         return {
             "case_id": case_card.case_id,
             "name": case_card.patient_profile.name,
@@ -68,6 +73,10 @@ class PatientAgentService:
             "communication_style": case_card.communication_style,
             "patient_goals": list(case_card.patient_goals),
             "hidden_diagnosis_hint": case_card.hidden_diagnosis_hint,
+            "rare_event_profile": rare_event_profile,
+            "rare_event_triggered_by": rare_event_profile.get("triggered_by"),
+            "rare_event_type": rare_event_profile.get("event_type"),
+            "rare_event_seed": rare_event_profile.get("seed"),
         }
 
     def build_initial_payload(
@@ -79,7 +88,6 @@ class PatientAgentService:
     ) -> dict:
         case_card = self.get_case_card(patient_id=patient_id, visit_id=visit_id)
         symptoms = list(case_card.symptom_facts.symptoms)
-        associated = list(case_card.symptom_facts.associated_symptoms)
         return {
             "patient_id": patient_id,
             "visit_id": visit_id,
@@ -87,7 +95,7 @@ class PatientAgentService:
             "age": case_card.patient_profile.age,
             "sex": case_card.patient_profile.sex,
             "chief_complaint": case_card.chief_complaint,
-            "symptoms": ", ".join(symptoms + associated),
+            "symptoms": ", ".join(symptoms),
             "onset_time": case_card.symptom_facts.onset_time,
             "vitals": dict(case_card.symptom_facts.vitals),
             "allergies": list(case_card.patient_profile.allergies),

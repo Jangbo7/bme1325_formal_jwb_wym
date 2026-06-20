@@ -13,6 +13,9 @@ from app.agents.patient_agent.rag_context import PatientAgentRagContext
 from app.agents.patient_agent.schemas import PatientAgentTurnResult, PatientCaseCard, PatientReplyContext
 
 
+ROUND2_PHASES = {"internal_medicine_round2", "consultation_round2"}
+
+
 class ControlledPatientAgent:
     def __init__(self, llm_settings: dict, *, request_json=None):
         self.llm_settings = llm_settings
@@ -196,7 +199,7 @@ class ControlledPatientAgent:
         decision,
     ) -> PatientAgentTurnResult:
         symptoms = ", ".join(case_card.symptom_facts.symptoms[:3])
-        if context.phase == "internal_medicine_round2" and context.known_test_results:
+        if context.phase in ROUND2_PHASES and context.known_test_results:
             message = "I completed the test and want to understand the report and next steps."
         elif "allergies" in decision.allowed_fact_keys and case_card.patient_profile.allergies:
             message = f"My symptoms are {symptoms}. I also have an allergy history."
