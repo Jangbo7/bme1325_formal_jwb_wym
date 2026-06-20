@@ -119,11 +119,6 @@ class NpcPatientRunner:
         dispatch[planned.action](state, profile, planned, force_offline_llm=force_offline_llm)
         state.step_count += 1
         self._sync_state(state, preserve_dialogue=preserve_dialogue)
-        if state.visit_state == VisitLifecycleState.WAITING_PAYMENT.value:
-            state.finished = True
-            state.phase = "finished"
-            state.status = "finished"
-            state.clear_dialogue()
         return state
 
     def _build_context(self, state: NpcPatientDebugState) -> NpcPlanningContext:

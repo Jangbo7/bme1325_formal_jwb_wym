@@ -1,0 +1,29 @@
+# 原始素材文件（源素材，不提交）
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+*.tiff
+*.gif
+
+# 除外：保留已处理的游戏资源
+!*-head@*.png
+!*-character*.png
+!template-*.png
+
+# Node 依赖
+node_modules/
+package-lock.json
+npm-debug.log
+
+# IDE
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# 临时文件
+*.tmp
+*.bak

@@ -42,6 +42,7 @@ from app.api.routes.openemr import router as openemr_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.queues import router as queues_router
 from app.api.routes.scene_snapshot import router as scene_snapshot_router
+from app.api.routes.runtime_stats_html import router as runtime_stats_html_router
 from app.api.routes.surgery import router as surgery_router
 from app.api.routes.triage_agent_debug import router as triage_agent_debug_router
 from app.api.routes.triage import router as triage_router
@@ -88,6 +89,7 @@ from app.repositories.patients import PatientRepository
 from app.repositories.queues import QueueRepository
 from app.repositories.sessions import SessionRepository
 from app.repositories.visits import VisitRepository
+from app.repositories.runtime_stage_samples import RuntimeStageSampleRepository
 from app.integrations.openemr import EMRService, OpenEMRClient
 from app.services import (
     DepartmentRuntimeService,
@@ -110,6 +112,7 @@ def create_container():
 
     patient_repo = PatientRepository(db)
     session_repo = SessionRepository(db)
+    runtime_stage_sample_repo = RuntimeStageSampleRepository(db)
     memory_repo = AgentMemoryRepository(db)
     medical_record_repo = MedicalRecordRepository(db)
     patient_agent_case_repo = PatientAgentCaseRepository(db)
@@ -437,6 +440,7 @@ def create_container():
         "npc_patient_debug_controller": npc_patient_debug_controller,
         "patient_agent_service": patient_agent_service,
         "department_runtime_service": department_runtime_service,
+        "runtime_stage_sample_repo": runtime_stage_sample_repo,
         "outpatient_procedure_service": outpatient_procedure_service,
         "scene_snapshot_service": scene_snapshot_service,
         "patient_agent_debug_controller": patient_agent_debug_controller,
@@ -658,6 +662,7 @@ def create_app() -> FastAPI:
     app.include_router(encounters_router)
     app.include_router(events_router)
     app.include_router(scene_snapshot_router)
+    app.include_router(runtime_stats_html_router)
     app.include_router(visits_router)
     app.include_router(triage_router)
     app.include_router(internal_medicine_router)

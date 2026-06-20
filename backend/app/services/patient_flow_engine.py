@@ -82,7 +82,7 @@ class FlowDecisionEngine:
         visit_state = context.visit_state
         target_node = _target_node_for_state(visit_state, context.assigned_department_id)
         if planned.action == "finished":
-            return FlowDecision(next_action="complete_visit", target_node=target_node, reason="visit reached waiting_payment")
+            return FlowDecision(next_action="complete_visit", target_node=target_node, reason="visit reached completed state")
         if planned.action == "idle":
             return FlowDecision(next_action="idle", target_node=target_node, reason="no legal step")
         if planned.action == "register_visit":
@@ -115,6 +115,14 @@ class FlowDecisionEngine:
                 return FlowDecision(next_action="send_to_test", target_node="testing", reason=event, payload=planned.payload)
             if event in {"start_outpatient_procedure", "finish_outpatient_procedure"}:
                 return FlowDecision(next_action="send_to_test", target_node="outpatient_procedure", reason=event, payload=planned.payload)
+            if event in {"pay_medical", "request_medical_payment"}:
+                return FlowDecision(next_action="settle_payment", target_node="payment", reason=event, payload=planned.payload)
+            if event in {"plan_disposition"}:
+                return FlowDecision(next_action="plan_disposition", target_node="payment", reason=event, payload=planned.payload)
+            if event in {"choose_pharmacy"}:
+                return FlowDecision(next_action="go_pharmacy", target_node="pharmacy", reason=event, payload=planned.payload)
+            if event in {"complete_visit"}:
+                return FlowDecision(next_action="complete_visit", target_node="pharmacy", reason=event, payload=planned.payload)
             return FlowDecision(next_action="idle", target_node=target_node, reason=f"unsupported event {event}", guard_result="blocked", payload=planned.payload)
         return FlowDecision(next_action="error", target_node=target_node, reason=f"unsupported planned action {planned.action}", guard_result="blocked")
 

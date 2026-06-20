@@ -1,0 +1,733 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(252, 231, 183, 0.45), transparent 50%),
+    linear-gradient(180deg, #9fcb7b 0%, #6f9c54 100%);
+  font-family: "Trebuchet MS", "PingFang SC", sans-serif;
+  color: #fff7e7;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.hud {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 1;
+  padding: 12px 14px;
+  border: 2px solid rgba(120, 80, 42, 0.58);
+  border-radius: 12px;
+  background: rgba(77, 50, 28, 0.78);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 30px rgba(58, 35, 14, 0.28);
+  max-width: min(720px, calc(100vw - 36px));
+}
+
+.hud__topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.hud__title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.hud__panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hud__runtime-panel {
+  resize: both;
+  overflow: auto;
+  min-width: 360px;
+  min-height: 220px;
+  max-width: min(88vw, 920px);
+  max-height: 70vh;
+}
+
+.hud__panel-title {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffe7b4;
+}
+
+.hud__panel-title--drag {
+  cursor: move;
+  user-select: none;
+}
+
+.hud__tips {
+  font-size: 12px;
+  color: #f6e6bf;
+  line-height: 1.6;
+}
+
+.hud__npc-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hud__runtime-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.hud__runtime-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hud__runtime-field {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: #f6e6bf;
+}
+
+.hud__runtime-field span {
+  color: #ffe7b4;
+}
+
+.hud__runtime-field input,
+.hud__runtime-field select {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 228, 183, 0.22);
+  background: rgba(255, 248, 234, 0.08);
+  color: #fff7e7;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.hud__runtime-stats {
+  display: grid;
+  gap: 10px;
+  font-size: 12px;
+  color: #f6e6bf;
+}
+
+.hud__runtime-stats-block {
+  display: grid;
+  gap: 6px;
+}
+
+.hud__runtime-stats-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #ffe7b4;
+}
+
+.hud__runtime-stats-line {
+  line-height: 1.45;
+  font-family: "Consolas", "Courier New", monospace;
+  color: #fff7e7;
+}
+
+.hud__runtime-patient-list {
+  display: grid;
+  gap: 6px;
+}
+
+.hud__runtime-patient {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 241, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 248, 234, 0.06);
+}
+
+.hud__runtime-patient-topline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hud__runtime-patient-name {
+  font-weight: 700;
+  color: #fff6de;
+}
+
+.hud__runtime-stage {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.hud__runtime-stage--triage {
+  background: rgba(77, 121, 216, 0.32);
+  border-color: rgba(158, 199, 255, 0.8);
+}
+
+.hud__runtime-stage--queue {
+  background: rgba(224, 182, 91, 0.28);
+  border-color: rgba(255, 224, 138, 0.82);
+}
+
+.hud__runtime-stage--consult {
+  background: rgba(140, 122, 240, 0.3);
+  border-color: rgba(198, 179, 255, 0.82);
+}
+
+.hud__runtime-stage--testing {
+  background: rgba(108, 199, 191, 0.3);
+  border-color: rgba(155, 233, 227, 0.82);
+}
+
+.hud__runtime-stage--payment {
+  background: rgba(220, 167, 104, 0.3);
+  border-color: rgba(243, 213, 154, 0.82);
+}
+
+.hud__runtime-stage--pharmacy {
+  background: rgba(118, 197, 157, 0.3);
+  border-color: rgba(189, 236, 207, 0.82);
+}
+
+.hud__runtime-stage--completed {
+  background: rgba(121, 150, 125, 0.3);
+  border-color: rgba(194, 218, 197, 0.8);
+}
+
+.hud__runtime-stage--unknown {
+  background: rgba(123, 123, 144, 0.28);
+  border-color: rgba(201, 201, 222, 0.76);
+}
+
+.hud__runtime-patient-detail {
+  font-family: "Consolas", "Courier New", monospace;
+  line-height: 1.4;
+  color: #f1e8d6;
+}
+
+.hud__btn--route {
+  border-color: rgba(255, 164, 164, 0.38);
+  background: rgba(198, 73, 73, 0.18);
+  color: #fff0eb;
+}
+
+.hud__btn--route:hover {
+  background: rgba(216, 94, 94, 0.3);
+}
+
+.hud__floor {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+#floor-state {
+  color: #fff0c7;
+  min-width: 106px;
+}
+
+.hud__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.hud__btn {
+  border: 1px solid rgba(255, 228, 183, 0.28);
+  background: rgba(255, 240, 214, 0.08);
+  color: #fff4d9;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.hud__btn.is-active {
+  background: rgba(255, 213, 122, 0.24);
+  border-color: rgba(255, 213, 122, 0.9);
+  color: #fff7e5;
+}
+
+.hud__btn:disabled,
+.hud__btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#game {
+  width: min(100vw, 1400px);
+  height: min(100vh, 800px);
+  border: 2px solid rgba(120, 80, 42, 0.42);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(74, 47, 18, 0.35);
+  image-rendering: pixelated;
+  background: #7fb85a;
+}
+
+.triage-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 8, 12, 0.78);
+  backdrop-filter: blur(2px);
+}
+
+.triage-modal.hidden {
+  display: none;
+}
+
+.triage-modal__content {
+  width: min(92vw, 460px);
+  max-height: 84vh;
+  overflow: auto;
+  border-radius: 14px;
+  border: 1.5px solid rgba(247, 210, 132, 0.68);
+  background: linear-gradient(180deg, rgba(82, 55, 31, 0.96) 0%, rgba(50, 34, 18, 0.98) 100%);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  padding: 18px;
+}
+
+.triage-modal__content h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: #fff4d9;
+}
+
+.triage-form {
+  display: grid;
+  gap: 10px;
+}
+
+.triage-form fieldset {
+  margin: 0;
+  border: none;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.triage-form label {
+  font-size: 12px;
+  color: #f4ddb0;
+}
+
+.triage-form input,
+.triage-form textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 234, 191, 0.18);
+  background: rgba(255, 248, 234, 0.08);
+  color: #fff7e7;
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.triage-form textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.triage-form input[type="range"] {
+  padding: 0;
+  accent-color: #f7d284;
+}
+
+.triage-form input:focus,
+.triage-form textarea:focus {
+  outline: 2px solid rgba(247, 210, 132, 0.55);
+  outline-offset: 1px;
+}
+
+#painDisplay {
+  color: #f7d284;
+  font-weight: 700;
+}
+
+.triage-form__actions {
+  margin-top: 6px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.triage-btn {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  padding: 7px 12px;
+  color: #fff7e7;
+  background: rgba(255, 248, 234, 0.08);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.triage-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.triage-btn--primary {
+  border-color: rgba(247, 210, 132, 0.95);
+  color: #fff6de;
+  background: rgba(247, 210, 132, 0.22);
+}
+
+.triage-btn--primary:hover {
+  background: rgba(247, 210, 132, 0.36);
+}
+
+.triage-btn--ghost {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.triage-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.triage-dialogue {
+  width: min(92vw, 720px);
+  display: grid;
+  gap: 14px;
+}
+
+.triage-dialogue__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.triage-dialogue__status {
+  margin: 6px 0 0;
+  color: #f7ebcf;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.triage-dialogue__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.triage-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 210, 132, 0.52);
+  background: rgba(247, 210, 132, 0.14);
+  color: #fff6de;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.triage-badge--high {
+  border-color: rgba(255, 153, 153, 0.7);
+  background: rgba(255, 112, 112, 0.2);
+  color: #ffe5e5;
+}
+
+.triage-badge--medium {
+  border-color: rgba(255, 210, 124, 0.72);
+  background: rgba(255, 210, 124, 0.16);
+  color: #fff1cf;
+}
+
+.triage-badge--low {
+  border-color: rgba(138, 238, 182, 0.72);
+  background: rgba(138, 238, 182, 0.14);
+  color: #ddffea;
+}
+
+.triage-badge--muted {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f2e8f6;
+}
+
+.triage-dialogue__messages {
+  min-height: 260px;
+  max-height: 42vh;
+  overflow: auto;
+  padding-right: 4px;
+  display: grid;
+  gap: 10px;
+}
+
+.triage-message {
+  max-width: 88%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  line-height: 1.6;
+  font-size: 13px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.triage-message--user {
+  margin-left: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5edf7;
+}
+
+.triage-message--assistant {
+  margin-right: auto;
+  border: 1px solid rgba(247, 210, 132, 0.3);
+  background: rgba(247, 210, 132, 0.1);
+  color: #fff6de;
+}
+
+.triage-message__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+
+.triage-message__body {
+  white-space: pre-wrap;
+}
+
+.triage-dialogue__footer {
+  display: grid;
+  gap: 8px;
+}
+
+.triage-dialogue__composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.triage-dialogue__composer textarea {
+  min-height: 84px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 234, 191, 0.18);
+  background: rgba(255, 248, 234, 0.06);
+  color: #fff7e7;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.triage-dialogue__composer textarea:focus {
+  outline: 2px solid rgba(247, 210, 132, 0.55);
+  outline-offset: 1px;
+}
+
+.triage-dialogue__evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.npc-dialogue {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 8, 14, 0.76);
+  backdrop-filter: blur(3px);
+}
+
+.npc-dialogue__content {
+  width: min(92vw, 620px);
+  max-height: 84vh;
+  overflow: auto;
+  border-radius: 16px;
+  border: 1.5px solid rgba(244, 198, 106, 0.72);
+  background: linear-gradient(180deg, rgba(83, 56, 31, 0.98) 0%, rgba(48, 33, 18, 0.99) 100%);
+  box-shadow: 0 26px 72px rgba(0, 0, 0, 0.55);
+  padding: 18px;
+}
+
+.npc-dialogue__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.npc-dialogue__status {
+  margin: 6px 0 0;
+  color: #f7ebcf;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.npc-dialogue__meta {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.npc-dialogue__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 198, 106, 0.55);
+  background: rgba(244, 198, 106, 0.12);
+  color: #fff2cf;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.npc-dialogue__badge--muted {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff7e7;
+}
+
+.npc-dialogue__prompt {
+  min-height: 112px;
+  margin-top: 12px;
+  padding: 14px 15px;
+  border-radius: 14px;
+  border: 1px solid rgba(244, 198, 106, 0.34);
+  background: rgba(63, 43, 24, 0.88);
+  color: #fff7e7;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.npc-dialogue__options {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.npc-dialogue__option {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  border-color: rgba(244, 198, 106, 0.36);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff7e7;
+}
+
+.npc-dialogue__option.is-selected {
+  background: rgba(244, 198, 106, 0.22);
+  border-color: rgba(244, 198, 106, 0.92);
+  box-shadow: 0 0 0 1px rgba(244, 198, 106, 0.18) inset;
+}
+
+.npc-dialogue__footer {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.npc-dialogue__hint {
+  margin: 0;
+  color: #f6e6bf;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .hud {
+    top: 10px;
+    left: 10px;
+    padding: 10px 12px;
+    max-width: calc(100vw - 20px);
+  }
+
+  .hud__topline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hud__buttons {
+    justify-content: flex-start;
+  }
+
+  .npc-dialogue__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .npc-dialogue__footer .triage-btn {
+    width: 100%;
+  }
+}
+
+.triage-evidence-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 241, 184, 0.28);
+  background: rgba(255, 241, 184, 0.14);
+  color: #fff6de;
+  font-size: 12px;
+}
+
+.test-report__items {
+  color: #f7ebcf;
+  font-size: 13px;
+}
+
+.test-report__body {
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+  border: 1px solid rgba(247, 210, 132, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 248, 234, 0.06);
+  padding: 12px;
+  color: #fff7e7;
+  font: 12px/1.6 "Consolas", "Courier New", monospace;
+  white-space: pre-wrap;
+}

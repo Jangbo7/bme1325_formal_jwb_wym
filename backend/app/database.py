@@ -265,6 +265,16 @@ class Database:
                         finished_count INTEGER NOT NULL,
                         updated_at TEXT NOT NULL
                     );
+
+                    CREATE TABLE IF NOT EXISTS runtime_stage_samples (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sampled_at TEXT NOT NULL,
+                        window_label TEXT NOT NULL,
+                        phase_counts_json TEXT NOT NULL,
+                        room_counts_json TEXT NOT NULL,
+                        active_total INTEGER NOT NULL,
+                        historical_total INTEGER NOT NULL
+                    );
                     """
                 )
                 self._ensure_column(conn, "patients", "visit_id", "TEXT")
@@ -357,6 +367,7 @@ class Database:
             "patient_agent_cases",
             "department_patient_runtime",
             "department_runtime_summary",
+            "runtime_stage_samples",
         ]
 
         with self.lock:
@@ -381,4 +392,3 @@ class Database:
         if not payload:
             return default
         return json.loads(payload)
-

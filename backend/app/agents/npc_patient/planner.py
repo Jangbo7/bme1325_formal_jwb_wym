@@ -35,9 +35,6 @@ class NpcPlanningContext:
 def plan_next_action(context: NpcPlanningContext) -> PlannedNpcAction:
     visit_state = context.visit_state
 
-    if visit_state == "waiting_payment":
-        return PlannedNpcAction("finished")
-
     if not context.encounter_id:
         return PlannedNpcAction("create_encounter")
 
@@ -75,6 +72,15 @@ def plan_next_action(context: NpcPlanningContext) -> PlannedNpcAction:
             return PlannedNpcAction("reply_internal_medicine", {"round": 2})
 
     if visit_state == "waiting_payment":
-        return PlannedNpcAction("finished")
+        return PlannedNpcAction("trigger_encounter_event", {"event": "pay_medical"})
+
+    if visit_state == "medical_payment_completed":
+        return PlannedNpcAction("trigger_encounter_event", {"event": "plan_disposition"})
+
+    if visit_state == "disposition_pending":
+        return PlannedNpcAction("trigger_encounter_event", {"event": "choose_pharmacy"})
+
+    if visit_state == "waiting_pharmacy":
+        return PlannedNpcAction("trigger_encounter_event", {"event": "complete_visit"})
 
     return PlannedNpcAction("idle")

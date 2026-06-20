@@ -37,6 +37,11 @@ class DepartmentPatientState(BaseModel):
     updated_at: str
     source_of_truth_version: str | None = None
     finished_at: str | None = None
+    phase: str | None = None
+    status: str | None = None
+    last_error: str | None = None
+    step_count: int = 0
+    next_step_at: str | None = None
     npc_id: str | None = None
     last_action: str | None = None
     finished: bool = False

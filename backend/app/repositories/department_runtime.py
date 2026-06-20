@@ -37,9 +37,9 @@ class DepartmentRuntimeRepository:
                     current_room_node_id, current_room_name, room_type, target_node_id,
                     last_transition_action, transition_version,
                     current_counterparty, current_dialogue_preview, entered_department_at, updated_at,
-                    source_of_truth_version, finished_at
+                    source_of_truth_version, finished_at, phase, status, last_error, step_count, next_step_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(patient_id, visit_id) DO UPDATE SET
                     assigned_department_id = excluded.assigned_department_id,
                     assigned_department_name = excluded.assigned_department_name,
@@ -69,7 +69,12 @@ class DepartmentRuntimeRepository:
                     entered_department_at = COALESCE(department_patient_runtime.entered_department_at, excluded.entered_department_at),
                     updated_at = excluded.updated_at,
                     source_of_truth_version = excluded.source_of_truth_version,
-                    finished_at = excluded.finished_at
+                    finished_at = excluded.finished_at,
+                    phase = excluded.phase,
+                    status = excluded.status,
+                    last_error = excluded.last_error,
+                    step_count = excluded.step_count,
+                    next_step_at = excluded.next_step_at
                 """,
                 (
                     payload["patient_id"],
@@ -103,6 +108,11 @@ class DepartmentRuntimeRepository:
                     payload.get("updated_at") or now_iso(),
                     payload.get("source_of_truth_version"),
                     payload.get("finished_at"),
+                    payload.get("phase"),
+                    payload.get("status"),
+                    payload.get("last_error"),
+                    int(payload.get("step_count") or 0),
+                    payload.get("next_step_at"),
                 ),
             )
             conn.commit()

@@ -18,7 +18,77 @@ def _runtime_service(request: Request):
 
 
 def _snapshot(request: Request):
-    return _runtime_service(request).build_hospital_runtime_snapshot(_controller(request).get_snapshot())
+    snapshot = _runtime_service(request).build_hospital_runtime_snapshot(_controller(request).get_snapshot())
+    runtime_stage_sample_repo = request.app.state.container.get("runtime_stage_sample_repo")
+    if runtime_stage_sample_repo:
+        phase_counts: dict[str, int] = {
+            "triage": 0,
+            "queue": 0,
+            "consult1": 0,
+            "testing": 0,
+            "consult2": 0,
+            "payment": 0,
+            "pharmacy": 0,
+            "completed": 0,
+            "unknown": 0,
+        }
+        room_counts: dict[str, int] = {}
+
+        def map_phase(patient: dict) -> str:
+            visit_state = (patient.get("visit_state") or "").lower()
+            department_status = (patient.get("department_status") or patient.get("department_flow_status") or "").lower()
+            if patient.get("finished") or visit_state == "completed":
+                return "completed"
+            if visit_state in {"arrived", "triaged"}:
+                return "triage"
+            if "queue" in department_status or visit_state in {"registered", "waiting_consultation"}:
+                return "queue"
+            if visit_state in {"in_consultation"} or "round1" in department_status and "consultation" in department_status:
+                return "consult1"
+            if visit_state in {"waiting_test", "waiting_test_payment", "test_payment_completed", "in_test", "waiting_outpatient_procedure", "in_outpatient_procedure", "waiting_return_consultation", "results_ready"}:
+                return "testing"
+            if visit_state in {"in_second_consultation"} or "round2" in department_status and "consultation" in department_status:
+                return "consult2"
+            if visit_state in {"diagnosis_finalized", "waiting_payment", "medical_payment_completed", "disposition_pending"}:
+                return "payment"
+            if visit_state in {"waiting_pharmacy"}:
+                return "pharmacy"
+            return "unknown"
+
+        for department in snapshot.departments:
+            for patient_view in department.patients:
+                patient = patient_view.model_dump()
+                phase = map_phase(patient)
+                phase_counts[phase] = phase_counts.get(phase, 0) + 1
+                room = patient.get("current_room_name") or patient.get("room_type") or patient.get("assigned_department_name") or "unknown"
+                room_counts[room] = room_counts.get(room, 0) + 1
+        for patient_view in snapshot.unassigned_patients:
+            patient = patient_view.model_dump()
+            phase = map_phase(patient)
+            phase_counts[phase] = phase_counts.get(phase, 0) + 1
+            room = patient.get("current_room_name") or patient.get("room_type") or patient.get("assigned_department_name") or "unknown"
+            room_counts[room] = room_counts.get(room, 0) + 1
+
+        latest_sample = runtime_stage_sample_repo.get_latest_sample()
+        should_sample = True
+        if latest_sample:
+            try:
+                from datetime import datetime, timezone
+
+                last_at = datetime.fromisoformat(latest_sample["sampled_at"])
+                now_at = datetime.now(timezone.utc)
+                should_sample = (now_at - last_at).total_seconds() >= 2
+            except Exception:
+                should_sample = True
+        if should_sample:
+            runtime_stage_sample_repo.append_sample(
+                window_label="live",
+                phase_counts=phase_counts,
+                room_counts=room_counts,
+                active_total=snapshot.active_count,
+                historical_total=snapshot.total_spawned,
+            )
+    return snapshot
 
 
 @router.get("/hospital-runtime-debug", response_class=HTMLResponse, include_in_schema=False)

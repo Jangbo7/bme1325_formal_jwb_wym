@@ -34,6 +34,7 @@ const hudRuntimeDragHandle = document.getElementById("hudRuntimeDragHandle");
 const hudQueueToggle = document.getElementById("hudQueueToggle");
 const hudPatientsToggle = document.getElementById("hudPatientsToggle");
 const hudRuntimeStatsToggle = document.getElementById("hudRuntimeStatsToggle");
+const hudStatsHtmlBtn = document.getElementById("hudStatsHtmlBtn");
 const hudRuntimeStatsPanel = document.getElementById("hudRuntimeStatsPanel");
 const hudRuntimeStatsDragHandle = document.getElementById("hudRuntimeStatsDragHandle");
 const hudRuntimeStatsContent = document.getElementById("hudRuntimeStatsContent");
@@ -193,16 +194,16 @@ const props = [
 
 const ROOM_KIND_LABELS = {
   registration: "Registration",
-  consultation: "Consultation",
+  consultation: "Consultation Room",
   triage: "Triage",
-  doctor_entry: "Doctor Entry",
-  pharmacy_pickup: "Pharmacy",
+  doctor_entry: "Doctor Entry Hall",
+  pharmacy_pickup: "Pharmacy Pickup",
   ward: "Ward",
-  lab: "Lab",
-  icu: "ICU",
-  office: "Office",
-  hall: "Hall",
-  empty_room: "Reserved",
+  lab: "Laboratory",
+  icu: "ICU Room",
+  office: "Admin Office",
+  hall: "Main Hall",
+  empty_room: "Specialty Clinic",
 };
 
 function roomBounds(room) {
@@ -424,7 +425,10 @@ const microScene = {
 const SESSION_STORAGE_KEYS = {
   activeClientId: "scene_active_client_id",
   lastClientId: "scene_last_client_id",
+  runtimeConfig: "scene_runtime_config",
 };
+
+let pendingRuntimeConfig = null;
 
 const taskBoard = {
   title: "Patient Workflow",
@@ -835,9 +839,25 @@ function mapRuntimeNodeToRoomKind(nodeId) {
   return rooms.some((room) => room.kind === nodeId) ? nodeId : "hall";
 }
 
+function summarizeRuntimeStage(patient) {
+  const phase = String(patient?.phase || "").toLowerCase();
+  if (["triage", "queue", "consult1", "testing", "consult2", "payment", "pharmacy", "completed"].includes(phase)) {
+    return phase;
+  }
+  const departmentStatus = String(patient?.department_status || patient?.department_flow_status || "").toLowerCase();
+  if (departmentStatus.includes("pending_registration")) return "queue";
+  if (departmentStatus.includes("waiting_queue")) return "queue";
+  if (departmentStatus.includes("called_round")) return "queue";
+  if (departmentStatus.includes("consultation_round1")) return "consult1";
+  if (departmentStatus.includes("consultation_round2")) return "consult2";
+  if (departmentStatus === "in_test") return "testing";
+  return summarizeVisitStage(patient?.visit_state);
+}
+
 function buildHospitalScenePatients() {
   const snapshot = integrationState.hospitalRuntime;
   if (!snapshot || !Array.isArray(snapshot.nodes)) return [];
+  const stepSeconds = Number(snapshot.step_interval_seconds || 2);
 
   const items = [];
   for (const nodeView of snapshot.nodes) {
@@ -853,8 +873,12 @@ function buildHospitalScenePatients() {
         visitState: patient.visit_state || "",
         currentNodeId: patient.current_node_id || nodeId,
         targetNodeId: patient.target_node_id || "",
+        nextStepAt: patient.next_step_at || "",
+        phase: summarizeRuntimeStage(patient),
+        runtimeStatus: patient.status || "",
         displayLabel: patient.npc_id || patient.patient_id,
         statusSummary: truncateText(patient.department_status || patient.department_flow_status || patient.visit_state || "moving", 18),
+        stepSeconds,
       });
     }
   }
@@ -885,7 +909,7 @@ function buildRuntimePatientDetails(snapshot) {
         patientId: patient.patient_id,
         roomKind: mapRuntimeNodeToRoomKind(patient.current_room_node_id || patient.current_node_id || node.node.node_id),
         visitState: patient.visit_state || "",
-        stage: summarizeVisitStage(patient.visit_state),
+        stage: summarizeRuntimeStage(patient),
         currentNodeId: patient.current_node_id || node.node.node_id,
         targetNodeId: patient.target_node_id || "",
         lastAction: patient.last_action || "-",
@@ -939,7 +963,51 @@ function updateRuntimeHudStatus() {
   hudRuntimeStatus.textContent = `Runtime ${runningText} | mode ${snapshot.mode || "unknown"} | active ${snapshot.active_count ?? 0} | spawned ${snapshot.total_spawned ?? 0} | blocked ${snapshot.blocked_count ?? 0} | llm_probability=${snapshot.llm_probability ?? "-"} | ${tuning}`;
 }
 
+function saveRuntimeConfig() {
+  const payload = getRuntimeStartPayloadFromHud();
+  pendingRuntimeConfig = { ...payload };
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEYS.runtimeConfig, JSON.stringify(payload));
+  } catch (_error) {
+    // ignore storage failures for local runtime config
+  }
+}
+
+function restoreRuntimeConfig() {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEYS.runtimeConfig);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    pendingRuntimeConfig = { ...parsed };
+    if (hudRuntimeMode && typeof parsed.mode === "string") hudRuntimeMode.value = parsed.mode;
+    if (hudRuntimeSpawn && Number.isFinite(Number(parsed.spawn_interval_seconds))) hudRuntimeSpawn.value = String(parsed.spawn_interval_seconds);
+    if (hudRuntimeStep && Number.isFinite(Number(parsed.step_interval_seconds))) hudRuntimeStep.value = String(parsed.step_interval_seconds);
+    if (hudRuntimeMax && Number.isFinite(Number(parsed.max_active_patients))) hudRuntimeMax.value = String(parsed.max_active_patients);
+    if (hudRuntimeLlmProbability) {
+      hudRuntimeLlmProbability.value = parsed.llm_probability == null ? "" : String(parsed.llm_probability);
+    }
+  } catch (_error) {
+    // ignore malformed saved config
+  }
+}
+
+function openRuntimeStatsHtmlPage() {
+  const targetUrl = `${backendState.baseUrl.replace(/\/$/, "")}/runtime-stats-html`;
+  window.open(targetUrl, "_blank", "noopener,noreferrer");
+}
+
 function getRuntimeStartPayloadFromHud() {
+  if (pendingRuntimeConfig) {
+    return {
+      mode: pendingRuntimeConfig.mode || "intelligent_agent",
+      spawn_interval_seconds: Number.isFinite(Number(pendingRuntimeConfig.spawn_interval_seconds)) ? Math.max(0, Number(pendingRuntimeConfig.spawn_interval_seconds)) : 4,
+      step_interval_seconds: Number.isFinite(Number(pendingRuntimeConfig.step_interval_seconds)) ? Math.max(0.1, Number(pendingRuntimeConfig.step_interval_seconds)) : 2,
+      max_active_patients: Number.isFinite(Number(pendingRuntimeConfig.max_active_patients)) ? Math.max(1, Math.round(Number(pendingRuntimeConfig.max_active_patients))) : 20,
+      llm_probability: pendingRuntimeConfig.llm_probability == null || !Number.isFinite(Number(pendingRuntimeConfig.llm_probability))
+        ? null
+        : Math.max(0, Math.min(1, Number(pendingRuntimeConfig.llm_probability))),
+    };
+  }
   const mode = hudRuntimeMode?.value || "intelligent_agent";
   const spawnInterval = Number(hudRuntimeSpawn?.value || 4);
   const stepInterval = Number(hudRuntimeStep?.value || 2);
@@ -1917,15 +1985,16 @@ function drawLabels() {
 
   const labels = {
     registration: "Registration",
-    consultation: "Consultation",
+    consultation: "Consultation Room",
     triage: "Triage",
-    doctor_entry: "Doctor Entry",
-    pharmacy_pickup: "Pharmacy",
+    doctor_entry: "Doctor Entry Hall",
+    pharmacy_pickup: "Pharmacy Pickup",
     ward: "Ward",
-    lab: "Lab",
-    icu: "ICU",
-    office: "Office",
-    hall: "Hall",
+    lab: "Laboratory",
+    icu: "ICU Room",
+    office: "Admin Office",
+    hall: "Main Hall",
+    empty_room: "Specialty Clinic",
   };
 
   ctx.fillStyle = palette.label;
@@ -1939,7 +2008,7 @@ function drawLabels() {
     ctx.strokeStyle = "rgba(145, 106, 64, 0.75)";
     ctx.strokeRect(point.x - 52, point.y - 14, 104, 24);
     ctx.fillStyle = palette.label;
-    ctx.fillText(labels[room.kind], point.x, point.y);
+    ctx.fillText(labels[room.kind] || room.kind, point.x, point.y);
   }
 }
 
@@ -2778,6 +2847,9 @@ function bindHudControls() {
       updateRuntimeStatsPanel();
     }
   });
+  hudStatsHtmlBtn?.addEventListener("click", () => {
+    openRuntimeStatsHtmlPage();
+  });
 
   hudRestartBtn?.addEventListener("click", () => {
     openRestartConfirmModal();
@@ -2816,13 +2888,17 @@ function bindHudControls() {
 
   [hudRuntimeMode, hudRuntimeSpawn, hudRuntimeStep, hudRuntimeMax, hudRuntimeLlmProbability].forEach((element) => {
     element?.addEventListener("input", () => {
+      saveRuntimeConfig();
       updateRuntimeHudStatus();
     });
     element?.addEventListener("change", () => {
+      pendingRuntimeConfig = null;
+      saveRuntimeConfig();
       updateRuntimeHudStatus();
     });
   });
 
+  restoreRuntimeConfig();
   updateRuntimeHudStatus();
   updateRuntimeStatsPanel();
   syncOverlayUi();
@@ -2977,8 +3053,8 @@ function render() {
   const activeDoor = nearestDoor();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGroundBackdrop();
-  drawFloorLayer(activeFloor, activeDoor, false);
   drawAnnexGateStructure();
+  drawFloorLayer(activeFloor, activeDoor, false);
   drawLabels();
   drawObjectiveHighlight();
   drawHudHint(activeDoor);
@@ -4103,6 +4179,7 @@ async function performFullRestart() {
   backendState.submitting = true;
   updateRuntimeHudStatus();
   try {
+    saveRuntimeConfig();
     await backendClient.resetHospitalRuntime();
     integrationState.hospitalRuntime = await backendClient.startHospitalRuntime(getRuntimeStartPayloadFromHud());
     integrationState.medicalRecordTimeline = null;
@@ -5157,6 +5234,7 @@ bindRuntimePanelDrag();
 bindRuntimeStatsPanelDrag();
 updateFloorHud();
 eventSubscriber.connect();
+refreshIntegrationRuntime(true);
 pollBackendStatuses(true);
 if (window.location.search.includes("fresh=1") || window.location.search.includes("resume=1") || window.location.search.includes("newSession=1")) {
   window.history.replaceState({}, document.title, window.location.pathname);

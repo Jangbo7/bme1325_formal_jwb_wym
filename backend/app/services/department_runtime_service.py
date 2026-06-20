@@ -29,13 +29,9 @@ def now_iso() -> str:
 
 
 FINISHED_VISIT_STATES = {
-    VisitLifecycleState.WAITING_PAYMENT.value,
-    VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
-    VisitLifecycleState.DISPOSITION_PENDING.value,
     VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
     VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
     VisitLifecycleState.DISPOSITION_REFERRAL.value,
-    VisitLifecycleState.WAITING_PHARMACY.value,
     VisitLifecycleState.ADMITTED.value,
     VisitLifecycleState.TRANSFERRING.value,
     VisitLifecycleState.COMPLETED.value,
@@ -82,6 +78,11 @@ class DepartmentRuntimeService:
         room_type: str | None = None,
         last_transition_action: str | None = None,
         transition_version: str | None = None,
+        phase: str | None = None,
+        status: str | None = None,
+        last_error: str | None = None,
+        step_count: int | None = None,
+        next_step_at: str | None = None,
     ) -> dict | None:
         patient_row = self.patient_repo.get(patient_id)
         if not patient_row:
@@ -197,6 +198,11 @@ class DepartmentRuntimeService:
             "updated_at": now_iso(),
             "source_of_truth_version": now_iso(),
             "finished_at": now_iso() if flow_status == DepartmentFlowStatus.FINISHED.value else None,
+            "phase": phase if phase is not None else existing.get("phase"),
+            "status": status if status is not None else existing.get("status"),
+            "last_error": last_error if last_error is not None else existing.get("last_error"),
+            "step_count": int(step_count if step_count is not None else (existing.get("step_count") or 0)),
+            "next_step_at": next_step_at if next_step_at is not None else existing.get("next_step_at"),
         }
         runtime_row = self.runtime_repo.upsert_patient_runtime(payload)
         self.refresh_department_summary(assigned_department_id, assigned_department_name)
@@ -479,6 +485,7 @@ class DepartmentRuntimeService:
             spawn_interval_seconds=multi_snapshot.spawn_interval_seconds,
             step_interval_seconds=multi_snapshot.step_interval_seconds,
             max_active_patients=multi_snapshot.max_active_patients,
+            llm_probability=multi_snapshot.llm_probability,
             total_spawned=multi_snapshot.total_spawned,
             active_count=multi_snapshot.active_count,
             last_spawn_at=multi_snapshot.last_spawn_at,

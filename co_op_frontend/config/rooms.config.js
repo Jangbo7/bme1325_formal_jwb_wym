@@ -1,0 +1,16 @@
+export const ROOM_CONFIGS = [
+  { id: "registration", label: "Registration", kind: "registration", x: 4, y: 5, w: 13, h: 9, doorSide: "bottom", doorOffset: 0.5 },
+  { id: "triage", label: "Triage", kind: "triage", x: 18, y: 5, w: 14, h: 9, doorSide: "bottom", doorOffset: 0.5 },
+  { id: "consultation-a", label: "Consultation Room A", kind: "consultation", x: 33, y: 5, w: 14, h: 9, doorSide: "bottom", doorOffset: 0.5, agentId: "internal-medicine-agent" },
+  { id: "consultation-b", label: "Consultation Room B", kind: "consultation", x: 48, y: 5, w: 14, h: 9, doorSide: "bottom", doorOffset: 0.5, agentId: "surgery-agent" },
+  { id: "doctor-entry", label: "Doctor Entry Hall", kind: "doctor_entry", x: 63, y: 5, w: 13, h: 9, doorSide: "bottom", doorOffset: 0.5 },
+  { id: "main-hall", label: "Main Hall", kind: "hall", x: 8, y: 17, w: 18, h: 12, doorSide: "top", doorOffset: 0.5 },
+  { id: "laboratory", label: "Laboratory", kind: "lab", x: 27, y: 17, w: 15, h: 11, doorSide: "top", doorOffset: 0.5 },
+  { id: "icu-room", label: "ICU Room", kind: "icu", x: 43, y: 17, w: 15, h: 11, doorSide: "top", doorOffset: 0.5, agentId: "icu-agent" },
+  { id: "ward-room", label: "Ward", kind: "ward", x: 59, y: 17, w: 14, h: 11, doorSide: "top", doorOffset: 0.5 },
+  { id: "admin-office", label: "Admin Office", kind: "office", x: 10, y: 32, w: 16, h: 11, doorSide: "top", doorOffset: 0.5 },
+  { id: "specialty-a", label: "Specialty Clinic A", kind: "empty_room", x: 27, y: 32, w: 16, h: 11, doorSide: "top", doorOffset: 0.5, agentId: "specialty-a-agent" },
+  { id: "specialty-b", label: "Specialty Clinic B", kind: "empty_room", x: 44, y: 32, w: 15, h: 11, doorSide: "top", doorOffset: 0.5, agentId: "specialty-b-agent" },
+  { id: "pharmacy", label: "Pharmacy Pickup", kind: "pharmacy_pickup", x: 60, y: 32, w: 14, h: 11, doorSide: "top", doorOffset: 0.5 },
+  { id: "south-hall", label: "South Hall", kind: "hall", x: 31, y: 45, w: 22, h: 7, doorSide: "top", doorOffset: 0.5 },
+];

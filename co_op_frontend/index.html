@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hospital Village 2D Prototype</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" type="image/png" href="./img/head_photo-head@1x.png" />
+  <link rel="shortcut icon" href="./img/head_photo-head@1x.png" />
+</head>
+<body>
+  <div class="hud">
+    <div class="hud__topline">
+      <div class="hud__title">Hospital Village 2D</div>
+      <div class="hud__buttons">
+        <button type="button" class="hud__btn" id="hudRestartBtn">Restart</button>
+        <button type="button" class="hud__btn" id="hudResumeBtn">Resume</button>
+        <button type="button" class="hud__btn" id="hudHelpToggle" aria-expanded="false" aria-controls="hudHelpPanel">Help</button>
+        <button type="button" class="hud__btn" id="hudRuntimeToggle" aria-pressed="false">Runtime</button>
+        <button type="button" class="hud__btn" id="hudTasksToggle" aria-pressed="false">Tasks</button>
+        <button type="button" class="hud__btn" id="hudLabelsToggle" aria-pressed="false">Labels</button>
+        <button type="button" class="hud__btn" id="hudDebugToggle" aria-pressed="false">Debug</button>
+        <button type="button" class="hud__btn is-active" id="hudPatientsToggle" aria-pressed="true">Patients</button>
+        <button type="button" class="hud__btn" id="hudRuntimeStatsToggle" aria-pressed="false">Stats</button>
+        <button type="button" class="hud__btn" id="hudStatsHtmlBtn">Stats HTML</button>
+      </div>
+    </div>
+    <div class="hud__panel hidden" id="hudHelpPanel">
+      <div class="hud__tips">Move: WASD / Arrows. Press E to talk to nearby staff and interact with triage, registration, and doctor entry. Follow the glowing highlight for the next objective.</div>
+    </div>
+    <div class="hud__panel hud__npc-panel" id="hudNpcPanel">
+      <div class="hud__panel-title">Route NPC Control</div>
+      <div class="hud__npc-buttons">
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="registration">To Registration</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="triage">To Triage</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="lab">To Lab</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="consultation">To Consultation</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="ward">To Ward</button>
+        <button type="button" class="hud__btn hud__btn--route" data-route-target="hall">To Hall</button>
+      </div>
+    </div>
+    <div class="hud__panel hidden hud__runtime-panel" id="hudRuntimePanel">
+      <div class="hud__panel-title hud__panel-title--drag" id="hudRuntimeDragHandle">Hospital Runtime</div>
+      <div class="hud__runtime-controls">
+        <label class="hud__runtime-field">
+          <span>Mode</span>
+          <select id="hudRuntimeMode">
+            <option value="intelligent_agent">intelligent_agent</option>
+            <option value="department_mixed">department_mixed</option>
+            <option value="legacy_template">legacy_template</option>
+            <option value="legacy_probabilistic_llm">legacy_probabilistic_llm</option>
+          </select>
+        </label>
+        <label class="hud__runtime-field">
+          <span>Spawn(s)</span>
+          <input id="hudRuntimeSpawn" type="number" min="0" step="0.5" value="1.5" />
+        </label>
+        <label class="hud__runtime-field">
+          <span>Step(s)</span>
+          <input id="hudRuntimeStep" type="number" min="0.1" step="0.5" value="2" />
+        </label>
+        <label class="hud__runtime-field">
+          <span>Max</span>
+          <input id="hudRuntimeMax" type="number" min="1" step="1" value="200" />
+        </label>
+        <label class="hud__runtime-field">
+          <span>LLM Probability</span>
+          <input id="hudRuntimeLlmProbability" type="number" min="0" max="1" step="0.1" value="0" />
+        </label>
+      </div>
+      <div class="hud__runtime-buttons">
+        <button type="button" class="hud__btn" id="hudRuntimeStopBtn">Stop Runtime</button>
+        <button type="button" class="hud__btn" id="hudRuntimeResetBtn">Reset Runtime</button>
+      </div>
+      <div class="hud__tips" id="hudRuntimeStatus">Runtime status unknown.</div>
+    </div>
+    <div class="hud__panel hidden hud__runtime-panel" id="hudRuntimeStatsPanel">
+      <div class="hud__panel-title hud__panel-title--drag" id="hudRuntimeStatsDragHandle">Runtime Stats</div>
+      <div class="hud__runtime-stats" id="hudRuntimeStatsContent">No runtime stats yet.</div>
+    </div>
+    <div class="hud__floor">
+      <span id="floor-state">Current Zone: Main Campus</span>
+    </div>
+  </div>
+  <canvas id="game" width="1280" height="720" aria-label="top down 2d hospital village sandbox"></canvas>
+
+  <div id="restartConfirmModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content" role="dialog" aria-modal="true" aria-labelledby="restartConfirmTitle">
+      <h2 id="restartConfirmTitle">Restart Session</h2>
+      <p class="triage-dialogue__status">Start a new run now? The current run will be saved as the last session and can be resumed later.</p>
+      <div class="triage-form__actions">
+        <button type="button" id="restartConfirmCancelBtn" class="triage-btn triage-btn--ghost">Cancel</button>
+        <button type="button" id="restartConfirmOkBtn" class="triage-btn triage-btn--primary">Start New Run</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="triageModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content" role="dialog" aria-modal="true" aria-labelledby="triageModalTitle">
+      <h2 id="triageModalTitle">Triage Card</h2>
+      <form id="triageForm" class="triage-form">
+        <fieldset>
+          <label for="symptoms">Symptoms</label>
+          <textarea id="symptoms" placeholder="Describe the main symptoms you are feeling." required></textarea>
+        </fieldset>
+
+        <fieldset>
+          <label for="temp_c">Temperature (C)</label>
+          <input id="temp_c" type="number" min="35" max="42" step="0.1" value="37.8" required />
+        </fieldset>
+
+        <fieldset>
+          <label for="heart_rate">Heart Rate (bpm)</label>
+          <input id="heart_rate" type="number" min="40" max="180" value="105" required />
+        </fieldset>
+
+        <fieldset>
+          <label for="systolic_bp">Systolic BP (mmHg)</label>
+          <input id="systolic_bp" type="number" min="70" max="220" value="132" required />
+        </fieldset>
+
+        <fieldset>
+          <label for="diastolic_bp">Diastolic BP (mmHg)</label>
+          <input id="diastolic_bp" type="number" min="40" max="140" value="86" required />
+        </fieldset>
+
+        <fieldset>
+          <label for="pain_score">Pain Score (0-10) <span id="painDisplay">5</span></label>
+          <input id="pain_score" type="range" min="0" max="10" value="5" />
+        </fieldset>
+
+        <div class="triage-form__actions">
+          <button type="button" id="triageCancelBtn" class="triage-btn triage-btn--ghost">Cancel</button>
+          <button type="submit" class="triage-btn triage-btn--primary">Submit Triage Card</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="triageDialogueModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content triage-dialogue" role="dialog" aria-modal="true" aria-labelledby="triageDialogueTitle">
+      <div class="triage-dialogue__header">
+        <div>
+          <h2 id="triageDialogueTitle">Triage Dialogue</h2>
+          <p id="triageDialogueStatus" class="triage-dialogue__status">The triage agent is ready.</p>
+        </div>
+        <button type="button" id="triageDialogueCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+
+      <div id="triageDialogueMeta" class="triage-dialogue__meta">
+        <span id="triageLevelBadge" class="triage-badge">Triage Pending</span>
+        <span id="triageDeptBadge" class="triage-badge triage-badge--muted">Department Pending</span>
+      </div>
+
+      <div id="triageDialogueMessages" class="triage-dialogue__messages" aria-live="polite"></div>
+
+      <div class="triage-dialogue__footer">
+        <div id="triageEvidenceList" class="triage-dialogue__evidence"></div>
+        <form id="triageDialogueForm" class="triage-dialogue__composer">
+          <textarea id="triageDialogueInput" placeholder="Reply to the triage agent with more details."></textarea>
+          <button type="submit" id="triageDialogueSendBtn" class="triage-btn triage-btn--primary">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="registrationModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content" role="dialog" aria-modal="true" aria-labelledby="registrationModalTitle">
+      <h2 id="registrationModalTitle">Registration Profile</h2>
+      <form id="registrationForm" class="triage-form">
+        <fieldset>
+          <label for="registrationName">Name</label>
+          <input id="registrationName" type="text" value="You (Player)" required />
+        </fieldset>
+
+        <fieldset>
+          <label for="registrationSex">Sex</label>
+          <select id="registrationSex">
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+            <option value="other">Other</option>
+            <option value="unknown" selected>Unknown</option>
+          </select>
+        </fieldset>
+
+        <fieldset>
+          <label for="registrationAge">Age</label>
+          <input id="registrationAge" type="number" min="0" max="120" value="30" required />
+        </fieldset>
+
+        <fieldset>
+          <label for="registrationIdNumber">ID Number</label>
+          <input id="registrationIdNumber" type="text" value="TEMP-REG-0001" required />
+        </fieldset>
+
+        <div class="triage-form__actions">
+          <button type="button" id="registrationCancelBtn" class="triage-btn triage-btn--ghost">Cancel</button>
+          <button type="submit" class="triage-btn triage-btn--primary">Submit Registration</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="doctorDialogueModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content triage-dialogue" role="dialog" aria-modal="true" aria-labelledby="doctorDialogueTitle">
+      <div class="triage-dialogue__header">
+        <div>
+          <h2 id="doctorDialogueTitle">Internal Medicine Consultation</h2>
+          <p id="doctorDialogueStatus" class="triage-dialogue__status">The doctor agent is waiting for your message.</p>
+        </div>
+        <button type="button" id="doctorDialogueCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+
+      <div id="doctorDialogueMeta" class="triage-dialogue__meta">
+        <span id="doctorAgentBadge" class="triage-badge">Doctor Agent</span>
+        <span id="doctorVisitBadge" class="triage-badge triage-badge--muted">Visit Pending</span>
+      </div>
+
+      <div id="doctorDialogueMessages" class="triage-dialogue__messages" aria-live="polite"></div>
+
+      <div class="triage-dialogue__footer">
+        <div id="doctorEvidenceList" class="triage-dialogue__evidence"></div>
+        <form id="doctorDialogueForm" class="triage-dialogue__composer">
+          <textarea id="doctorDialogueInput" placeholder="Describe symptoms, onset, concerns, or answer the doctor agent."></textarea>
+          <button type="submit" id="doctorDialogueSendBtn" class="triage-btn triage-btn--primary">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="testReportModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content triage-dialogue test-report" role="dialog" aria-modal="true" aria-labelledby="testReportTitle">
+      <div class="triage-dialogue__header">
+        <div>
+          <h2 id="testReportTitle">Simulated Test Report</h2>
+          <p id="testReportStatus" class="triage-dialogue__status">Latest diagnostic report.</p>
+        </div>
+        <button type="button" id="testReportCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+      <div class="triage-dialogue__meta">
+        <span id="testReportCategoryBadge" class="triage-badge">Category: -</span>
+        <span id="testReportTimeBadge" class="triage-badge triage-badge--muted">Generated: -</span>
+      </div>
+      <div id="testReportItems" class="test-report__items">Items: -</div>
+      <pre id="testReportBody" class="test-report__body">No report available.</pre>
+    </div>
+  </div>
+
+  <div id="pharmacyPickupModal" class="triage-modal hidden" aria-hidden="true">
+    <div class="triage-modal__content triage-dialogue test-report" role="dialog" aria-modal="true" aria-labelledby="pharmacyPickupTitle">
+      <div class="triage-dialogue__header">
+        <div>
+          <h2 id="pharmacyPickupTitle">Medication Pickup</h2>
+          <p id="pharmacyPickupStatus" class="triage-dialogue__status">Review the medication list before pickup.</p>
+        </div>
+        <button type="button" id="pharmacyPickupCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+      <div class="triage-dialogue__meta">
+        <span id="pharmacyPickupVisitBadge" class="triage-badge">Visit: -</span>
+        <span id="pharmacyPickupStepBadge" class="triage-badge triage-badge--muted">Step: review</span>
+      </div>
+      <div id="pharmacyPickupItems" class="test-report__items">Items: -</div>
+      <pre id="pharmacyPickupBody" class="test-report__body">No medication list available.</pre>
+      <div class="triage-form__actions">
+        <button type="button" id="pharmacyPickupConfirmBtn" class="triage-btn triage-btn--primary">Confirm Pickup</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="npcDialogueModal" class="npc-dialogue hidden" aria-hidden="true">
+    <div class="npc-dialogue__content" role="dialog" aria-modal="true" aria-labelledby="npcDialogueTitle">
+      <div class="npc-dialogue__header">
+        <div>
+          <h2 id="npcDialogueTitle">Staff Conversation</h2>
+          <p id="npcDialogueStatus" class="npc-dialogue__status">A nearby staff member is waiting.</p>
+        </div>
+        <button type="button" id="npcDialogueCloseBtn" class="triage-btn triage-btn--ghost">Close</button>
+      </div>
+
+      <div class="npc-dialogue__meta">
+        <span id="npcDialogueRoleBadge" class="npc-dialogue__badge">Staff</span>
+        <span id="npcDialogueRoomBadge" class="npc-dialogue__badge npc-dialogue__badge--muted">Location pending</span>
+      </div>
+
+      <div id="npcDialoguePrompt" class="npc-dialogue__prompt"></div>
+      <div id="npcDialogueOptions" class="npc-dialogue__options" aria-live="polite"></div>
+
+      <div class="npc-dialogue__footer">
+        <p id="npcDialogueHint" class="npc-dialogue__hint">Press E to continue. Esc closes the conversation.</p>
+        <button type="button" id="npcDialogueAdvanceBtn" class="triage-btn triage-btn--primary">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./api.private.js"></script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

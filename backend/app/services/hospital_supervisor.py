@@ -231,7 +231,7 @@ class HospitalSupervisor:
         self._thread.start()
 
     def _run_loop(self) -> None:
-        while not self._stop_event.wait(0.5):
+        while not self._stop_event.wait(max(0.05, min(self._step_interval_seconds, 0.5))):
             try:
                 self.tick_once()
             except Exception:
@@ -446,23 +446,23 @@ class HospitalSupervisor:
         dispatch_budget[target_node] = dispatch_budget.get(target_node, 0) + 1
         self._dispatch_count += 1
         slot.state.last_error = None
-        slot.next_step_at = now + timedelta(seconds=self._next_delay_for_node(target_node))
+        slot.next_step_at = now + timedelta(seconds=max(self._step_interval_seconds, self._next_delay_for_node(target_node)))
         return target_node
 
     def _can_dispatch_to_node(self, node_id: str, dispatch_budget: dict[str, int]) -> bool:
-        capacity = self._node_capacities.get(node_id, self._node_capacities.get("*", 1))
+        capacity = self._node_capacities.get(node_id, self._node_capacities.get("*", max(2, self._max_active_patients)))
         return dispatch_budget.get(node_id, 0) < capacity
 
     def _next_delay_for_node(self, node_id: str) -> float:
         return max(0.1, float(self._node_step_delays.get(node_id, self._step_interval_seconds)))
 
     def _build_node_capacities(self) -> dict[str, int]:
-        capacities = {"*": 1, "testing": 2, "payment": 2, "pharmacy": 2}
+        capacities = {"*": 6, "testing": 6, "payment": 6, "pharmacy": 6}
         for department in list_departments(include_legacy=False):
-            capacities[department["id"]] = 1
+            capacities[department["id"]] = 4
         for config in list_department_resource_configs():
             for room in config.room_nodes:
-                capacities[room.node_id] = room.capacity
+                capacities[room.node_id] = max(room.capacity, 3)
         return capacities
 
     def _to_patient_snapshot(self, slot: _PatientSlot) -> MultiPatientDebugPatientSnapshot:
@@ -588,6 +588,11 @@ class HospitalSupervisor:
             assigned_doctor_slot_name=slot.assigned_doctor_slot_name,
             last_transition_action=slot.state.last_action,
             transition_version=now_iso(),
+            phase=slot.state.phase,
+            status=slot.state.status,
+            last_error=slot.state.last_error,
+            step_count=slot.state.step_count,
+            next_step_at=slot.next_step_at.isoformat() if slot.next_step_at else None,
         )
         if runtime_row:
             slot.department_agent_enabled = bool(runtime_row.get("department_agent_enabled"))

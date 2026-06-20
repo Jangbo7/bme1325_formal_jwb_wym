@@ -47,6 +47,7 @@ class HospitalRuntimeSnapshot(BaseModel):
     spawn_interval_seconds: float
     step_interval_seconds: float
     max_active_patients: int
+    llm_probability: float | None = None
     total_spawned: int
     active_count: int
     last_spawn_at: str | None = None
