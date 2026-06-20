@@ -12,7 +12,12 @@ from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICK
 from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
 from app.services.consultation_registry import resolve_consultation_agent_for_visit
 from app.services.department_assignment import resolve_assigned_department_for_visit
-from app.services.disposition import is_outpatient_flow_finished
+from app.services.disposition import (
+    build_consultation_disposition,
+    disposition_transition_context,
+    is_outpatient_flow_finished,
+    should_stop_outpatient_automation,
+)
 
 
 WAIT_SECONDS = 10
@@ -94,6 +99,10 @@ class NpcPatientRunner:
             state.status = "finished"
             self._sync_state(state, preserve_dialogue=False)
             return state
+        if planned.action == "halted":
+            state.step_count += 1
+            self._sync_state(state, preserve_dialogue=False)
+            return state
         if planned.action == "idle":
             state.step_count += 1
             state.phase = self._phase_for_visit_state(state.visit_state)
@@ -133,21 +142,39 @@ class NpcPatientRunner:
         visit_data = self._decode_visit_data(visit_row)
         consultation_definition = self._consultation_definition_for_visit(visit_row)
         triage_session = self._resolve_session(visit_data.get("triage_session_id"), visit_row, "triage")
-        round1_session = self._resolve_session(
-            visit_data.get(consultation_definition.session_ref_key) if consultation_definition else None,
-            visit_row,
-            consultation_definition.agent_type if consultation_definition else "internal_medicine",
-        )
-        round2_session = self._resolve_session(
-            visit_data.get(consultation_definition.round2_session_ref_key) if consultation_definition and consultation_definition.round2_session_ref_key else None,
-            visit_row,
-            consultation_definition.agent_type if consultation_definition else "internal_medicine",
-            allow_latest=False,
-        )
+        if consultation_definition:
+            round1_session = self._resolve_session(
+                visit_data.get(consultation_definition.session_ref_key),
+                visit_row,
+                consultation_definition.agent_type,
+            )
+            round2_session = self._resolve_session(
+                visit_data.get(consultation_definition.round2_session_ref_key) if consultation_definition.round2_session_ref_key else None,
+                visit_row,
+                consultation_definition.agent_type,
+                allow_latest=False,
+            )
+        else:
+            assigned_department = self._assigned_department(visit_row) if visit_row else {"id": "internal"}
+            round1_session = self._resolve_scripted_session(
+                state,
+                visit_row=visit_row,
+                visit_data=visit_data,
+                department_id=assigned_department["id"],
+                round_number=1,
+            )
+            round2_session = self._resolve_scripted_session(
+                state,
+                visit_row=visit_row,
+                visit_data=visit_data,
+                department_id=assigned_department["id"],
+                round_number=2,
+            )
         patient_row = self.patient_repo.get(state.patient_id)
         return NpcPlanningContext(
             encounter_id=state.encounter_id,
             visit_state=visit_row.get("state") if visit_row else None,
+            visit_data=visit_data,
             patient_state=patient_row.get("lifecycle_state") if patient_row else None,
             triage_session_state=triage_session.get("dialogue_state") if triage_session else None,
             internal_medicine_round1_state=round1_session.get("dialogue_state") if round1_session else None,
@@ -447,10 +474,13 @@ class NpcPatientRunner:
         self.session_repo.create_or_update(
             session_id,
             state.patient_id,
-            "scripted_consultation",
+            "awaiting_patient_reply",
             agent_type=agent_type,
             visit_id=state.encounter_id,
         )
+        visit_data = self._decode_visit_data(visit_row)
+        visit_data[self._scripted_session_ref_key(round_number)] = session_id
+        self.visit_repo.update_visit(visit_row["id"], data=visit_data)
         self.session_repo.append_turn(
             session_id,
             state.patient_id,
@@ -478,7 +508,7 @@ class NpcPatientRunner:
         visit_row = self._require_visit_row(state)
         assigned_department = self._assigned_department(visit_row)
         agent_type = self._scripted_agent_type(assigned_department["id"])
-        session_id = self._resolve_scripted_session_id(state, assigned_department["id"])
+        session_id = self._resolve_scripted_session_id(state, assigned_department["id"], round_number)
         reply_key = self._phase_for_round(round_number)
         replies = (
             profile.internal_medicine_round1_replies
@@ -509,6 +539,58 @@ class NpcPatientRunner:
             now_iso(),
             metadata={"scripted": True, "round": round_number},
         )
+        self.session_repo.update_state(session_id, "completed")
+        if round_number == 1:
+            visit_data = self._decode_visit_data(visit_row)
+            visit_data["scripted_consultation_session_id"] = session_id
+            visit_data["scripted_consultation_round"] = 1
+            self._transition_visit(
+                visit_row,
+                "consultation_completed",
+                current_node="diagnostic_wait",
+                current_department="Auxiliary Diagnostic Center",
+                active_agent_type=None,
+                data=visit_data,
+            )
+        else:
+            visit_data = self._decode_visit_data(visit_row)
+            disposition = build_consultation_disposition(
+                {
+                    "department": assigned_department["label"],
+                    "primary_disposition": "outpatient_management",
+                    "disposition_advice": "continue outpatient treatment",
+                },
+                source_phase="scripted_consultation_round2",
+            )
+            disposition_context = disposition_transition_context(disposition)
+            visit_data["scripted_consultation_round2_session_id"] = session_id
+            visit_data["primary_disposition"] = "outpatient_management"
+            visit_data["disposition"] = disposition
+            visit_data["needs_pharmacy"] = False
+            finalized_visit = self._transition_visit(
+                visit_row,
+                "finalize_diagnosis",
+                current_node="diagnosis_finalized",
+                current_department="Consultation",
+                active_agent_type=None,
+                data=visit_data,
+            )
+            disposition_pending_visit = self._transition_visit(
+                finalized_visit,
+                "plan_disposition",
+                current_node="disposition_pending",
+                current_department="Disposition",
+                active_agent_type=None,
+                data=self._decode_visit_data(finalized_visit),
+            )
+            self._transition_visit(
+                disposition_pending_visit,
+                str(disposition_context["event"]),
+                current_node=str(disposition_context["current_node"]),
+                current_department=str(disposition_context["current_department"]),
+                active_agent_type=None,
+                data=self._decode_visit_data(disposition_pending_visit),
+            )
         state.reply_counters[reply_key] += 1
         state.active_session_id = session_id
         state.phase = reply_key
@@ -579,6 +661,7 @@ class NpcPatientRunner:
             event,
             context={"source": "npc_patient_debug"},
         )
+        updated_visit = self._require_visit_row(state)
         if event == "start_second_consultation":
             completed_ticket = self.queue_repo.mark_completed(ticket["id"])
             if completed_ticket:
@@ -589,8 +672,8 @@ class NpcPatientRunner:
             state.phase = "internal_medicine_round2"
             state.status = VisitLifecycleState.IN_SECOND_CONSULTATION.value
         else:
-            state.phase = "testing"
-            state.status = event
+            state.phase = self._phase_for_visit_state(updated_visit.get("state"))
+            state.status = updated_visit.get("state") or event
         state.clear_dialogue()
 
     def _resolve_session(
@@ -639,7 +722,17 @@ class NpcPatientRunner:
             return latest["id"]
         raise ValueError("triage session not found")
 
-    def _resolve_scripted_session_id(self, state: NpcPatientDebugState, department_id: str) -> str:
+    def _resolve_scripted_session_id(
+        self,
+        state: NpcPatientDebugState,
+        department_id: str,
+        round_number: int,
+    ) -> str:
+        visit_row = self._require_visit_row(state)
+        visit_data = self._decode_visit_data(visit_row)
+        session_id = visit_data.get(self._scripted_session_ref_key(round_number))
+        if session_id:
+            return session_id
         if state.active_session_id:
             return state.active_session_id
         latest = self.session_repo.get_latest_by_visit_and_agent(
@@ -653,6 +746,35 @@ class NpcPatientRunner:
     @staticmethod
     def _scripted_agent_type(department_id: str) -> str:
         return f"scripted_{department_id}_consultation"
+
+    @staticmethod
+    def _scripted_session_ref_key(round_number: int) -> str:
+        return "scripted_consultation_round2_session_id" if round_number == 2 else "scripted_consultation_session_id"
+
+    def _resolve_scripted_session(
+        self,
+        state: NpcPatientDebugState,
+        *,
+        visit_row: dict | None,
+        visit_data: dict,
+        department_id: str,
+        round_number: int,
+    ) -> dict | None:
+        session_id = visit_data.get(self._scripted_session_ref_key(round_number))
+        if session_id:
+            row = self.session_repo.get(session_id)
+            if row:
+                return row
+        if round_number == 1 and state.active_session_id:
+            row = self.session_repo.get(state.active_session_id)
+            if row and row.get("agent_type") == self._scripted_agent_type(department_id):
+                return row
+        if not visit_row or round_number == 2:
+            return None
+        return self.session_repo.get_latest_by_visit_and_agent(
+            visit_row["id"],
+            self._scripted_agent_type(department_id),
+        )
 
     @staticmethod
     def _scripted_consultation_message(
@@ -729,6 +851,10 @@ class NpcPatientRunner:
             state.finished = True
             state.phase = "finished"
             state.status = state.visit_state or "finished"
+        elif should_stop_outpatient_automation(state.visit_state, visit_data):
+            state.phase = self._phase_for_visit_state(state.visit_state)
+            if not preserve_dialogue:
+                state.status = state.visit_state or state.status
         elif state.visit_state:
             state.phase = self._phase_for_visit_state(state.visit_state)
             if not preserve_dialogue:

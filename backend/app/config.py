@@ -16,7 +16,7 @@ DEFAULT_ALIYUN_LLM_MODEL = "deepseek-v4-flash"
 DEFAULT_DEEPSEEK_LLM_ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
 DEFAULT_DEEPSEEK_LLM_MODEL = "deepseek-chat"
 DEFAULT_DATABASE_URL = "sqlite:///backend/data/app.db"
-DEFAULT_RESET_ON_SERVER_START = True
+DEFAULT_RESET_ON_SERVER_START = False
 DEFAULT_SIMULATOR_ENABLED = True
 DEFAULT_SIMULATOR_TICK_SECONDS = 3.0
 DEFAULT_SIMULATOR_SPAWN_INTERVAL_SECONDS = 8.0
@@ -44,6 +44,18 @@ DEFAULT_HOSPITAL_REDIS_DURABLE_STREAM_KEY = "hospital:journal"
 DEFAULT_EVENT_PRODUCER = "groupA.outpatient"
 DEFAULT_STATE_DEBUG_ENABLED = True
 DEFAULT_STATE_DEBUG_ALLOW_FORCE = True
+DEFAULT_FULLVIEW_SYNC_ENABLED = False
+DEFAULT_FULLVIEW_BASE_URL = "http://127.0.0.1:8000"
+DEFAULT_FULLVIEW_TIMEOUT_SECONDS = 5.0
+DEFAULT_FULLVIEW_POLL_INTERVAL_SECONDS = 0.5
+DEFAULT_FULLVIEW_MAX_ATTEMPTS = 8
+DEFAULT_FULLVIEW_STEP_GATE_ENABLED = False
+DEFAULT_FULLVIEW_VISUAL_COOLDOWN_MULTIPLIER = 1.0
+DEFAULT_FULLVIEW_DISCHARGE_LINGER_SECONDS = 30.0
+DEFAULT_FULLVIEW_EVENT_LISTENER_INTERVAL_SECONDS = 0.5
+DEFAULT_FULLVIEW_EVENT_OBSERVE_TIMEOUT_SECONDS = 30.0
+DEFAULT_FULLVIEW_ADMISSION_GAP_SECONDS = 4.0
+DEFAULT_FULLVIEW_CLEANUP_IDLE_SECONDS = 3.0
 
 MODEL_API_KEY_ENV_MAP = {
     "GPT-5.2": "GPT52_API_KEY",
@@ -290,5 +302,77 @@ def get_settings() -> dict:
         "state_debug_allow_force": _parse_bool(
             os.getenv("STATE_DEBUG_ALLOW_FORCE"),
             DEFAULT_STATE_DEBUG_ALLOW_FORCE,
+        ),
+        "fullview_sync_enabled": _parse_bool(
+            os.getenv("FULLVIEW_SYNC_ENABLED"),
+            DEFAULT_FULLVIEW_SYNC_ENABLED,
+        ),
+        "fullview_base_url": os.getenv("FULLVIEW_BASE_URL", "").strip() or DEFAULT_FULLVIEW_BASE_URL,
+        "fullview_timeout_seconds": max(
+            0.1,
+            _parse_float(
+                os.getenv("FULLVIEW_TIMEOUT_SECONDS"),
+                DEFAULT_FULLVIEW_TIMEOUT_SECONDS,
+            ),
+        ),
+        "fullview_poll_interval_seconds": max(
+            0.1,
+            _parse_float(
+                os.getenv("FULLVIEW_POLL_INTERVAL_SECONDS"),
+                DEFAULT_FULLVIEW_POLL_INTERVAL_SECONDS,
+            ),
+        ),
+        "fullview_max_attempts": max(
+            1,
+            _parse_int(
+                os.getenv("FULLVIEW_MAX_ATTEMPTS"),
+                DEFAULT_FULLVIEW_MAX_ATTEMPTS,
+            ),
+        ),
+        "fullview_step_gate_enabled": _parse_bool(
+            os.getenv("FULLVIEW_STEP_GATE_ENABLED"),
+            DEFAULT_FULLVIEW_STEP_GATE_ENABLED,
+        ),
+        "fullview_visual_cooldown_multiplier": max(
+            1.0,
+            _parse_float(
+                os.getenv("FULLVIEW_VISUAL_COOLDOWN_MULTIPLIER"),
+                DEFAULT_FULLVIEW_VISUAL_COOLDOWN_MULTIPLIER,
+            ),
+        ),
+        "fullview_discharge_linger_seconds": max(
+            0.0,
+            _parse_float(
+                os.getenv("FULLVIEW_DISCHARGE_LINGER_SECONDS"),
+                DEFAULT_FULLVIEW_DISCHARGE_LINGER_SECONDS,
+            ),
+        ),
+        "fullview_event_listener_interval_seconds": max(
+            0.1,
+            _parse_float(
+                os.getenv("FULLVIEW_EVENT_LISTENER_INTERVAL_SECONDS"),
+                DEFAULT_FULLVIEW_EVENT_LISTENER_INTERVAL_SECONDS,
+            ),
+        ),
+        "fullview_event_observe_timeout_seconds": max(
+            1.0,
+            _parse_float(
+                os.getenv("FULLVIEW_EVENT_OBSERVE_TIMEOUT_SECONDS"),
+                DEFAULT_FULLVIEW_EVENT_OBSERVE_TIMEOUT_SECONDS,
+            ),
+        ),
+        "fullview_admission_gap_seconds": max(
+            0.0,
+            _parse_float(
+                os.getenv("FULLVIEW_ADMISSION_GAP_SECONDS"),
+                DEFAULT_FULLVIEW_ADMISSION_GAP_SECONDS,
+            ),
+        ),
+        "fullview_cleanup_idle_seconds": max(
+            0.0,
+            _parse_float(
+                os.getenv("FULLVIEW_CLEANUP_IDLE_SECONDS"),
+                DEFAULT_FULLVIEW_CLEANUP_IDLE_SECONDS,
+            ),
         ),
     }

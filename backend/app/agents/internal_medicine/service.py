@@ -9,7 +9,12 @@ from app.events.types import (
     VISIT_STATE_CHANGED,
 )
 from app.schemas.common import InternalMedicineDialogueState, PatientLifecycleState, VisitLifecycleState
-from app.services.disposition import build_consultation_disposition, disposition_transition_context
+from app.services.disposition import (
+    build_consultation_disposition,
+    finalize_disposition_transition_context,
+    is_special_outpatient_disposition,
+    visit_needs_pharmacy,
+)
 
 
 PRIMARY_TEST_ZONE_LABELS = {
@@ -194,6 +199,8 @@ class InternalMedicineService(DepartmentAgentRuntime):
         if consultation_round == 1:
             return self.patient_state_machine.transition(current_patient_state, "internal_medicine_completed"), "Auxiliary Diagnostic Center"
         disposition = build_consultation_disposition(consultation_result, source_phase="internal_medicine_round2")
+        if not is_special_outpatient_disposition(disposition):
+            return None, None
         location = str(disposition.get("target_department") or "").strip()
         if not location:
             location = "Disposition"
@@ -336,7 +343,6 @@ class InternalMedicineService(DepartmentAgentRuntime):
         elif consultation_round == 2 and complete and not was_completed:
             visit_data = self._get_visit_data(visit_row)
             disposition = build_consultation_disposition(consultation_result, source_phase="internal_medicine_round2")
-            disposition_context = disposition_transition_context(disposition)
             visit_data["internal_medicine_round2_session_id"] = session_id
             visit_data["internal_medicine_round2_summary"] = {
                 "assistant_message": assistant_message,
@@ -352,8 +358,10 @@ class InternalMedicineService(DepartmentAgentRuntime):
             visit_data["requires_new_registration"] = bool(consultation_result.get("requires_new_registration", False))
             visit_data["carry_forward_summary"] = dict(consultation_result.get("carry_forward_summary") or {})
             visit_data["handoff_reason"] = consultation_result.get("handoff_reason")
-            visit_data["outpatient_flow_finished"] = True
-            visit_data["outpatient_finished_at"] = timestamp
+            visit_data["prescriptions"] = consultation_result.get("prescriptions", [])
+            visit_data["prescription_plan"] = consultation_result.get("prescription_plan", [])
+            visit_data["medication_recommendation"] = consultation_result.get("medication_recommendation")
+            visit_data["needs_pharmacy"] = visit_needs_pharmacy(visit_data)
             finalized_visit = self._transition_visit(
                 visit_row,
                 "finalize_diagnosis",
@@ -362,22 +370,51 @@ class InternalMedicineService(DepartmentAgentRuntime):
                 active_agent_type=self.config.agent_type,
                 extra_data=visit_data,
             )
-            disposition_pending_visit = self._transition_visit(
-                finalized_visit,
-                "plan_disposition",
-                current_node="disposition_pending",
-                current_department="Disposition",
-                active_agent_type=None,
-                extra_data=self._get_visit_data(finalized_visit),
-            )
-            final_visit = self._transition_visit(
-                disposition_pending_visit,
-                str(disposition_context["event"]),
-                current_node=str(disposition_context["current_node"]),
-                current_department=str(disposition_context["current_department"]),
-                active_agent_type=None,
-                extra_data=self._get_visit_data(disposition_pending_visit),
-            )
+            if is_special_outpatient_disposition(disposition):
+                disposition_pending_visit = self._transition_visit(
+                    finalized_visit,
+                    "plan_disposition",
+                    current_node="disposition_pending",
+                    current_department="Disposition",
+                    active_agent_type=None,
+                    extra_data=self._get_visit_data(finalized_visit),
+                )
+                disposition_context = finalize_disposition_transition_context(disposition, needs_pharmacy=False)
+                final_visit = self._transition_visit(
+                    disposition_pending_visit,
+                    str(disposition_context["event"]),
+                    current_node=str(disposition_context["current_node"]),
+                    current_department=str(disposition_context["current_department"]),
+                    active_agent_type=None,
+                    extra_data=self._get_visit_data(disposition_pending_visit),
+                )
+            elif visit_data["needs_pharmacy"]:
+                final_visit = self._transition_visit(
+                    finalized_visit,
+                    "request_medical_payment",
+                    current_node="payment_wait",
+                    current_department="Payment",
+                    active_agent_type=None,
+                    extra_data=self._get_visit_data(finalized_visit),
+                )
+            else:
+                disposition_pending_visit = self._transition_visit(
+                    finalized_visit,
+                    "plan_disposition",
+                    current_node="disposition_pending",
+                    current_department="Disposition",
+                    active_agent_type=None,
+                    extra_data=self._get_visit_data(finalized_visit),
+                )
+                disposition_context = finalize_disposition_transition_context(disposition, needs_pharmacy=False)
+                final_visit = self._transition_visit(
+                    disposition_pending_visit,
+                    str(disposition_context["event"]),
+                    current_node=str(disposition_context["current_node"]),
+                    current_department=str(disposition_context["current_department"]),
+                    active_agent_type=None,
+                    extra_data=self._get_visit_data(disposition_pending_visit),
+                )
             self._append_medical_record_entry(
                 patient_id=patient_id,
                 visit_id=visit_row["id"],
@@ -414,8 +451,7 @@ class InternalMedicineService(DepartmentAgentRuntime):
                     "carry_forward_summary": dict(consultation_result.get("carry_forward_summary") or {}),
                     "handoff_reason": consultation_result.get("handoff_reason"),
                     "assistant_message": assistant_message,
-                    "outpatient_flow_finished": True,
-                    "outpatient_finished_at": timestamp,
+                    "needs_pharmacy": visit_data["needs_pharmacy"],
                     "visit_state_after_consult": final_visit.get("state"),
                 },
             )

@@ -23,6 +23,7 @@ from app.services.department_resources import (
     resolve_room_for_visit_state,
     stable_doctor_slot_for_patient,
 )
+from app.services.disposition import is_outpatient_flow_finished
 from app.services.hospital_nodes import list_hospital_nodes
 from app.services.runtime_projection import derive_runtime_projection
 
@@ -30,21 +31,6 @@ from app.services.runtime_projection import derive_runtime_projection
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-
-FINISHED_VISIT_STATES = {
-    VisitLifecycleState.WAITING_PAYMENT.value,
-    VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
-    VisitLifecycleState.IN_EMERGENCY.value,
-    VisitLifecycleState.IN_ICU_RESCUE.value,
-    VisitLifecycleState.DISPOSITION_PENDING.value,
-    VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
-    VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
-    VisitLifecycleState.DISPOSITION_REFERRAL.value,
-    VisitLifecycleState.WAITING_PHARMACY.value,
-    VisitLifecycleState.ADMITTED.value,
-    VisitLifecycleState.TRANSFERRING.value,
-    VisitLifecycleState.COMPLETED.value,
-}
 
 TEST_VISIT_STATES = {
     VisitLifecycleState.WAITING_TEST.value,
@@ -315,7 +301,7 @@ class DepartmentRuntimeService:
             visit_data = self.visit_repo.get_visit_data(row.visit_id)
             merged["primary_disposition"] = visit_data.get("primary_disposition")
             merged["disposition"] = dict(visit_data.get("disposition") or {})
-            merged["outpatient_flow_finished"] = bool(visit_data.get("outpatient_flow_finished"))
+            merged["outpatient_flow_finished"] = is_outpatient_flow_finished(row.visit_state, visit_data)
             merged["outpatient_finished_at"] = visit_data.get("outpatient_finished_at")
             merged["rare_event_profile"] = dict(visit_data.get("rare_event_profile") or {})
             merged["rare_event_triggered_by"] = visit_data.get("rare_event_triggered_by")
@@ -375,6 +361,7 @@ class DepartmentRuntimeService:
                 merged["current_dialogue"] = overlay.get("current_dialogue")
                 merged["phase"] = overlay.get("phase") or merged.get("phase")
                 merged["status"] = overlay.get("status") or merged.get("status")
+                merged["step_count"] = overlay.get("step_count", merged.get("step_count", 0))
                 merged["last_error"] = overlay.get("last_error") or merged.get("last_error")
                 merged["latest_consultation_response_source"] = (
                     overlay.get("latest_consultation_response_source")
@@ -498,6 +485,9 @@ class DepartmentRuntimeService:
                     patient_source=overlay.get("patient_source"),
                     generation_hint_department_id=overlay.get("generation_hint_department_id"),
                     generation_hint_department_name=overlay.get("generation_hint_department_name"),
+                    phase=overlay.get("phase"),
+                    status=overlay.get("status"),
+                    step_count=overlay.get("step_count", 0),
                     department_agent_enabled=overlay.get("department_agent_enabled", False),
                     department_capability_class=overlay.get("department_capability_class"),
                     queue_kind=None,
@@ -537,6 +527,7 @@ class DepartmentRuntimeService:
                     current_counterparty=overlay.get("current_counterparty"),
                     current_dialogue=overlay.get("current_dialogue"),
                     current_dialogue_preview=(overlay.get("current_dialogue") or {}).get("message"),
+                    last_error=overlay.get("last_error"),
                     entered_department_at=None,
                     updated_at=now_iso(),
                     source_of_truth_version=now_iso(),
@@ -720,7 +711,7 @@ class DepartmentRuntimeService:
             return DepartmentFlowStatus.CANCELLED.value, "none", queue_kind
         if patient_lifecycle_state == "error" or visit_state == VisitLifecycleState.ERROR.value:
             return DepartmentFlowStatus.ERROR.value, "none", queue_kind
-        if visit_state in FINISHED_VISIT_STATES:
+        if is_outpatient_flow_finished(visit_state):
             return DepartmentFlowStatus.FINISHED.value, "none", queue_kind
         if visit_state == VisitLifecycleState.IN_SECOND_CONSULTATION.value:
             return DepartmentFlowStatus.IN_CONSULTATION_ROUND2.value, "round2", QueueTicketKind.RETURN_CONSULTATION.value

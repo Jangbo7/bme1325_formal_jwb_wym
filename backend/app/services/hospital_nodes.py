@@ -43,9 +43,9 @@ SYSTEM_NODES = [
         name="Payment",
         supports_queue=False,
         supports_consultation=False,
-        supported_actions=["request_medical_payment", "pay_medical", "complete_visit"],
+        supported_actions=["request_medical_payment", "pay_medical", "plan_disposition"],
         entry_conditions=["waiting_payment"],
-        exit_conditions=["medical_payment_completed", "completed"],
+        exit_conditions=["medical_payment_completed", "disposition_pending"],
     ),
     HospitalNode(
         node_id="pharmacy",

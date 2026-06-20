@@ -113,7 +113,7 @@ def install_fake_patient_agent(client: TestClient):
     service.agent.reply = fake_reply
 
 
-def test_patient_agent_debug_step_reaches_waiting_payment(tmp_path, monkeypatch):
+def test_patient_agent_debug_step_reaches_outpatient_disposition(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     install_fake_patient_agent(client)
 
@@ -123,19 +123,35 @@ def test_patient_agent_debug_step_reaches_waiting_payment(tmp_path, monkeypatch)
     assert snapshot["mode"] == "intelligent_agent"
     assert snapshot["case_summary"]["chief_complaint"] == "Cough and low fever"
 
+    actions = []
+    visit_states = []
     final_snapshot = None
     for _ in range(24):
         step_resp = post_json(client, "/api/v1/patient-agent-debug/step")
         assert step_resp.status_code == 200
         final_snapshot = get_data(step_resp)
+        actions.append(final_snapshot["last_action"])
+        visit_states.append(final_snapshot["visit_state"])
         if final_snapshot["finished"]:
             break
 
     assert final_snapshot is not None
     assert final_snapshot["finished"] is True
-    assert final_snapshot["visit_state"] == "waiting_payment"
+    assert final_snapshot["visit_state"] == "completed"
+    assert final_snapshot["outpatient_flow_finished"] is True
+    assert final_snapshot["disposition"]["category"] in {"outpatient_treatment", "followup_booking"}
     assert final_snapshot["patient_lifecycle_state"] == "completed"
     assert final_snapshot["medical_record_summary"] is not None
+    assert "create_triage_session" in actions
+    assert "register_visit" in actions
+    assert "progress_visit" in actions
+    assert "enter_consultation" in actions
+    assert "create_internal_medicine_session" in actions
+    assert "reply_internal_medicine" in actions
+    assert "trigger_encounter_event" in actions
+    assert "triaged" in visit_states
+    assert "waiting_test" in visit_states
+    assert "in_second_consultation" in visit_states
     assert any(
         "[History reviewed]" in entry["message"]
         for entry in final_snapshot["transcript"]

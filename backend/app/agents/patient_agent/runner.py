@@ -12,7 +12,7 @@ from app.events.types import ENCOUNTER_OPENED, PATIENT_STATE_CHANGED, QUEUE_TICK
 from app.schemas.common import PatientLifecycleState, QueueTicketKind, QueueTicketStatus, VisitLifecycleState
 from app.services.consultation_registry import resolve_consultation_agent_for_visit
 from app.services.department_assignment import resolve_assigned_department_for_visit
-from app.services.disposition import is_outpatient_flow_finished
+from app.services.disposition import is_outpatient_flow_finished, should_stop_outpatient_automation
 
 
 WAIT_SECONDS = 10
@@ -128,6 +128,10 @@ class PatientAgentDebugRunner:
             state.status = "finished"
             self._sync_state(state, preserve_dialogue=False)
             return state
+        if planned.action == "halted":
+            state.step_count += 1
+            self._sync_state(state, preserve_dialogue=False)
+            return state
         if planned.action == "idle":
             state.step_count += 1
             state.phase = self._phase_for_visit_state(state.visit_state)
@@ -182,6 +186,7 @@ class PatientAgentDebugRunner:
         return NpcPlanningContext(
             encounter_id=state.encounter_id,
             visit_state=visit_row.get("state") if visit_row else None,
+            visit_data=visit_data,
             patient_state=patient_row.get("lifecycle_state") if patient_row else None,
             triage_session_state=triage_session.get("dialogue_state") if triage_session else None,
             internal_medicine_round1_state=round1_session.get("dialogue_state") if round1_session else None,
@@ -506,6 +511,7 @@ class PatientAgentDebugRunner:
             event,
             context={"source": "patient_agent_debug"},
         )
+        updated_visit = self._require_visit_row(state)
         if event == "start_second_consultation":
             completed_ticket = self.queue_repo.mark_completed(ticket["id"])
             if completed_ticket:
@@ -516,8 +522,8 @@ class PatientAgentDebugRunner:
             state.phase = CONSULTATION_ROUND2_PHASE
             state.status = VisitLifecycleState.IN_SECOND_CONSULTATION.value
         else:
-            state.phase = "testing"
-            state.status = event
+            state.phase = self._phase_for_visit_state(updated_visit.get("state"))
+            state.status = updated_visit.get("state") or event
         state.clear_dialogue()
 
     def _resolve_session(
@@ -637,6 +643,10 @@ class PatientAgentDebugRunner:
             state.finished = True
             state.phase = "finished"
             state.status = state.visit_state or "finished"
+        elif should_stop_outpatient_automation(state.visit_state, visit_data):
+            state.phase = self._phase_for_visit_state(state.visit_state)
+            if not preserve_dialogue:
+                state.status = state.visit_state or state.status
         elif state.visit_state:
             state.phase = self._phase_for_visit_state(state.visit_state)
             if not preserve_dialogue:

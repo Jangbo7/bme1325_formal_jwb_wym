@@ -35,6 +35,9 @@ class DepartmentPatientState(BaseModel):
     patient_source: str | None = None
     generation_hint_department_id: str | None = None
     generation_hint_department_name: str | None = None
+    phase: str | None = None
+    status: str | None = None
+    step_count: int = 0
     department_agent_enabled: bool = False
     department_capability_class: str | None = None
     assigned_doctor_slot_id: str | None = None
@@ -80,6 +83,7 @@ class DepartmentPatientState(BaseModel):
     current_counterparty: str | None = None
     current_dialogue: dict | None = None
     current_dialogue_preview: str | None = None
+    last_error: str | None = None
     entered_department_at: str | None = None
     updated_at: str
     source_of_truth_version: str | None = None

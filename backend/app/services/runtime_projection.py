@@ -21,9 +21,6 @@ PAYMENT_VISIT_STATES = {
 FINISHED_VISIT_STATES = {
     VisitLifecycleState.IN_EMERGENCY.value,
     VisitLifecycleState.IN_ICU_RESCUE.value,
-    VisitLifecycleState.DISPOSITION_PENDING.value,
-    VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
-    VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
     VisitLifecycleState.DISPOSITION_REFERRAL.value,
     VisitLifecycleState.ADMITTED.value,
     VisitLifecycleState.TRANSFERRING.value,
@@ -129,6 +126,8 @@ def derive_display_stage(
 ) -> str:
     if finished:
         return "finished"
+    if visit_state in {VisitLifecycleState.ERROR.value, VisitLifecycleState.CANCELLED.value}:
+        return "error"
     if visit_state in PAYMENT_VISIT_STATES:
         return "payment"
     if visit_state == VisitLifecycleState.WAITING_PHARMACY.value:
@@ -200,12 +199,14 @@ def derive_dispatch_state(
     normalized_error = (last_error or "").lower()
     if finished or display_stage == "finished":
         return "finished"
+    if display_stage == "error" or status == "error":
+        return "error"
     if status == "waiting_capacity" or normalized_error.startswith("node capacity reached:"):
         return "blocked_capacity"
+    if status == "waiting_fullview":
+        return "waiting_fullview"
     if status == "blocked":
         return "blocked_guard"
-    if status == "error":
-        return "error"
     return "ready"
 
 
@@ -256,12 +257,14 @@ def build_blocking_view(
     target_resource: dict[str, str | None],
     last_error: str | None,
 ) -> dict[str, str | None] | None:
-    if dispatch_state not in {"blocked_capacity", "blocked_guard", "error"}:
+    if dispatch_state not in {"blocked_capacity", "blocked_guard", "waiting_fullview", "error"}:
         return None
     if dispatch_state == "blocked_capacity":
         kind = "capacity"
     elif dispatch_state == "blocked_guard":
         kind = "guard"
+    elif dispatch_state == "waiting_fullview":
+        kind = "fullview"
     else:
         kind = "error"
     return {

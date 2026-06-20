@@ -74,6 +74,33 @@ def multi_patient_debug_page():
     .filters { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     details { margin-top: 8px; }
     summary { cursor: pointer; color: #2f6d44; font-size: 13px; }
+    .legend { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    .card--rare-event { border-width: 2px; }
+    .card--rare-event-patient {
+      background: linear-gradient(180deg, #fff0e2 0%, #fff9f2 100%);
+      border-color: #d68a36;
+      box-shadow: 0 12px 24px rgba(214, 138, 54, 0.16);
+    }
+    .card--rare-event-report {
+      background: linear-gradient(180deg, #e7f4ff 0%, #f8fcff 100%);
+      border-color: #3e8acb;
+      box-shadow: 0 12px 24px rgba(62, 138, 203, 0.16);
+    }
+    .card--rare-event-both {
+      background: linear-gradient(180deg, #fff3c7 0%, #fffbee 100%);
+      border-color: #ae7d00;
+      box-shadow: 0 12px 24px rgba(174, 125, 0, 0.16);
+    }
+    .card--rare-event-unknown {
+      background: linear-gradient(180deg, #f4ebff 0%, #fcf9ff 100%);
+      border-color: #7f5ab6;
+      box-shadow: 0 12px 24px rgba(127, 90, 182, 0.14);
+    }
+    .badge--rare { color: #fff; border-color: transparent; }
+    .badge--rare-patient { background: #d68a36; }
+    .badge--rare-report { background: #3e8acb; }
+    .badge--rare-both { background: #ae7d00; }
+    .badge--rare-unknown { background: #7f5ab6; }
   </style>
 </head>
 <body>
@@ -125,6 +152,15 @@ def multi_patient_debug_page():
     <div id="status"></div>
     <section class="panel">
       <div class="stats" id="stats"></div>
+    </section>
+    <section class="panel">
+      <div class="legend" id="rareEventLegend">
+        <span class="muted">Special event color:</span>
+        <span class="badge badge--rare badge--rare-patient">patient</span>
+        <span class="badge badge--rare badge--rare-report">report</span>
+        <span class="badge badge--rare badge--rare-both">both</span>
+        <span class="badge badge--rare badge--rare-unknown">unknown</span>
+      </div>
     </section>
     <section class="cards" id="cards"></section>
   </main>
@@ -221,6 +257,26 @@ def multi_patient_debug_page():
       ].filter(Boolean).join(" | ");
     }
 
+    function rareEventState(patient) {
+      const profile = patient.rare_event_profile || {};
+      const patientEnabled = Boolean(profile.patient_special_event_enabled);
+      const reportEnabled = Boolean(profile.report_special_signal_enabled);
+      const triggeredBy = String(patient.rare_event_triggered_by || profile.triggered_by || "").trim().toLowerCase();
+      const eventType = String(patient.rare_event_type || profile.event_type || "").trim().toLowerCase();
+      if (!eventType && triggeredBy !== "patient" && triggeredBy !== "report" && !patientEnabled && !reportEnabled) {
+        return "none";
+      }
+      if (patientEnabled && reportEnabled) return "both";
+      if (patientEnabled || triggeredBy === "patient") return "patient";
+      if (reportEnabled || triggeredBy === "report") return "report";
+      return "unknown";
+    }
+
+    function rareEventBadge(state) {
+      if (state === "none") return "";
+      return `<span class="badge badge--rare badge--rare-${state}">rare:${state}</span>`;
+    }
+
     function render(snapshot) {
       if (!snapshot) {
         statsEl.innerHTML = "<div class='muted'>No data.</div>";
@@ -288,6 +344,7 @@ def multi_patient_debug_page():
       captureOpenDetailIds();
 
       cardsEl.innerHTML = patients.map((p) => {
+        const rareState = rareEventState(p);
         const dialogueHtml = p.current_dialogue
           ? `
             <div class="dialogue">
@@ -354,8 +411,8 @@ def multi_patient_debug_page():
           last_error: p.last_error,
         };
         return `
-          <article class="card">
-            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.execution_runner_kind}</span> <span class="badge">${p.patient_source || "-"}</span> <span class="badge">${p.department_capability_class || "-"}</span></div>
+          <article class="card ${rareState === "none" ? "" : `card--rare-event card--rare-event-${rareState}`}">
+            <div><strong>${p.npc_id}</strong> <span class="badge">${p.mode}</span> <span class="badge">${p.execution_runner_kind}</span> <span class="badge">${p.patient_source || "-"}</span> <span class="badge">${p.department_capability_class || "-"}</span> ${rareEventBadge(rareState)}</div>
             <div class="row">department: ${p.assigned_department_name || "-"} (${p.assigned_department_id || "-"})</div>
             <div class="row">generation hint: ${p.generation_hint_department_name || "-"} (${p.generation_hint_department_id || "-"})</div>
             <div class="row">rare event: ${p.rare_event_type || "-"} / ${p.rare_event_triggered_by || "-"}</div>

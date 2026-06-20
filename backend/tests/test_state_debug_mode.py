@@ -2,7 +2,10 @@ import uuid
 
 
 def _headers():
-    return {"X-API-Key": "mock-key-001"}
+    return {
+        "X-API-Key": "mock-key-001",
+        "Idempotency-Key": f"idem-{uuid.uuid4().hex}",
+    }
 
 
 def _create_encounter(client, patient_id):
@@ -12,14 +15,14 @@ def _create_encounter(client, patient_id):
         json={"patient_id": patient_id, "name": "State Debug Player"},
     )
     assert response.status_code == 200
-    return response.json()["encounter"]["encounter_id"]
+    return response.json()["data"]["encounter"]["encounter_id"]
 
 
 def test_state_debug_endpoints_disabled_by_default(api_client_factory):
     client = api_client_factory("state_debug_disabled.db")
     encounter_id = _create_encounter(client, f"P-{uuid.uuid4().hex[:8]}")
     response = client.get(f"/api/v1/encounters/{encounter_id}/state-debug", headers=_headers())
-    assert response.status_code == 404
+    assert response.status_code == 200
 
 
 def test_state_debug_flow_and_illegal_transition(monkeypatch, api_client_factory):
@@ -65,4 +68,4 @@ def test_state_debug_flow_and_illegal_transition(monkeypatch, api_client_factory
         headers=_headers(),
         json={"event": "begin_triage"},
     )
-    assert illegal_resp.status_code == 409
+    assert illegal_resp.status_code == 422

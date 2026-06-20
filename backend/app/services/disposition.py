@@ -7,19 +7,30 @@ from app.departments.registry import resolve_department
 from app.schemas.common import VisitLifecycleState
 
 
-OUTPATIENT_TERMINAL_VISIT_STATES = {
-    VisitLifecycleState.WAITING_PAYMENT.value,
-    VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED.value,
+OUTPATIENT_FINISHED_VISIT_STATES = {
     VisitLifecycleState.IN_EMERGENCY.value,
     VisitLifecycleState.IN_ICU_RESCUE.value,
-    VisitLifecycleState.DISPOSITION_PENDING.value,
-    VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT.value,
-    VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING.value,
     VisitLifecycleState.DISPOSITION_REFERRAL.value,
-    VisitLifecycleState.WAITING_PHARMACY.value,
     VisitLifecycleState.ADMITTED.value,
     VisitLifecycleState.TRANSFERRING.value,
     VisitLifecycleState.COMPLETED.value,
+}
+
+OUTPATIENT_STOPPED_VISIT_STATES = {
+    VisitLifecycleState.CANCELLED.value,
+    VisitLifecycleState.ERROR.value,
+}
+
+OUTPATIENT_SPECIAL_DISPOSITION_CATEGORIES = {
+    "icu_rescue",
+    "emergency_escalation",
+    "inpatient_admission",
+    "specialty_referral",
+}
+
+OUTPATIENT_ORDINARY_DISPOSITION_CATEGORIES = {
+    "outpatient_treatment",
+    "followup_booking",
 }
 
 
@@ -44,10 +55,45 @@ def department_identity(name: str | None) -> tuple[str | None, str | None]:
 
 
 def is_outpatient_flow_finished(visit_state: str | None, visit_data: dict | None = None) -> bool:
+    state = str(visit_state or "")
     payload = dict(visit_data or {})
-    if bool(payload.get("outpatient_flow_finished")):
+    if state in OUTPATIENT_STOPPED_VISIT_STATES:
+        return False
+    if state in OUTPATIENT_FINISHED_VISIT_STATES:
         return True
-    return str(visit_state or "") in OUTPATIENT_TERMINAL_VISIT_STATES
+    if bool(payload.get("outpatient_flow_finished")) and _finish_flag_matches_state(state, payload):
+        return True
+    return False
+
+
+def should_stop_outpatient_automation(visit_state: str | None, visit_data: dict | None = None) -> bool:
+    state = str(visit_state or "")
+    if state in OUTPATIENT_STOPPED_VISIT_STATES:
+        return True
+    return is_outpatient_flow_finished(state, visit_data)
+
+
+def visit_needs_pharmacy(visit_data: dict | None) -> bool:
+    payload = dict(visit_data or {})
+    explicit = payload.get("needs_pharmacy")
+    if isinstance(explicit, bool):
+        return explicit
+    prescription_plan = payload.get("prescription_plan")
+    prescriptions = payload.get("prescriptions")
+    medication = dict(payload.get("medication_recommendation") or {})
+    if _has_items(prescription_plan) or _has_items(prescriptions):
+        return True
+    return bool(medication.get("recommended"))
+
+
+def is_special_outpatient_disposition(disposition: dict | None) -> bool:
+    category = str((disposition or {}).get("category") or "").strip()
+    return category in OUTPATIENT_SPECIAL_DISPOSITION_CATEGORIES
+
+
+def is_ordinary_outpatient_disposition(disposition: dict | None) -> bool:
+    category = str((disposition or {}).get("category") or "").strip()
+    return category in OUTPATIENT_ORDINARY_DISPOSITION_CATEGORIES
 
 
 def now_iso() -> str:
@@ -215,6 +261,12 @@ def disposition_transition_context(disposition: dict) -> dict[str, str | None]:
             "current_node": "referral",
             "current_department": target_department or "Disposition",
         }
+    if category == "followup_booking":
+        return {
+            "event": "choose_followup_booking",
+            "current_node": "followup_booking",
+            "current_department": "Disposition",
+        }
     return {
         "event": "choose_outpatient_treatment",
         "current_node": "outpatient_disposition",
@@ -227,3 +279,49 @@ def _followup_reason(followup: dict) -> str:
     if window:
         return f"follow-up recommended within {window}"
     return "follow-up is recommended"
+
+
+def finalize_disposition_transition_context(
+    disposition: dict,
+    *,
+    needs_pharmacy: bool,
+) -> dict[str, str | None]:
+    if is_special_outpatient_disposition(disposition):
+        return disposition_transition_context(disposition)
+    if needs_pharmacy:
+        return {
+            "event": "choose_pharmacy",
+            "current_node": "pharmacy_wait",
+            "current_department": "Pharmacy",
+        }
+    return disposition_transition_context(disposition)
+
+
+def apply_outpatient_completion_metadata(
+    visit_data: dict | None,
+    *,
+    visit_state: str | None,
+    at: str | None = None,
+) -> dict:
+    payload = dict(visit_data or {})
+    if is_outpatient_flow_finished(visit_state, payload):
+        payload["outpatient_flow_finished"] = True
+        payload["outpatient_finished_at"] = payload.get("outpatient_finished_at") or at or now_iso()
+        return payload
+    payload["outpatient_flow_finished"] = False
+    payload.pop("outpatient_finished_at", None)
+    return payload
+
+
+def _finish_flag_matches_state(visit_state: str, visit_data: dict) -> bool:
+    if visit_state == VisitLifecycleState.TRANSFERRING.value:
+        return is_special_outpatient_disposition(visit_data.get("disposition"))
+    return visit_state in OUTPATIENT_FINISHED_VISIT_STATES
+
+
+def _has_items(value) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set)):
+        return any(bool(item) for item in value)
+    return False

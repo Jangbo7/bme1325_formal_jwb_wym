@@ -192,7 +192,9 @@ def test_internal_medicine_completed_session_reassesses_without_followup(monkeyp
 
     assert reassessment["visit_state"] == "waiting_test"
     assert reassessment["dialogue"]["status"] == "completed"
-    assert reassessment["dialogue"]["message_type"] == "final_no_change"
+    assert reassessment["dialogue"]["message_type"] == "answer_with_guidance"
+    assert reassessment["dialogue"]["response_mode"] == "answer_with_guidance"
+    assert reassessment["dialogue"]["judgment_changed"] is False
     assert reassessment["dialogue"]["missing_fields"] == []
 
 
@@ -223,3 +225,29 @@ def test_internal_medicine_red_flags_force_emergency_priority(monkeypatch):
     assert final_result["red_flags"]
     assert final_result["next_step_decision"] == "urgent_escalation"
     assert final_result["needs_second_internal_medicine_consultation"] is False
+
+
+def test_internal_medicine_message_red_flags_can_trigger_escalation(monkeypatch):
+    client = create_test_client(monkeypatch)
+    visit_id = prepare_visit_in_consultation(client)
+    create_data = create_internal_medicine_session(
+        client,
+        visit_id,
+        chief_complaint="头晕",
+        symptoms="头晕",
+        onset_time="今天上午",
+        allergies=[],
+        vitals={"heart_rate": 112, "systolic_bp": 118, "diastolic_bp": 74, "pain_score": 4},
+    )
+    session_id = create_data["session_id"]
+
+    first_data = send_internal_medicine_message(client, session_id, visit_id, "今天上午开始头晕，没有过敏史。")
+    assert first_data["dialogue"]["status"] == "awaiting_patient_reply"
+
+    final_data = send_internal_medicine_message(client, session_id, visit_id, "现在还出现胸痛、呼吸困难，人也有点发懵。")
+    final_result = final_data["dialogue"]["final_result"]
+
+    assert final_result["priority"] == "H"
+    assert final_result["department"] == "Emergency"
+    assert final_result["red_flags"]
+    assert final_result["next_step_decision"] == "urgent_escalation"

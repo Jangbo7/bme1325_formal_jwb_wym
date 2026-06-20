@@ -56,7 +56,10 @@ VISIT_TRANSITIONS = {
         "complete_visit": VisitLifecycleState.COMPLETED,
         "mark_error": VisitLifecycleState.ERROR,
     },
-    VisitLifecycleState.WAITING_PAYMENT: {"mark_error": VisitLifecycleState.ERROR},
+    VisitLifecycleState.WAITING_PAYMENT: {
+        "pay_medical": VisitLifecycleState.MEDICAL_PAYMENT_COMPLETED,
+        "mark_error": VisitLifecycleState.ERROR,
+    },
     VisitLifecycleState.WAITING_TEST: {
         "begin_triage": VisitLifecycleState.TRIAGING,
         "request_test_payment": VisitLifecycleState.WAITING_TEST_PAYMENT,
@@ -113,6 +116,7 @@ VISIT_TRANSITIONS = {
         "mark_error": VisitLifecycleState.ERROR,
     },
     VisitLifecycleState.DISPOSITION_PENDING: {
+        "choose_pharmacy": VisitLifecycleState.WAITING_PHARMACY,
         "choose_outpatient_treatment": VisitLifecycleState.DISPOSITION_OUTPATIENT_TREATMENT,
         "choose_followup_booking": VisitLifecycleState.DISPOSITION_FOLLOWUP_BOOKING,
         "choose_referral": VisitLifecycleState.DISPOSITION_REFERRAL,
@@ -139,6 +143,7 @@ VISIT_TRANSITIONS = {
         "mark_error": VisitLifecycleState.ERROR,
     },
     VisitLifecycleState.WAITING_PHARMACY: {
+        "dispense_medication": VisitLifecycleState.COMPLETED,
         "complete_visit": VisitLifecycleState.COMPLETED,
         "mark_error": VisitLifecycleState.ERROR,
     },

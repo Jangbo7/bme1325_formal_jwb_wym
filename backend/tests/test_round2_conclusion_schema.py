@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from app.agents.internal_medicine.rules import rule_based_internal_medicine, validate_internal_medicine_result
 from app.agents.surgery.rules import rule_based_surgery, validate_surgery_result
+from app.services.disposition import build_consultation_disposition
 
 
 def _round2_memory(*, symptoms: list[str], chief_complaint: str, vitals: dict | None = None):
@@ -250,6 +251,167 @@ def test_round2_specialty_referral_can_keep_followup_guidance():
     assert result["primary_disposition"] == "specialty_referral"
     assert result["followup_recommendation"]["revisit_required"] is True
     assert result["followup_recommendation"]["revisit_window"] == "72 hours"
+
+
+def test_internal_medicine_round2_report_referral_requires_new_registration():
+    payload = {
+        "chief_complaint": "back pain after minor fall",
+        "symptoms": "back pain, bruising",
+        "message": "I want to know what the report means.",
+        "consultation_round": 2,
+        "vitals": {"temp_c": 36.8, "heart_rate": 82},
+        "simulated_report": {
+            "category_code": "medical_imaging",
+            "report_summary": {
+                "cross_specialty_clues": [
+                    {
+                        "target_department": "Surgery",
+                        "reason": "The remaining issue now looks trauma-focused rather than internal-medicine-focused.",
+                    }
+                ]
+            },
+            "test_items": ["Focused imaging review"],
+        },
+    }
+    memory = _round2_memory(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=["back pain", "bruising"],
+        vitals=payload["vitals"],
+    )
+
+    result = validate_internal_medicine_result(
+        None,
+        rule_based_internal_medicine(payload),
+        payload,
+        memory=memory,
+    )
+    disposition = build_consultation_disposition(result, source_phase="internal_medicine_round2")
+
+    assert result["primary_disposition"] == "specialty_referral"
+    assert result["recommended_department"] == "Surgery"
+    assert result["requires_new_registration"] is True
+    assert result["carry_forward_summary"]["origin_department"] == "Internal Medicine"
+    assert disposition["category"] == "specialty_referral"
+    assert disposition["requires_new_registration"] is True
+
+
+def test_surgery_round2_report_can_recommend_icu_escalation():
+    payload = {
+        "chief_complaint": "postoperative bleeding",
+        "symptoms": "heavy bleeding, dizziness",
+        "message": "The bleeding is still not stopping after the review.",
+        "consultation_round": 2,
+        "vitals": {"temp_c": 37.2, "heart_rate": 124},
+        "simulated_report": {
+            "category_code": "medical_imaging",
+            "report_summary": {
+                "escalation_clues": {
+                    "to_emergency": True,
+                    "to_icu": True,
+                    "reason": "Report-level findings suggest unstable bleeding with ICU-level risk.",
+                }
+            },
+            "test_items": ["Focused bleeding assessment"],
+        },
+    }
+    memory = _round2_memory(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=["heavy bleeding", "dizziness"],
+        vitals=payload["vitals"],
+    )
+
+    result = validate_surgery_result(
+        None,
+        rule_based_surgery(payload),
+        payload,
+        memory=memory,
+    )
+    disposition = build_consultation_disposition(result, source_phase="surgery_round2")
+
+    assert result["primary_disposition"] == "icu_escalation"
+    assert result["recommended_department"] == "ICU"
+    assert result["priority"] == "H"
+    assert disposition["category"] == "icu_rescue"
+
+
+def test_round2_escalation_disposition_forces_high_priority_and_default_target():
+    payload = {
+        "chief_complaint": "worsening breathing problem",
+        "symptoms": "shortness of breath, chest tightness",
+        "message": "I still feel much worse after the review.",
+        "vitals": {"temp_c": 37.1, "heart_rate": 118},
+    }
+    memory = _round2_memory(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=["shortness of breath", "chest tightness"],
+        vitals=payload["vitals"],
+    )
+
+    result = validate_internal_medicine_result(
+        {
+            "priority": "M",
+            "primary_disposition": "icu_escalation",
+            "clinical_impression": "The current review suggests instability.",
+            "final_assessment_summary": "Needs ICU-level rescue instead of routine follow-up.",
+            "handoff_reason": "Persistent instability after reassessment.",
+        },
+        rule_based_internal_medicine(payload),
+        payload,
+        memory=memory,
+    )
+
+    assert result["primary_disposition"] == "icu_escalation"
+    assert result["priority"] == "H"
+    assert result["recommended_department"] == "ICU"
+    assert result["recommended_department_reason"] == "Persistent instability after reassessment."
+
+
+def test_round2_report_icu_escalation_cannot_be_downgraded_by_llm_result():
+    payload = {
+        "chief_complaint": "dizziness and fatigue",
+        "symptoms": "dizziness, fatigue",
+        "message": "I almost fainted again after the review.",
+        "consultation_round": 2,
+        "vitals": {"temp_c": 37.2, "heart_rate": 118},
+        "simulated_report": {
+            "category_code": "medical_imaging",
+            "report_summary": {
+                "escalation_clues": {
+                    "to_emergency": True,
+                    "to_icu": True,
+                    "reason": "Report-level findings suggest a critical deterioration pattern needing ICU rescue consideration.",
+                }
+            },
+            "test_items": ["Focused instability assessment"],
+        },
+    }
+    memory = _round2_memory(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=["dizziness", "fatigue"],
+        vitals=payload["vitals"],
+    )
+
+    result = validate_internal_medicine_result(
+        {
+            "priority": "H",
+            "department": "Internal Medicine",
+            "primary_disposition": "emergency_escalation",
+            "recommended_department": "Emergency Medicine",
+            "recommended_department_reason": "Legacy emergency-only phrasing from the LLM output.",
+            "handoff_reason": "Legacy emergency-only phrasing from the LLM output.",
+        },
+        rule_based_internal_medicine(payload),
+        payload,
+        memory=memory,
+    )
+
+    disposition = build_consultation_disposition(result, source_phase="internal_medicine_round2")
+
+    assert result["primary_disposition"] == "icu_escalation"
+    assert result["priority"] == "H"
+    assert result["recommended_department"] == "ICU"
+    assert result["icu_escalation"] is True
+    assert disposition["category"] == "icu_rescue"
 
 
 def test_round2_defaults_to_outpatient_management_when_no_other_disposition_is_triggered():
