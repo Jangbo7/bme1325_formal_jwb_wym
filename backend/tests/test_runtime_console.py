@@ -406,6 +406,55 @@ def test_prepare_local_runtime_reset_captures_ids_without_clearing_before_cleanu
     assert repo.db.reset_calls == 0
 
 
+def test_prepare_local_runtime_reset_includes_remote_backend_patients():
+    from app.services.runtime_console_service import RuntimeConsoleService
+
+    class DatabaseStub:
+        def reset_runtime_data(self):
+            raise AssertionError("reset must happen after cleanup")
+
+    class RepoStub:
+        db = DatabaseStub()
+
+        def list_spawned_patient_ids(self, session_id=None):
+            return ["P-local"]
+
+    class SyncRepoStub:
+        def list_managed_patient_ids(self):
+            return []
+
+        def skip_unfinished_for_patients(self, patient_ids, *, reason):
+            assert patient_ids == ["P-local", "P-remote"]
+            return 0
+
+    class FullviewClientStub:
+        def fetch_snapshot(self):
+            return {
+                "patients": [
+                    {
+                        "patientId": "P-remote",
+                        "clinical": {"summary": {"source": "outpatient_backend"}},
+                    },
+                    {
+                        "patientId": "P-seed",
+                        "clinical": {"summary": {"source": "seed"}},
+                    },
+                ]
+            }
+
+    service = RuntimeConsoleService(
+        repo=RepoStub(),
+        department_runtime_service=None,
+        fullview_client=FullviewClientStub(),
+        fullview_sync_repo=SyncRepoStub(),
+        fullview_sync_enabled=True,
+    )
+
+    plan = service.prepare_local_runtime_reset()
+
+    assert plan["patient_ids"] == ["P-local", "P-remote"]
+
+
 def test_runtime_control_request_does_not_wait_for_patient_step_lock(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     controller = client.app.state.container["hospital_supervisor"]

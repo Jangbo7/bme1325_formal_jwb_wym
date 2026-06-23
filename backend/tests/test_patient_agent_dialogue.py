@@ -1,3 +1,4 @@
+from app.api.contract import ContractError
 from app.agents.patient_agent.patient_agent import ControlledPatientAgent
 from app.agents.patient_agent.schemas import PatientCaseCard, PatientProfileCard, PatientReplyContext, PatientSymptomFacts
 
@@ -58,6 +59,32 @@ def test_patient_agent_reply_falls_back_on_invalid_llm_payload():
     agent = ControlledPatientAgent(
         {"endpoint": "unused", "model": "unused", "api_key": "test-key"},
         request_json=lambda messages: {"bad": "payload"},
+    )
+
+    result = agent.reply(
+        case_card=sample_case(),
+        context=PatientReplyContext(
+            phase="triage",
+            patient_id="P-12345678",
+            recent_question="What brings you here today?",
+        ),
+    )
+
+    assert result.message
+    assert "cough" in result.message.lower()
+
+
+def test_patient_agent_reply_falls_back_after_llm_request_failure():
+    agent = ControlledPatientAgent(
+        {"endpoint": "unused", "model": "unused", "api_key": "test-key"},
+        request_json=lambda messages: (_ for _ in ()).throw(
+            ContractError(
+                code="LLM_REQUEST_FAILED",
+                message="patient agent LLM request timed out",
+                details={"agent": "patient_agent", "retries": 2},
+                status_code=504,
+            )
+        ),
     )
 
     result = agent.reply(

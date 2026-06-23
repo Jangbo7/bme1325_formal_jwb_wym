@@ -281,6 +281,10 @@ def runtime_console_snapshot(request: Request):
 def start_runtime_console(body: RuntimeConsoleStartRequest, request: Request):
     controller = _controller(request)
     service = _service(request)
+    if controller.get_runtime_session().running:
+        raise HTTPException(status_code=409, detail="runtime console already running")
+    if service.get_latest_session() is not None:
+        service.cleanup_stale_fullview_patients()
     session, department_configs = service.create_session(
         global_config=body.global_config,
         department_configs=body.department_configs,

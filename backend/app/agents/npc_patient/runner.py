@@ -36,6 +36,7 @@ class NpcPatientRunner:
         self.queue_repo = container["queue_repo"]
         self.visit_repo = container["visit_repo"]
         self.medical_record_repo = container.get("medical_record_repo")
+        self.medical_record_card_service = container.get("medical_record_card_service")
         self.triage_service = container["triage_service"]
         self.internal_medicine_service = container["internal_medicine_service"]
         self.surgery_service = container.get("surgery_service")
@@ -591,6 +592,13 @@ class NpcPatientRunner:
                 active_agent_type=None,
                 data=self._decode_visit_data(disposition_pending_visit),
             )
+            if self.medical_record_card_service is not None:
+                self.medical_record_card_service.generate_and_store_for_visit(
+                    visit_id=visit_row["id"],
+                    patient_id=state.patient_id,
+                    consultation_result=None,
+                    source="scripted_structured",
+                )
         state.reply_counters[reply_key] += 1
         state.active_session_id = session_id
         state.phase = reply_key

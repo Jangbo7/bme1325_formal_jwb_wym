@@ -18,6 +18,7 @@ def create_internal_medicine_service(
     bus,
     encounter_orchestration_service=None,
     medical_record_repo=None,
+    medical_record_card_service=None,
 ):
     config = build_internal_medicine_runtime_config()
     dialogue_state_machine = InternalMedicineDialogueStateMachine()
@@ -37,6 +38,7 @@ def create_internal_medicine_service(
         graph=graph,
         encounter_orchestration_service=encounter_orchestration_service,
         medical_record_repo=medical_record_repo,
+        medical_record_card_service=medical_record_card_service,
     )
     graph.service = service
     return service

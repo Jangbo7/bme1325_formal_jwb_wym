@@ -70,6 +70,8 @@ def multi_patient_debug_page():
     .badge { font-size: 12px; border-radius: 999px; padding: 2px 8px; border: 1px solid #9db39e; display: inline-block; }
     .row { margin-top: 6px; font-size: 14px; }
     .dialogue { margin-top: 10px; padding: 10px; border: 1px dashed var(--line); border-radius: 10px; background: #f7fbf6; }
+    .medical-record { margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fbfdf8; }
+    .medical-record-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
     pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-size: 12px; }
     .filters { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
     details { margin-top: 8px; }
@@ -272,6 +274,40 @@ def multi_patient_debug_page():
       return "unknown";
     }
 
+    function formatMedicationList(card) {
+      const medications = (card && card.structured && Array.isArray(card.structured["药方"]))
+        ? card.structured["药方"]
+        : [];
+      if (!medications.length) return "无";
+      return medications.map((item, index) => {
+        return `${index + 1}. ${item["药物名称"] || "无"} / 频次: ${item["使用频次"] || "无"} / 剂量: ${item["剂量说明"] || "无"} / 疗程: ${item["疗程"] || "无"}`;
+      }).join(" | ");
+    }
+
+    function renderMedicalRecordCard(card) {
+      const effectiveCard = card || {
+        status: "pending",
+        structured: {
+          "主诉": "无",
+          "症状": "无",
+          "生命体征摘要": "无",
+          "检查结果摘要": "无",
+          "诊断结果摘要": "无",
+          "药方": [],
+          "处置摘要": "无",
+        },
+        display_text: "无",
+        source: "fallback_projection",
+      };
+      return `
+        <div class="medical-record">
+          <div class="medical-record-title">电子病历卡</div>
+          <div class="row">状态/来源: ${effectiveCard.status || "-"} / ${effectiveCard.source || "-"}</div>
+          <pre>${effectiveCard.display_text || "无"}</pre>
+        </div>
+      `;
+    }
+
     function rareEventBadge(state) {
       if (state === "none") return "";
       return `<span class="badge badge--rare badge--rare-${state}">rare:${state}</span>`;
@@ -399,6 +435,7 @@ def multi_patient_debug_page():
             requires_new_registration: p.requires_new_registration,
             carry_forward_summary: p.carry_forward_summary,
           },
+          medical_record_card: p.medical_record_card,
           projection: {
             display_stage: p.display_stage,
             dispatch_state: p.dispatch_state,
@@ -436,6 +473,7 @@ def multi_patient_debug_page():
               <summary>Details</summary>
               ${dialogueHtml}
               ${caseSummary}
+              ${renderMedicalRecordCard(p.medical_record_card)}
               <pre>${JSON.stringify(detailJson, null, 2)}</pre>
             </details>
           </article>

@@ -29,6 +29,7 @@ from app.agents.triage.rules import (
 from app.agents.triage.schemas import WorkingMemory
 from app.domain.patient.state_machine import PatientStateMachine
 from app.events.types import PATIENT_STATE_CHANGED, TRIAGE_COMPLETED, VISIT_STATE_CHANGED
+from app.llm_retry import DEFAULT_LLM_RETRIES, call_with_llm_retries
 from app.schemas.common import PatientLifecycleState, TriageDialogueState, VisitLifecycleState
 from app.services.consultation_registry import (
     get_consultation_agent_by_type,
@@ -499,39 +500,42 @@ class TriageService:
         if not self.llm_settings["api_key"]:
             return None
         try:
-            req = urlrequest.Request(
-                self.llm_settings["endpoint"],
-                data=json.dumps(
-                    {
-                        "model": self.llm_settings["model"],
-                        "messages": messages,
-                        "temperature": 0,
-                        "n": 1,
-                        "stream": False,
-                        "presence_penalty": 0,
-                        "frequency_penalty": 0,
-                    }
-                ).encode("utf-8"),
-                headers={
-                    "accept": "application/json",
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.llm_settings['api_key']}",
-                },
-                method="POST",
-            )
-            with urlrequest.urlopen(req, timeout=18) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            text = self.extract_text_from_response(data)
-            if not text:
-                return None
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError:
-                start = text.find("{")
-                end = text.rfind("}")
-                if start >= 0 and end > start:
-                    return json.loads(text[start : end + 1])
-                raise
+            def _single_attempt():
+                req = urlrequest.Request(
+                    self.llm_settings["endpoint"],
+                    data=json.dumps(
+                        {
+                            "model": self.llm_settings["model"],
+                            "messages": messages,
+                            "temperature": 0,
+                            "n": 1,
+                            "stream": False,
+                            "presence_penalty": 0,
+                            "frequency_penalty": 0,
+                        }
+                    ).encode("utf-8"),
+                    headers={
+                        "accept": "application/json",
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self.llm_settings['api_key']}",
+                    },
+                    method="POST",
+                )
+                with urlrequest.urlopen(req, timeout=18) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                text = self.extract_text_from_response(data)
+                if not text:
+                    raise ValueError("empty_or_unparseable_response")
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    start = text.find("{")
+                    end = text.rfind("}")
+                    if start >= 0 and end > start:
+                        return json.loads(text[start : end + 1])
+                    raise ValueError("empty_or_unparseable_response")
+
+            return call_with_llm_retries(_single_attempt, retries=DEFAULT_LLM_RETRIES)
         except Exception as e:
             print(f"Error calling LLM API: {e}")
             return None

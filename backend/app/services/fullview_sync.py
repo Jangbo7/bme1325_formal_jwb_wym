@@ -120,11 +120,19 @@ class FullviewSyncWorker:
             return False
         self.repo.mark_sending(command["command_id"])
         attempt_count = int(command.get("attempt_count") or 0) + 1
+        idempotency_key = command["idempotency_key"]
+        if (
+            command.get("status") == "retryable"
+            and command.get("reason_code") in RESOURCE_WAIT_REASON_CODES
+        ):
+            # Fullview caches rejected idempotent responses. A resource retry
+            # must use a new key so availability is evaluated again.
+            idempotency_key = f"{idempotency_key}-attempt-{attempt_count}"
         try:
             response = self.client.send(
                 command["request_type"],
                 command["payload"],
-                command["idempotency_key"],
+                idempotency_key,
             )
         except FullviewClientError as exc:
             self._retry_or_dead_letter(

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from urllib import request as urlrequest
 
 from app.agents.clinical_policy import ClinicalPolicyRuntime, ClinicalPolicyValidatorResult
+from app.llm_retry import DEFAULT_LLM_RETRIES, call_with_llm_retries
 from app.agents.department_runtime.chart_view import build_doctor_chart_view
 from app.agents.department_runtime.config import DepartmentAgentConfig
 from app.agents.department_runtime.replies import (
@@ -45,6 +46,7 @@ class DepartmentAgentRuntime:
         graph,
         encounter_orchestration_service=None,
         medical_record_repo=None,
+        medical_record_card_service=None,
     ):
         self.config = config
         self.llm_settings = llm_settings
@@ -60,6 +62,7 @@ class DepartmentAgentRuntime:
         self.graph = graph
         self.encounter_orchestration_service = encounter_orchestration_service
         self.medical_record_repo = medical_record_repo
+        self.medical_record_card_service = medical_record_card_service
         self.policy_runtime = ClinicalPolicyRuntime()
         self._policy_registry = None
 
@@ -418,47 +421,52 @@ class DepartmentAgentRuntime:
             return None
         if not self.llm_settings.get("api_key"):
             return None
-        req = urlrequest.Request(
-            self.llm_settings["endpoint"],
-            data=json.dumps(
-                {
-                    "model": self.llm_settings["model"],
-                    "messages": self.build_consultation_llm_messages(
-                        payload,
-                        shared_memory,
-                        missing_fields,
-                        historical_records_template=historical_records_template,
-                        previous_final_result=previous_final_result,
-                        post_final_reassessment=post_final_reassessment,
-                        policy_runtime_context=policy_runtime_context,
-                    ),
-                    "temperature": 0,
-                    "n": 1,
-                    "stream": False,
-                    "presence_penalty": 0,
-                    "frequency_penalty": 0,
-                }
-            ).encode("utf-8"),
-            headers={
-                "accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.llm_settings['api_key']}",
-            },
-            method="POST",
+        messages = self.build_consultation_llm_messages(
+            payload,
+            shared_memory,
+            missing_fields,
+            historical_records_template=historical_records_template,
+            previous_final_result=previous_final_result,
+            post_final_reassessment=post_final_reassessment,
+            policy_runtime_context=policy_runtime_context,
         )
-        with urlrequest.urlopen(req, timeout=18) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        text = self.extract_text_from_response(data)
-        if not text:
-            return None
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            start = text.find("{")
-            end = text.rfind("}")
-            if start >= 0 and end > start:
-                return json.loads(text[start : end + 1])
-            return None
+
+        def _single_attempt():
+            req = urlrequest.Request(
+                self.llm_settings["endpoint"],
+                data=json.dumps(
+                    {
+                        "model": self.llm_settings["model"],
+                        "messages": messages,
+                        "temperature": 0,
+                        "n": 1,
+                        "stream": False,
+                        "presence_penalty": 0,
+                        "frequency_penalty": 0,
+                    }
+                ).encode("utf-8"),
+                headers={
+                    "accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.llm_settings['api_key']}",
+                },
+                method="POST",
+            )
+            with urlrequest.urlopen(req, timeout=18) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            text = self.extract_text_from_response(data)
+            if not text:
+                raise ValueError("empty_or_unparseable_response")
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                start = text.find("{")
+                end = text.rfind("}")
+                if start >= 0 and end > start:
+                    return json.loads(text[start : end + 1])
+                raise ValueError("empty_or_unparseable_response")
+
+        return call_with_llm_retries(_single_attempt, retries=DEFAULT_LLM_RETRIES)
 
     def build_post_final_answer_llm_messages(
         self,
@@ -510,42 +518,48 @@ class DepartmentAgentRuntime:
         )
         if not messages:
             return None
-        req = urlrequest.Request(
-            self.llm_settings["endpoint"],
-            data=json.dumps(
-                {
-                    "model": self.llm_settings["model"],
-                    "messages": messages,
-                    "temperature": 0,
-                    "n": 1,
-                    "stream": False,
-                    "presence_penalty": 0,
-                    "frequency_penalty": 0,
-                }
-            ).encode("utf-8"),
-            headers={
-                "accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.llm_settings['api_key']}",
-            },
-            method="POST",
-        )
-        with urlrequest.urlopen(req, timeout=18) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        text = self.extract_text_from_response(data)
-        if not text:
-            return None
-        parsed_text = text.strip()
-        try:
-            payload_json = json.loads(parsed_text)
-            if isinstance(payload_json, dict):
-                for key in ("assistant_message", "answer", "message", "reply"):
-                    value = payload_json.get(key)
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-        except Exception:
-            pass
-        return parsed_text or None
+
+        def _single_attempt():
+            req = urlrequest.Request(
+                self.llm_settings["endpoint"],
+                data=json.dumps(
+                    {
+                        "model": self.llm_settings["model"],
+                        "messages": messages,
+                        "temperature": 0,
+                        "n": 1,
+                        "stream": False,
+                        "presence_penalty": 0,
+                        "frequency_penalty": 0,
+                    }
+                ).encode("utf-8"),
+                headers={
+                    "accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.llm_settings['api_key']}",
+                },
+                method="POST",
+            )
+            with urlrequest.urlopen(req, timeout=18) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            text = self.extract_text_from_response(data)
+            if not text:
+                raise ValueError("empty_or_unparseable_response")
+            parsed_text = text.strip()
+            try:
+                payload_json = json.loads(parsed_text)
+                if isinstance(payload_json, dict):
+                    for key in ("assistant_message", "answer", "message", "reply"):
+                        value = payload_json.get(key)
+                        if isinstance(value, str) and value.strip():
+                            return value.strip()
+            except Exception:
+                pass
+            if parsed_text:
+                return parsed_text
+            raise ValueError("empty_or_unparseable_response")
+
+        return call_with_llm_retries(_single_attempt, retries=DEFAULT_LLM_RETRIES)
 
     def extract_text_from_response(self, data):
         if isinstance(data, str):
@@ -595,42 +609,48 @@ class DepartmentAgentRuntime:
         )
         if not messages:
             return None
-        req = urlrequest.Request(
-            self.llm_settings["endpoint"],
-            data=json.dumps(
-                {
-                    "model": self.llm_settings["model"],
-                    "messages": messages,
-                    "temperature": 0,
-                    "n": 1,
-                    "stream": False,
-                    "presence_penalty": 0,
-                    "frequency_penalty": 0,
-                }
-            ).encode("utf-8"),
-            headers={
-                "accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.llm_settings['api_key']}",
-            },
-            method="POST",
-        )
-        with urlrequest.urlopen(req, timeout=18) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        text = self.extract_text_from_response(data)
-        if not text:
-            return None
-        parsed_text = text.strip()
-        try:
-            payload_json = json.loads(parsed_text)
-            if isinstance(payload_json, dict):
-                for key in ("assistant_message", "follow_up_question", "question", "message", "reply"):
-                    value = payload_json.get(key)
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-        except Exception:
-            pass
-        return parsed_text or None
+
+        def _single_attempt():
+            req = urlrequest.Request(
+                self.llm_settings["endpoint"],
+                data=json.dumps(
+                    {
+                        "model": self.llm_settings["model"],
+                        "messages": messages,
+                        "temperature": 0,
+                        "n": 1,
+                        "stream": False,
+                        "presence_penalty": 0,
+                        "frequency_penalty": 0,
+                    }
+                ).encode("utf-8"),
+                headers={
+                    "accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.llm_settings['api_key']}",
+                },
+                method="POST",
+            )
+            with urlrequest.urlopen(req, timeout=18) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            text = self.extract_text_from_response(data)
+            if not text:
+                raise ValueError("empty_or_unparseable_response")
+            parsed_text = text.strip()
+            try:
+                payload_json = json.loads(parsed_text)
+                if isinstance(payload_json, dict):
+                    for key in ("assistant_message", "follow_up_question", "question", "message", "reply"):
+                        value = payload_json.get(key)
+                        if isinstance(value, str) and value.strip():
+                            return value.strip()
+            except Exception:
+                pass
+            if parsed_text:
+                return parsed_text
+            raise ValueError("empty_or_unparseable_response")
+
+        return call_with_llm_retries(_single_attempt, retries=DEFAULT_LLM_RETRIES)
 
     def _classify_post_final_answer_mode(self, payload: dict, memory, previous_final_result: dict | None = None) -> str:
         del previous_final_result

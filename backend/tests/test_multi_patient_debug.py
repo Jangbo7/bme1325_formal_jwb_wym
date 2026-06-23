@@ -278,6 +278,8 @@ def test_multi_patient_debug_probabilistic_mode_one_probability_spawns_generated
     assert snapshot["patients"][0]["generation_hint_department_id"] is not None
     assert snapshot["patients"][0]["generation_hint_department_name"] is not None
     assert snapshot["patients"][0]["case_summary"]["generation_hint_department_id"] == snapshot["patients"][0]["generation_hint_department_id"]
+    assert snapshot["patients"][0]["medical_record_card"]["status"] == "pending"
+    assert snapshot["patients"][0]["medical_record_card"]["structured"]["主诉"] == "无"
     assert generated_departments == [snapshot["patients"][0]["generation_hint_department_id"]]
 
 
@@ -357,6 +359,7 @@ def test_multi_patient_debug_page_is_available(tmp_path, monkeypatch):
     assert "multi-patient-debug-open-details" in response.text
     assert "card--rare-event" in response.text
     assert "Special event color" in response.text
+    assert "电子病历卡" in response.text
 
 
 def test_multi_patient_debug_department_mixed_mode_uses_multiple_agent_types(tmp_path, monkeypatch):

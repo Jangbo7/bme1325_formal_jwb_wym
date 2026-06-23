@@ -46,6 +46,7 @@ class MultiPatientDebugPatientSnapshot(BaseModel):
     recommended_department_reason: str | None = None
     requires_new_registration: bool = False
     carry_forward_summary: dict = Field(default_factory=dict)
+    medical_record_card: dict = Field(default_factory=dict)
     patient_lifecycle_state: str | None = None
     assigned_department_id: str | None = None
     assigned_department_name: str | None = None

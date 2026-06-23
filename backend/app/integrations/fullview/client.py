@@ -15,16 +15,21 @@ class FullviewClient:
     def __init__(self, *, base_url: str, timeout_seconds: float):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = max(0.1, float(timeout_seconds))
+        self._client = httpx.Client(
+            timeout=self.timeout_seconds,
+            trust_env=False,
+        )
+
+    def close(self) -> None:
+        self._client.close()
 
     def send(self, request_type: str, payload: dict, idempotency_key: str) -> dict[str, Any]:
         url = f"{self.base_url}/api/v1/departments/outpatient/requests/{request_type}"
         try:
-            response = httpx.post(
+            response = self._client.post(
                 url,
                 json=payload,
                 headers={"Idempotency-Key": idempotency_key},
-                timeout=self.timeout_seconds,
-                trust_env=False,
             )
         except httpx.RequestError as exc:
             raise FullviewClientError(str(exc)) from exc
@@ -74,10 +79,8 @@ class FullviewClient:
     def delete_patient(self, patient_id: str) -> dict[str, Any]:
         url = f"{self.base_url}/api/hospital/patients/{patient_id}"
         try:
-            response = httpx.delete(
+            response = self._client.delete(
                 url,
-                timeout=self.timeout_seconds,
-                trust_env=False,
             )
         except httpx.RequestError as exc:
             raise FullviewClientError(str(exc)) from exc
@@ -103,14 +106,12 @@ class FullviewClient:
     def fetch_events(self, after_seq: int, *, limit: int = 200) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/v1/events"
         try:
-            response = httpx.get(
+            response = self._client.get(
                 url,
                 params={
                     "after_seq": max(0, int(after_seq)),
                     "limit": max(1, min(int(limit), 200)),
                 },
-                timeout=self.timeout_seconds,
-                trust_env=False,
             )
         except httpx.RequestError as exc:
             raise FullviewClientError(str(exc)) from exc
@@ -133,3 +134,25 @@ class FullviewClient:
         if not isinstance(events, list):
             raise FullviewClientError("Fullview events returned an invalid event list")
         return [event for event in events if isinstance(event, dict)]
+
+    def fetch_snapshot(self) -> dict[str, Any]:
+        url = f"{self.base_url}/api/hospital/snapshot"
+        try:
+            response = self._client.get(url)
+        except httpx.RequestError as exc:
+            raise FullviewClientError(str(exc)) from exc
+        if response.status_code >= 400:
+            raise FullviewClientError(
+                f"Fullview snapshot returned HTTP {response.status_code}",
+                status_code=response.status_code,
+            )
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise FullviewClientError("Fullview snapshot returned non-JSON") from exc
+        data = body.get("data") if isinstance(body, dict) else None
+        if isinstance(data, dict):
+            return data
+        if isinstance(body, dict):
+            return body
+        raise FullviewClientError("Fullview snapshot returned an invalid envelope")

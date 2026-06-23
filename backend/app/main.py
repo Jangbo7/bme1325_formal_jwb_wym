@@ -103,6 +103,7 @@ from app.services import (
     FullviewEventListener,
     FullviewSyncSubscriber,
     FullviewSyncWorker,
+    MedicalRecordCardService,
     NpcPatientSimulator,
     OutpatientProcedureService,
     PatientAgentService,
@@ -135,6 +136,12 @@ def create_container():
     runtime_console_repo = RuntimeConsoleRepository(db)
     queue_repo = QueueRepository(db)
     visit_repo = VisitRepository(db)
+    medical_record_card_service = MedicalRecordCardService(
+        visit_repo=visit_repo,
+        patient_repo=patient_repo,
+        agent_memory_repo=memory_repo,
+        medical_record_repo=medical_record_repo,
+    )
     bus = EventBus()
     redis_mirror_publisher = RedisMirrorPublisher(
         enabled=settings["redis_mirror_enabled"],
@@ -202,6 +209,7 @@ def create_container():
         bus=bus,
         encounter_orchestration_service=encounter_orchestration_service,
         medical_record_repo=medical_record_repo,
+        medical_record_card_service=medical_record_card_service,
     )
     surgery_service = create_surgery_service(
         llm_settings={
@@ -219,6 +227,7 @@ def create_container():
         bus=bus,
         encounter_orchestration_service=encounter_orchestration_service,
         medical_record_repo=medical_record_repo,
+        medical_record_card_service=medical_record_card_service,
         outpatient_procedure_service=outpatient_procedure_service,
     )
     triage_service.configure_consultation_services(
@@ -269,6 +278,7 @@ def create_container():
             "encounter_orchestration_service": encounter_orchestration_service,
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
+            "medical_record_card_service": medical_record_card_service,
         }
     )
     patient_agent_service = PatientAgentService(
@@ -352,6 +362,7 @@ def create_container():
             "encounter_orchestration_service": encounter_orchestration_service,
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
+            "medical_record_card_service": medical_record_card_service,
             "patient_agent_service": patient_agent_service,
             "patient_agent_case_repo": patient_agent_case_repo,
             "department_runtime_service": department_runtime_service,
@@ -410,6 +421,7 @@ def create_container():
             "encounter_orchestration_service": encounter_orchestration_service,
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
+            "medical_record_card_service": medical_record_card_service,
             "patient_agent_service": patient_agent_service,
             "patient_agent_case_repo": patient_agent_case_repo,
             "department_runtime_service": department_runtime_service,
@@ -499,6 +511,7 @@ def create_container():
         "runtime_console_repo": runtime_console_repo,
         "queue_repo": queue_repo,
         "visit_repo": visit_repo,
+        "medical_record_card_service": medical_record_card_service,
         "encounter_orchestration_service": encounter_orchestration_service,
         "event_bus": bus,
         "event_bridge": event_bridge,
@@ -513,6 +526,7 @@ def create_container():
         "patient_agent_service": patient_agent_service,
         "department_runtime_service": department_runtime_service,
         "fullview_mapping_service": fullview_mapping_service,
+        "fullview_client": fullview_client,
         "fullview_sync_worker": fullview_sync_worker,
         "fullview_event_listener": fullview_event_listener,
         "runtime_console_service": runtime_console_service,
@@ -557,6 +571,7 @@ def create_app() -> FastAPI:
         finally:
             container["fullview_sync_worker"].stop()
             container["fullview_event_listener"].stop()
+            container["fullview_client"].close()
             container["npc_simulator"].stop()
             container["multi_patient_debug_controller"].shutdown()
             if startup_cleanup_task is not None and not startup_cleanup_task.done():

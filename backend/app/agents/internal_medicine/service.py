@@ -478,6 +478,13 @@ class InternalMedicineService(DepartmentAgentRuntime):
                         "requires_new_registration": bool(consultation_result.get("requires_new_registration", False)),
                     },
                 )
+            if self.medical_record_card_service is not None:
+                self.medical_record_card_service.generate_and_store_for_visit(
+                    visit_id=visit_row["id"],
+                    patient_id=patient_id,
+                    consultation_result=consultation_result,
+                    source="agent_structured",
+                )
             self.bus.publish(
                 INTERNAL_MEDICINE_CONSULTATION_COMPLETED,
                 {

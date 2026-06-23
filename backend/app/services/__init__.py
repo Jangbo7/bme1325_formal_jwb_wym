@@ -3,6 +3,7 @@ from app.services.npc_simulator import NpcPatientSimulator
 from app.services.encounter_orchestration import EncounterOrchestrationService
 from app.services.patient_agent_service import PatientAgentService
 from app.services.outpatient_procedure_service import OutpatientProcedureService
+from app.services.medical_record_card import MedicalRecordCardService
 from app.services.runtime_console_service import RuntimeConsoleService
 from app.services.scene_snapshot_service import SceneSnapshotService
 from app.services.patient_flow_engine import FlowDecisionEngine, FlowExecutor
@@ -19,6 +20,7 @@ __all__ = [
     "EncounterOrchestrationService",
     "PatientAgentService",
     "OutpatientProcedureService",
+    "MedicalRecordCardService",
     "RuntimeConsoleService",
     "SceneSnapshotService",
     "FlowDecisionEngine",

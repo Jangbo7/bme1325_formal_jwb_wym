@@ -118,8 +118,7 @@ class FullviewSyncRepository:
             conn.close()
 
     def get_step_gate_blocker(self, encounter_id: str) -> dict | None:
-        """Return the first Fullview command not yet accepted or skipped."""
-        timestamp = now_iso()
+        """Return the first command that Fullview has not accepted."""
         conn = self.db.connect()
         try:
             row = conn.execute(
@@ -128,19 +127,15 @@ class FullviewSyncRepository:
                        event_id, status, reason_code, last_error, visual_ready_at, updated_at
                 FROM fullview_sync_outbox
                 WHERE encounter_id=?
-                  AND (
-                    status NOT IN ('observed', 'cleanup_complete', 'skipped')
-                    OR (
-                      ?=1
-                      AND status='observed'
-                      AND visual_ready_at IS NOT NULL
-                      AND visual_ready_at > ?
-                    )
+                  AND accepted_at IS NULL
+                  AND status NOT IN (
+                    'accepted_unobserved', 'observed',
+                    'cleanup_pending', 'cleanup_complete', 'skipped'
                   )
                 ORDER BY sequence_no ASC
                 LIMIT 1
                 """,
-                (encounter_id, 1 if self.visual_cooldown_enabled else 0, timestamp),
+                (encounter_id,),
             ).fetchone()
             return dict(row) if row else None
         finally:

@@ -541,6 +541,21 @@ def test_internal_medicine_session_requires_in_consultation_and_can_continue(tmp
     assert simulated_report_resp.status_code == 200
     assert get_data(simulated_report_resp)["report"]["report_text"]
 
+    medical_record_card_resp = client.get(
+        f"/api/v1/medical-records/visit/{visit_id}/card",
+        headers=headers(),
+    )
+    assert medical_record_card_resp.status_code == 200
+    medical_record_card = get_data(medical_record_card_resp)
+    assert medical_record_card["status"] == "ready"
+    assert medical_record_card["structured"]["主诉"] != "无"
+    assert medical_record_card["structured"]["检查结果摘要"] != "无"
+    assert medical_record_card["structured"]["诊断结果摘要"] != "无"
+    if medical_record_card["structured"]["药方"]:
+        assert medical_record_card["structured"]["药方"][0]["药物名称"] != "无"
+        assert "使用频次" in medical_record_card["structured"]["药方"][0]
+    assert "药方" in medical_record_card["display_text"]
+
 
 def test_surgery_session_route_and_patient_view_follow_surgery_assignment(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
@@ -763,6 +778,16 @@ def test_surgery_procedure_only_path_reaches_round2_with_completed_procedure(tmp
     final_visit_resp = client.get(f"/api/v1/visits/{visit_id}", headers=headers())
     final_visit_data = get_data(final_visit_resp)["visit"]["data"]
     assert final_visit_data["outpatient_procedure_summary"]["completed"] is True
+
+    medical_record_card_resp = client.get(
+        f"/api/v1/medical-records/visit/{visit_id}/card",
+        headers=headers(),
+    )
+    assert medical_record_card_resp.status_code == 200
+    medical_record_card = get_data(medical_record_card_resp)
+    assert medical_record_card["status"] == "ready"
+    assert medical_record_card["structured"]["主诉"] != "无"
+    assert medical_record_card["structured"]["处置摘要"] != "无"
 
 
 def test_surgery_tests_and_procedure_must_both_complete_before_round2(tmp_path, monkeypatch):

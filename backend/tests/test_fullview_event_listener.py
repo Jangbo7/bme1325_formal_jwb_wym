@@ -168,6 +168,7 @@ def test_event_observation_is_required_and_handles_event_before_http_response(tm
         visual_cooldown_seconds=4,
     )
     assert repo.get("cmd-P-2-1")["status"] == "accepted_unobserved"
+    assert repo.get_step_gate_blocker("E-2") is None
     observe(repo, 11, "P-2")
     assert repo.get("cmd-P-2-1")["status"] == "observed"
 

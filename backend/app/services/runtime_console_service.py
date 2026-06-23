@@ -48,6 +48,7 @@ class RuntimeConsoleService:
         patient_ids = set(self.repo.list_spawned_patient_ids(session_id))
         if self.fullview_sync_repo is not None:
             patient_ids.update(self.fullview_sync_repo.list_managed_patient_ids())
+        patient_ids.update(self._list_remote_backend_patient_ids())
         patient_ids = sorted(patient_ids)
         skipped_commands = 0
         if patient_ids and self.fullview_sync_repo is not None:
@@ -60,6 +61,35 @@ class RuntimeConsoleService:
             "patient_ids": patient_ids,
             "skipped_commands": skipped_commands,
         }
+
+    def _list_remote_backend_patient_ids(self) -> set[str]:
+        if not self.fullview_sync_enabled or self.fullview_client is None:
+            return set()
+        fetch_snapshot = getattr(self.fullview_client, "fetch_snapshot", None)
+        if fetch_snapshot is None:
+            return set()
+        try:
+            snapshot = fetch_snapshot()
+        except Exception:
+            return set()
+        patient_ids = set()
+        for patient in snapshot.get("patients") or []:
+            if not isinstance(patient, dict):
+                continue
+            clinical = patient.get("clinical") or {}
+            summary = clinical.get("summary") or {}
+            if (
+                summary.get("source") == "outpatient_backend"
+                or clinical.get("producer") == "groupA.outpatient"
+            ):
+                patient_id = (
+                    patient.get("patientId")
+                    or patient.get("patient_id")
+                    or patient.get("id")
+                )
+                if patient_id:
+                    patient_ids.add(str(patient_id))
+        return patient_ids
 
     def cleanup_fullview_patients(
         self,
@@ -122,6 +152,22 @@ class RuntimeConsoleService:
         if reset_local:
             self.repo.db.reset_runtime_data()
         return result
+
+    def cleanup_stale_fullview_patients(self) -> dict:
+        patient_ids = set(self._list_remote_backend_patient_ids())
+        if self.fullview_sync_repo is not None:
+            patient_ids.update(self.fullview_sync_repo.list_managed_patient_ids())
+        resolved = sorted(patient_ids)
+        skipped_commands = 0
+        if resolved and self.fullview_sync_repo is not None:
+            skipped_commands = self.fullview_sync_repo.skip_unfinished_for_patients(
+                resolved,
+                reason="new runtime session stale Fullview cleanup",
+            )
+        return self.cleanup_fullview_patients(
+            resolved,
+            skipped_commands=skipped_commands,
+        )
 
     def default_global_config(self) -> RuntimeConsoleGlobalConfig:
         return RuntimeConsoleGlobalConfig(

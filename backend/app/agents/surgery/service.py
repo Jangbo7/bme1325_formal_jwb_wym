@@ -425,6 +425,13 @@ class SurgeryService(DepartmentAgentRuntime):
                     active_agent_type=None,
                     extra_data=self._get_visit_data(disposition_pending_visit),
                 )
+            if self.medical_record_card_service is not None:
+                self.medical_record_card_service.generate_and_store_for_visit(
+                    visit_id=visit_row["id"],
+                    patient_id=patient_id,
+                    consultation_result=consultation_result,
+                    source="agent_structured",
+                )
         elif consultation_round == 2 and complete and not was_completed:
             visit_data = self._get_visit_data(visit_row)
             disposition = build_consultation_disposition(consultation_result, source_phase="surgery_round2")
@@ -560,6 +567,13 @@ class SurgeryService(DepartmentAgentRuntime):
                         "carry_forward_summary": dict(consultation_result.get("carry_forward_summary") or {}),
                         "requires_new_registration": bool(consultation_result.get("requires_new_registration", False)),
                     },
+                )
+            if self.medical_record_card_service is not None:
+                self.medical_record_card_service.generate_and_store_for_visit(
+                    visit_id=visit_row["id"],
+                    patient_id=patient_id,
+                    consultation_result=consultation_result,
+                    source="agent_structured",
                 )
         elif not complete:
             self._update_visit_agent_context(visit_row, session_id, active_agent_type=self.config.agent_type)

@@ -687,7 +687,7 @@ def test_step_gate_blocker_clears_only_after_all_commands_are_accepted(sync_cont
     assert sync_repo.get_step_gate_blocker(visit["id"]) is None
 
 
-def test_visual_cooldown_blocks_next_command_and_step_gate(sync_context):
+def test_visual_cooldown_blocks_visual_queue_but_not_business_step_gate(sync_context):
     _, _, visit_repo, sync_repo, patient_id, visit = sync_context
     visit = visit_repo.update_visit(
         visit["id"],
@@ -699,20 +699,52 @@ def test_visual_cooldown_blocks_next_command_and_step_gate(sync_context):
     commands = sync_repo.list_for_encounter(visit["id"])
     sync_repo.set_visual_cooldown_enabled(True)
 
-    accept_and_observe(sync_repo, commands[0], cooldown=30)
+    for command in commands:
+        accept_and_observe(sync_repo, command, cooldown=30)
 
     assert sync_repo.get_next_ready() is None
-    blocker = sync_repo.get_step_gate_blocker(visit["id"])
-    assert blocker["command_id"] == commands[0]["command_id"]
-    assert blocker["status"] == "observed"
-    assert blocker["visual_ready_at"]
+    assert sync_repo.get_step_gate_blocker(visit["id"]) is None
 
-    sync_repo.mark_accepted(
-        commands[0]["command_id"],
-        {"accepted": True, "core_response": {"eventSeq": commands[0]["sequence_no"]}},
-        visual_cooldown_seconds=0,
+    assert all(command["status"] == "observed" for command in sync_repo.list_for_encounter(visit["id"]))
+
+
+def test_resource_retry_uses_new_idempotency_key(sync_context):
+    _, _, _, sync_repo, patient_id, visit = sync_context
+    mapping = build_mapping(sync_context)
+    publish(mapping, visit, patient_id, "begin_triage")
+    command = sync_repo.list_for_encounter(visit["id"])[0]
+    client = FakeFullviewClient(
+        [
+            {
+                "accepted": False,
+                "reason_code": "OUTPATIENT_SLOT_UNAVAILABLE",
+                "message": "busy",
+            },
+            {"accepted": True, "core_response": {"eventSeq": 2}},
+        ]
     )
-    assert sync_repo.get_next_ready()["command_id"] == commands[1]["command_id"]
+    worker = FullviewSyncWorker(
+        repo=sync_repo,
+        client=client,
+        enabled=True,
+        poll_interval_seconds=0.1,
+        max_attempts=3,
+    )
+
+    assert worker.tick() is True
+    first_key = client.calls[0][2]
+    conn = sync_repo.db.connect()
+    conn.execute(
+        "UPDATE fullview_sync_outbox SET next_attempt_at=? WHERE command_id=?",
+        ("2000-01-01T00:00:00+00:00", command["command_id"]),
+    )
+    conn.commit()
+    conn.close()
+    assert worker.tick() is True
+    second_key = client.calls[1][2]
+
+    assert first_key == command["idempotency_key"]
+    assert second_key == f"{command['idempotency_key']}-attempt-2"
 
 
 def test_worker_assigns_event_specific_visual_cooldown():
@@ -848,7 +880,7 @@ def test_register_bridge_batch_waits_for_first_movement_visual_cooldown(sync_con
     )
 
     assert sync_repo.get_next_ready() is None
-    assert sync_repo.get_step_gate_blocker(visit["id"])["command_id"] == bridge["command_id"]
+    assert sync_repo.get_step_gate_blocker(visit["id"])["command_id"] == queue_move["command_id"]
 
     sync_repo.mark_accepted(
         bridge["command_id"],

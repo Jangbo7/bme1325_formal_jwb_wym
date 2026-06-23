@@ -33,6 +33,7 @@ from app.services.department_capabilities import (
 from app.services.department_assignment import resolve_assigned_department_for_visit
 from app.services.debug_department_policy import should_lock_department_for_debug
 from app.services.department_resources import (
+    get_department_resource_config,
     list_department_resource_configs,
     resolve_room_for_visit_state,
     stable_doctor_slot_for_patient,
@@ -98,6 +99,7 @@ class HospitalSupervisor:
         self._intelligent_runner = PatientAgentDebugRunner(container)
         self._department_runtime_service = container.get("department_runtime_service")
         self._runtime_console_service = container.get("runtime_console_service")
+        self._medical_record_card_service = container.get("medical_record_card_service")
         self._fullview_sync_repo = container.get("fullview_sync_repo")
         self._fullview_step_gate_available = bool(container.get("fullview_sync_enabled"))
         self._fullview_step_gate_enabled = bool(container.get("fullview_step_gate_enabled"))
@@ -155,6 +157,7 @@ class HospitalSupervisor:
             "payment": 0.5,
             "pharmacy": 0.5,
         }
+        self._max_steps_per_tick = 8
         self._fullview_spawn_backpressure_limit = 4
 
     def start(
@@ -837,10 +840,11 @@ class HospitalSupervisor:
             )
         )
         dispatch_budget: dict[str, int] = {}
-        # Keep each scheduler tick bounded. A patient step may invoke an LLM or
-        # several database services, so processing every due patient under one
-        # supervisor lock makes controls and snapshots appear frozen.
-        for slot in due_slots[:1]:
+        stepped_count = 0
+        # Scan all due slots so a Fullview-gated patient cannot starve patients
+        # behind it. Actual patient work remains bounded because a step may
+        # invoke an LLM while the supervisor lock is held.
+        for slot in due_slots:
             if self._urgent_step_pause.is_set():
                 break
             blocker = self._fullview_step_gate_blocker(slot)
@@ -849,15 +853,19 @@ class HospitalSupervisor:
                 self._sync_runtime_for_slot(slot)
                 self._evaluate_runtime_console_slot(slot)
                 continue
+            if stepped_count >= self._max_steps_per_tick:
+                break
             self._release_fullview_gate(slot)
             try:
                 node_id = self._decide_and_step(slot, dispatch_budget, now)
                 slot.last_step_at = now
                 slot.current_node_id = node_id
+                stepped_count += 1
             except Exception as exc:
                 slot.state.last_error = self._format_exception(exc)
                 slot.state.status = "error"
                 self._last_error = self._format_exception(exc)
+                stepped_count += 1
                 self._record_runtime_event(
                     severity="error",
                     category="validation",
@@ -901,6 +909,7 @@ class HospitalSupervisor:
         if slot.fullview_waiting_command_id == command_id:
             return
         slot.fullview_waiting_command_id = command_id
+        self._blocked_count += 1
         waiting_reason = (
             "visual cooldown"
             if command_status == "accepted"
@@ -975,6 +984,8 @@ class HospitalSupervisor:
             assigned_department_id=assigned_department_id,
             runner_context=context,
         )
+        if decision.next_action in {"enter_round1_consult", "enter_round2_consult"}:
+            self._assign_available_consultation_slot(slot, dispatch_budget)
         target_node = self._resolve_target_node_for_slot(
             slot,
             visit_state=context.visit_state,
@@ -982,7 +993,11 @@ class HospitalSupervisor:
             default_target_node=decision.target_node or assigned_department_id or "triage",
         )
         slot.target_node_id = target_node
-        if decision.next_action != "complete_visit" and not self._can_dispatch_to_node(target_node, dispatch_budget):
+        if decision.next_action != "complete_visit" and not self._can_dispatch_to_node(
+            target_node,
+            dispatch_budget,
+            slot=slot,
+        ):
             self._blocked_count += 1
             slot.state.status = "waiting_capacity"
             slot.state.last_error = f"node capacity reached: {target_node}"
@@ -1064,9 +1079,50 @@ class HospitalSupervisor:
         )
         return target_node
 
-    def _can_dispatch_to_node(self, node_id: str, dispatch_budget: dict[str, int]) -> bool:
+    def _can_dispatch_to_node(
+        self,
+        node_id: str,
+        dispatch_budget: dict[str, int],
+        *,
+        slot: _PatientSlot,
+    ) -> bool:
         capacity = self._node_capacities.get(node_id, self._node_capacities.get("*", 1))
-        return dispatch_budget.get(node_id, 0) < capacity
+        if slot.current_room_node_id == node_id:
+            return True
+        occupied = sum(
+            1
+            for other in self._slots
+            if other is not slot
+            and not self._slot_is_inactive(other)
+            and other.current_room_node_id == node_id
+        )
+        return occupied + dispatch_budget.get(node_id, 0) < capacity
+
+    def _assign_available_consultation_slot(
+        self,
+        slot: _PatientSlot,
+        dispatch_budget: dict[str, int],
+    ) -> None:
+        config = get_department_resource_config(slot.assigned_department_id)
+        if config is None:
+            return
+        candidates = []
+        for doctor_slot in config.doctor_slots:
+            occupied = sum(
+                1
+                for other in self._slots
+                if other is not slot
+                and not self._slot_is_inactive(other)
+                and other.current_room_node_id == doctor_slot.room_node_id
+            )
+            reserved = dispatch_budget.get(doctor_slot.room_node_id, 0)
+            if occupied + reserved < doctor_slot.capacity:
+                candidates.append((occupied + reserved, doctor_slot.slot_id, doctor_slot))
+        if not candidates:
+            return
+        _, _, doctor_slot = min(candidates)
+        slot.assigned_doctor_slot_id = doctor_slot.slot_id
+        slot.assigned_doctor_slot_name = doctor_slot.label
 
     def _next_delay_for_node(self, slot: _PatientSlot, node_id: str) -> float:
         default_step_interval = self._step_interval_for_kind(slot.runner_kind)
@@ -1142,6 +1198,17 @@ class HospitalSupervisor:
             finished=slot.state.finished,
             last_error=effective_error,
         )
+        if slot.state.encounter_id and self._medical_record_card_service is not None:
+            medical_record_card = self._medical_record_card_service.get_card_for_visit(
+                slot.state.encounter_id,
+                hide_until_finished=True,
+            )
+        else:
+            medical_record_card = (
+                self._medical_record_card_service.build_pending_view()
+                if self._medical_record_card_service is not None
+                else {}
+            )
         return MultiPatientDebugPatientSnapshot(
             npc_id=slot.npc_id,
             mode=slot.mode,
@@ -1176,6 +1243,7 @@ class HospitalSupervisor:
             recommended_department_reason=visit_data.get("recommended_department_reason"),
             requires_new_registration=bool(visit_data.get("requires_new_registration", False)),
             carry_forward_summary=dict(visit_data.get("carry_forward_summary") or {}),
+            medical_record_card=medical_record_card,
             assigned_department_id=slot.assigned_department_id,
             assigned_department_name=slot.assigned_department_name,
             generation_hint_department_id=slot.generation_hint_department_id,

@@ -18,6 +18,7 @@ def create_surgery_service(
     bus,
     encounter_orchestration_service=None,
     medical_record_repo=None,
+    medical_record_card_service=None,
     outpatient_procedure_service=None,
 ):
     config = build_surgery_runtime_config()
@@ -38,6 +39,7 @@ def create_surgery_service(
         graph=graph,
         encounter_orchestration_service=encounter_orchestration_service,
         medical_record_repo=medical_record_repo,
+        medical_record_card_service=medical_record_card_service,
         outpatient_procedure_service=outpatient_procedure_service,
     )
     graph.service = service
