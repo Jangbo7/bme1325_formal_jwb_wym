@@ -8,6 +8,7 @@ from app.integrations.openemr.schemas import (
     OpenEMRPatientPayload,
     OpenEMRTestReportPayload,
 )
+from app.reporting.test_report_card import TestReportCardService
 
 
 def now_iso() -> str:
@@ -148,24 +149,9 @@ def map_simulated_report_to_report(
     visit: dict,
     simulated_report: dict | None,
 ) -> OpenEMRTestReportPayload:
-    report = simulated_report or {}
-    report_title = report.get("window_label") or report.get("category_label") or "Simulated Test Report"
-    report_summary = report.get("report_summary") if isinstance(report.get("report_summary"), dict) else {}
-    report_text = report.get("report_text") or report_summary.get("summary") or "No report text."
-
-    content_lines = [
-        report_text,
-    ]
-    findings = report_summary.get("findings")
-    if findings:
-        content_lines.extend(["", "Findings"])
-        if isinstance(findings, list):
-            content_lines.extend([f"- {item}" for item in findings])
-        else:
-            content_lines.append(str(findings))
-    advice = report_summary.get("advice")
-    if advice:
-        content_lines.extend(["", "Follow-up Advice", str(advice)])
+    report = TestReportCardService.normalize_report(simulated_report or {})
+    report_title = report.get("report_title") or report.get("window_label") or report.get("category_label") or "辅助检查报告"
+    report_text = report.get("display_text_cn") or report.get("report_text") or "暂无检查报告内容。"
 
     return OpenEMRTestReportPayload(
         local_visit_id=visit["id"],
@@ -174,8 +160,8 @@ def map_simulated_report_to_report(
         external_encounter_id=visit.get("openemr_encounter_id") or "",
         category=report.get("category_code") or visit.get("current_department"),
         report_title=report_title,
-        report_content="\n".join(content_lines),
-        report_data=report_summary,
+        report_content=report_text,
+        report_data=report,
         created_at=report.get("generated_at") or now_iso(),
     )
 

@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 
 from app.agents.department_runtime.replies import normalize_prescription_plan
+from app.reporting.test_report_card import TestReportCardService
 from app.services.disposition import is_outpatient_flow_finished
 
 
@@ -491,6 +492,13 @@ class MedicalRecordCardService:
             return {}
         payload = self.agent_memory_repo.get_shared_memory(patient_id, name=str(patient_name or ""))
         return self._coerce_dict(payload.get("clinical_memory"))
+
+    @classmethod
+    def _summarize_report(cls, report: dict | None) -> str:
+        return cls._normalize_text(
+            TestReportCardService.build_summary_text(report),
+            default="无",
+        )
 
     def build_card_from_context(
         self,

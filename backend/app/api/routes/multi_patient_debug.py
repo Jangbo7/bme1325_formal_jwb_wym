@@ -308,6 +308,41 @@ def multi_patient_debug_page():
       `;
     }
 
+    function renderTestReportCard(card) {
+      const effectiveCard = card || {
+        status: "pending",
+        title: "检查报告卡",
+        display_text: "无",
+        source: "simulated_report",
+      };
+      return `
+        <div class="medical-record">
+          <div class="medical-record-title">${effectiveCard.title || "检查报告卡"}</div>
+          <div class="row">状态/来源: ${effectiveCard.status || "-"} / ${effectiveCard.source || "-"}</div>
+          <pre>${effectiveCard.display_text || "无"}</pre>
+        </div>
+      `;
+    }
+
+    function renderRawTestReport(report) {
+      if (!report || Object.keys(report).length === 0) {
+        return `
+          <div class="medical-record">
+            <div class="medical-record-title">Test Report Raw</div>
+            <div class="row">No test report yet.</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="medical-record">
+          <div class="medical-record-title">Test Report Raw</div>
+          <div class="row">title/type: ${report.report_title || "-"} / ${report.report_type || "-"}</div>
+          <div class="row">generated: ${report.generated_at || "-"}</div>
+          <pre>${JSON.stringify(report, null, 2)}</pre>
+        </div>
+      `;
+    }
+
     function rareEventBadge(state) {
       if (state === "none") return "";
       return `<span class="badge badge--rare badge--rare-${state}">rare:${state}</span>`;
@@ -436,6 +471,8 @@ def multi_patient_debug_page():
             carry_forward_summary: p.carry_forward_summary,
           },
           medical_record_card: p.medical_record_card,
+          test_report_card: p.test_report_card,
+          test_report: p.test_report,
           projection: {
             display_stage: p.display_stage,
             dispatch_state: p.dispatch_state,
@@ -465,6 +502,7 @@ def multi_patient_debug_page():
             <div class="row">llm/source: ${p.llm_mode || "-"}${p.llm_probability != null ? ` (p=${p.llm_probability})` : ""}</div>
             <div class="row">doctor llm: ${p.latest_consultation_response_source || "-"} / ${p.latest_consultation_llm_error || "-"}</div>
             <div class="row">report/referral: ${p.report_acuity_level || "-"} / ${p.recommended_department || "-"}</div>
+            <div class="row">test report: ${p.test_report && p.test_report.report_title ? p.test_report.report_title : "-"} / ${p.test_report && p.test_report.report_type ? p.test_report.report_type : "-"}</div>
             <div class="row">node: ${p.current_node_id || "-" } -> ${p.target_node_id || "-"}</div>
             <div class="row">room: ${p.current_room_name || "-"} (${p.current_room_node_id || "-"}) / ${p.room_type || "-"}</div>
             <div class="row">last action: ${p.last_action || "-"}</div>
@@ -474,6 +512,8 @@ def multi_patient_debug_page():
               ${dialogueHtml}
               ${caseSummary}
               ${renderMedicalRecordCard(p.medical_record_card)}
+              ${renderTestReportCard(p.test_report_card)}
+              ${renderRawTestReport(p.test_report)}
               <pre>${JSON.stringify(detailJson, null, 2)}</pre>
             </details>
           </article>

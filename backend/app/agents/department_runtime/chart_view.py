@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.reporting.test_report_card import TestReportCardService
+
 
 def _compact_entry(entry: dict) -> dict:
     content = dict(entry.get("content") or {})
@@ -76,14 +78,18 @@ def build_doctor_chart_view(
             if timeline:
                 previous_visits.append(timeline)
 
-    report = dict(visit_payload.get("simulated_report") or {})
+    report = TestReportCardService.normalize_report(visit_payload.get("simulated_report") or {})
     report_summary = dict(report.get("report_summary") or {})
     report_view = None
     if report or report_summary:
         report_view = {
             "report_text": report.get("report_text"),
+            "display_text_cn": report.get("display_text_cn"),
             "report_summary": report_summary,
             "test_items": list(report.get("test_items") or []),
+            "report_items": list(report.get("report_items") or []),
+            "key_findings_cn": list(report.get("key_findings_cn") or []),
+            "preliminary_assessment": dict(report.get("preliminary_assessment") or {}),
             "generated_at": report.get("generated_at"),
         }
 

@@ -39,12 +39,13 @@ class SceneSnapshotService:
         VisitLifecycleState.ERROR.value,
     }
 
-    def __init__(self, *, patient_repo, queue_repo, visit_repo, triage_service, medical_record_repo):
+    def __init__(self, *, patient_repo, queue_repo, visit_repo, triage_service, medical_record_repo, test_report_card_service=None):
         self.patient_repo = patient_repo
         self.queue_repo = queue_repo
         self.visit_repo = visit_repo
         self.triage_service = triage_service
         self.medical_record_repo = medical_record_repo
+        self.test_report_card_service = test_report_card_service
 
     def get_snapshot(self, patient_id: str | None = None) -> SceneSnapshot:
         resolved_patient_id = (patient_id or self.DEFAULT_PATIENT_ID).strip() or self.DEFAULT_PATIENT_ID
@@ -141,12 +142,15 @@ class SceneSnapshotService:
             updated_at=str(summary.get("updated_at") or ""),
         )
 
-    @staticmethod
-    def _build_latest_test_report(visit_view) -> dict | None:
+    def _build_latest_test_report(self, visit_view) -> dict | None:
         if not visit_view:
             return None
         report = (visit_view.data or {}).get("simulated_report")
-        return report if isinstance(report, dict) else None
+        if not isinstance(report, dict):
+            return None
+        if self.test_report_card_service is None:
+            return report
+        return self.test_report_card_service.normalize_report(report)
 
     def _build_ui_flags(self, patient_view, visit_view, active_dialogue, latest_test_report, timers: SceneTimers) -> SceneUiFlags:
         visit_state = visit_view.state.value if visit_view and visit_view.state else None

@@ -416,7 +416,9 @@ def ready_payment(visit_id: str, request: Request):
 @router.get("/api/v1/visits/{visit_id}/simulated-report")
 def get_simulated_report(visit_id: str, request: Request):
     require_encounter_id(visit_id, field="visit_id")
-    visit_repo = request.app.state.container["visit_repo"]
+    container = request.app.state.container
+    visit_repo = container["visit_repo"]
+    test_report_card_service = container.get("test_report_card_service")
     visit_row = visit_repo.get(visit_id)
     if not visit_row:
         raise HTTPException(status_code=404, detail="visit not found")
@@ -424,6 +426,8 @@ def get_simulated_report(visit_id: str, request: Request):
     report = visit_data.get("simulated_report")
     if not isinstance(report, dict):
         raise HTTPException(status_code=404, detail="simulated report not found")
+    if test_report_card_service is not None:
+        report = test_report_card_service.normalize_report(report)
     return {
         "ok": True,
         "visit_id": visit_id,

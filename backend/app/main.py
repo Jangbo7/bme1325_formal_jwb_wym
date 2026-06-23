@@ -96,6 +96,7 @@ from app.repositories.sessions import SessionRepository
 from app.repositories.visits import VisitRepository
 from app.integrations.openemr import EMRService, OpenEMRClient
 from app.integrations.fullview import FullviewClient
+from app.reporting.test_report_card import TestReportCardService
 from app.services import (
     DepartmentRuntimeService,
     EncounterOrchestrationService,
@@ -142,6 +143,7 @@ def create_container():
         agent_memory_repo=memory_repo,
         medical_record_repo=medical_record_repo,
     )
+    test_report_card_service = TestReportCardService(visit_repo=visit_repo)
     bus = EventBus()
     redis_mirror_publisher = RedisMirrorPublisher(
         enabled=settings["redis_mirror_enabled"],
@@ -348,6 +350,7 @@ def create_container():
         visit_repo=visit_repo,
         triage_service=triage_service,
         medical_record_repo=medical_record_repo,
+        test_report_card_service=test_report_card_service,
     )
     patient_agent_debug_controller = PatientAgentDebugController(
         {
@@ -363,6 +366,7 @@ def create_container():
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
             "medical_record_card_service": medical_record_card_service,
+            "test_report_card_service": test_report_card_service,
             "patient_agent_service": patient_agent_service,
             "patient_agent_case_repo": patient_agent_case_repo,
             "department_runtime_service": department_runtime_service,
@@ -422,6 +426,7 @@ def create_container():
             "event_bus": bus,
             "medical_record_repo": medical_record_repo,
             "medical_record_card_service": medical_record_card_service,
+            "test_report_card_service": test_report_card_service,
             "patient_agent_service": patient_agent_service,
             "patient_agent_case_repo": patient_agent_case_repo,
             "department_runtime_service": department_runtime_service,
@@ -512,6 +517,7 @@ def create_container():
         "queue_repo": queue_repo,
         "visit_repo": visit_repo,
         "medical_record_card_service": medical_record_card_service,
+        "test_report_card_service": test_report_card_service,
         "encounter_orchestration_service": encounter_orchestration_service,
         "event_bus": bus,
         "event_bridge": event_bridge,

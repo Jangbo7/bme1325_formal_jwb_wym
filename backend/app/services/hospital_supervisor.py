@@ -100,6 +100,7 @@ class HospitalSupervisor:
         self._department_runtime_service = container.get("department_runtime_service")
         self._runtime_console_service = container.get("runtime_console_service")
         self._medical_record_card_service = container.get("medical_record_card_service")
+        self._test_report_card_service = container.get("test_report_card_service")
         self._fullview_sync_repo = container.get("fullview_sync_repo")
         self._fullview_step_gate_available = bool(container.get("fullview_sync_enabled"))
         self._fullview_step_gate_enabled = bool(container.get("fullview_step_gate_enabled"))
@@ -1209,6 +1210,21 @@ class HospitalSupervisor:
                 if self._medical_record_card_service is not None
                 else {}
             )
+        if slot.state.encounter_id and self._test_report_card_service is not None:
+            test_report_card = self._test_report_card_service.get_card_for_visit(slot.state.encounter_id)
+            raw_test_report = visit_data.get("simulated_report")
+            test_report = (
+                self._test_report_card_service.normalize_report(raw_test_report)
+                if isinstance(raw_test_report, dict) and raw_test_report
+                else {}
+            )
+        else:
+            test_report_card = (
+                self._test_report_card_service.build_pending_view()
+                if self._test_report_card_service is not None
+                else {}
+            )
+            test_report = {}
         return MultiPatientDebugPatientSnapshot(
             npc_id=slot.npc_id,
             mode=slot.mode,
@@ -1244,6 +1260,8 @@ class HospitalSupervisor:
             requires_new_registration=bool(visit_data.get("requires_new_registration", False)),
             carry_forward_summary=dict(visit_data.get("carry_forward_summary") or {}),
             medical_record_card=medical_record_card,
+            test_report_card=test_report_card,
+            test_report=test_report,
             assigned_department_id=slot.assigned_department_id,
             assigned_department_name=slot.assigned_department_name,
             generation_hint_department_id=slot.generation_hint_department_id,
