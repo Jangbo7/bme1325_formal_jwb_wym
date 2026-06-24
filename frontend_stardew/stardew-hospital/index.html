@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>星露谷门诊看板</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="backdrop"></div>
+  <div class="backdrop backdrop--soft"></div>
+  <main class="app-shell">
+    <header class="hero panel">
+      <div class="hero__copy">
+        <p class="eyebrow">Hospital NPC Live Dashboard</p>
+        <h1>星露谷门诊台</h1>
+        <p class="lead">
+          一个能独立运行，通过后端 API 实时读取病人状态、科室分布、事件流和就医对话并与agent交流的智能门诊台。
+        </p>
+      </div>
+      <div class="hero__status" id="healthCard">
+        <div class="status-chip">连接中...</div>
+        <div class="status-line" id="healthText">正在读取后端健康状态</div>
+      </div>
+    </header>
+
+    <section class="panel toolbar">
+      <div class="field">
+        <label for="backendUrl">后端地址</label>
+        <input id="backendUrl" type="url" placeholder="http://127.0.0.1:8787" />
+      </div>
+      <div class="field">
+        <label for="patientId">当前患者</label>
+        <input id="patientId" type="text" placeholder="P-xxxxxxxx" />
+      </div>
+      <div class="field">
+        <label for="patientName">患者姓名</label>
+        <input id="patientName" type="text" placeholder="NPC 小王" />
+      </div>
+      <div class="field">
+        <label for="chiefComplaint">主诉</label>
+        <input id="chiefComplaint" type="text" placeholder="发热、咳嗽、腹痛..." />
+      </div>
+      <div class="toolbar__actions">
+        <button id="connectBtn" class="primary">连接后端</button>
+        <button id="createVisitBtn" class="secondary">创建/获取就诊</button>
+        <button id="refreshBtn" class="secondary">立即刷新</button>
+        <button id="liveToggleBtn" class="secondary">实时更新：开</button>
+      </div>
+    </section>
+
+    <section class="stats-grid" id="statsGrid"></section>
+
+    <section class="dashboard">
+      <div class="dashboard__main">
+        <article class="panel chart-panel">
+          <div class="panel__head">
+            <div>
+              <p class="section-kicker">柱状图</p>
+              <h2>当前病人状态分布</h2>
+            </div>
+            <span class="panel__hint">按 `visit_state` 汇总</span>
+          </div>
+          <div class="chart" id="barChart"></div>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="panel__head">
+            <div>
+              <p class="section-kicker">饼状图</p>
+              <h2>显示阶段占比</h2>
+            </div>
+            <span class="panel__hint">按 `display_stage` 汇总</span>
+          </div>
+          <div class="chart" id="pieChart"></div>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="panel__head">
+            <div>
+              <p class="section-kicker">折线图</p>
+              <h2>实时趋势</h2>
+            </div>
+            <span class="panel__hint">最近 30 次快照</span>
+          </div>
+          <div class="chart" id="lineChart"></div>
+        </article>
+
+        <article class="panel list-panel">
+          <div class="panel__head">
+            <div>
+              <p class="section-kicker">病人列表</p>
+              <h2>当前后端的病人 NPC</h2>
+            </div>
+            <span class="panel__hint" id="patientCountHint">0 名</span>
+          </div>
+          <div class="patient-grid" id="patientGrid"></div>
+        </article>
+
+        <article class="panel list-panel">
+          <div class="panel__head">
+            <div>
+              <p class="section-kicker">事件流</p>
+              <h2>最近的后端变化</h2>
+            </div>
+            <span class="panel__hint">SSE / 轮询双通道</span>
+          </div>
+          <div class="event-list" id="eventList"></div>
+        </article>
+      </div>
+
+      <aside class="dashboard__side">
+        <article class="panel workflow-panel">
+          <div class="panel__head">
+            <div>
+              <p class="section-kicker">就医流程</p>
+              <h2>切换 Agent 并对话</h2>
+            </div>
+          </div>
+
+          <div class="agent-tabs" id="agentTabs"></div>
+
+          <div class="workflow-steps">
+            <button id="prepareVisitBtn" class="secondary">1. 创建就诊</button>
+            <button id="triageBtn" class="secondary">2. 分诊</button>
+            <button id="registerBtn" class="secondary">3. 挂号</button>
+            <button id="progressBtn" class="secondary">4. 推进排队</button>
+            <button id="enterConsultBtn" class="secondary">5. 进入诊室</button>
+            <button id="paymentBtn" class="secondary">6. 结算</button>
+          </div>
+
+          <div class="conversation-meta">
+            <div class="meta-card">
+              <span>当前 Agent</span>
+              <strong id="activeAgentLabel">分诊</strong>
+            </div>
+            <div class="meta-card">
+              <span>会话状态</span>
+              <strong id="sessionStateLabel">未创建</strong>
+            </div>
+          </div>
+
+          <div class="dialogue-box" id="dialogueBox"></div>
+
+          <div class="composer">
+            <textarea id="messageInput" rows="4" placeholder="输入你的问题，然后发送给当前 Agent。"></textarea>
+            <div class="composer__actions">
+              <button id="sendBtn" class="primary">发送消息</button>
+              <button id="resetSessionBtn" class="secondary">重置当前 Agent 会话</button>
+            </div>
+          </div>
+
+          <div class="quick-note" id="workflowNote"></div>
+        </article>
+
+        <article class="panel detail-panel">
+          <div class="panel__head">
+            <div>
+              <p class="section-kicker">选中病人</p>
+              <h2>病历与对话历史</h2>
+            </div>
+          </div>
+          <div class="detail-stack" id="patientDetail"></div>
+        </article>
+      </aside>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
