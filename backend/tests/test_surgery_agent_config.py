@@ -207,6 +207,77 @@ def test_surgery_round1_escalates_postoperative_fever_and_pus():
     assert result["red_flags"]
 
 
+def test_surgery_round1_low_risk_calf_lump_stays_outpatient_with_ultrasound():
+    payload = {
+        "chief_complaint": "小腿外侧有肿块",
+        "symptoms": "小腿外侧约1厘米肿块，质地较硬，边界清楚，轻微压痛，无红肿破溃，无明显肿胀或淤青",
+        "message": "小腿外侧有个包块，可能已经很久了，轻微压痛，没有红肿破溃。",
+        "onset_time": "可能很久了",
+        "allergies": [],
+        "vitals": {"temp_c": 36.7, "heart_rate": 82},
+    }
+    memory = _build_memory(
+        chief_complaint=payload["chief_complaint"],
+        onset_time=payload["onset_time"],
+        symptoms=[payload["symptoms"]],
+        vitals=payload["vitals"],
+    )
+    context = _build_policy_runtime_context(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=payload["symptoms"],
+        message=payload["message"],
+    )
+
+    result = validate_surgery_result(None, rule_based_surgery(payload), payload, memory=memory, policy_runtime_context=context)
+
+    assert result["department"] == "Surgery"
+    assert result["priority"] != "H"
+    assert result["next_step_decision"] == "test_first"
+    assert result["red_flags"] == []
+    assert "局部软组织超声" in result["test_items"]
+    assert "局部皮下结节" in result["clinical_impression"] or "软组织包块" in result["clinical_impression"]
+
+
+def test_surgery_round1_unsupported_llm_high_priority_is_downgraded():
+    payload = {
+        "chief_complaint": "小腿包块",
+        "symptoms": "小腿外侧约1厘米包块，边界清楚，轻微压痛，无红肿破溃",
+        "message": "没有发热，也没有红肿破溃，只是摸到小包块。",
+        "onset_time": "不清楚，可能很久",
+        "allergies": [],
+        "vitals": {"temp_c": 36.6, "heart_rate": 76},
+    }
+    memory = _build_memory(
+        chief_complaint=payload["chief_complaint"],
+        onset_time=payload["onset_time"],
+        symptoms=[payload["symptoms"]],
+        vitals=payload["vitals"],
+    )
+    context = _build_policy_runtime_context(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=payload["symptoms"],
+        message=payload["message"],
+    )
+    llm_result = {
+        "department": "Emergency",
+        "priority": "H",
+        "diagnosis_level": 3,
+        "red_flags": ["danger"],
+        "clinical_impression": "当前存在外科危险信号。",
+        "test_required": False,
+        "test_category": "none",
+        "test_items": [],
+    }
+
+    result = validate_surgery_result(llm_result, rule_based_surgery(payload), payload, memory=memory, policy_runtime_context=context)
+
+    assert result["department"] == "Surgery"
+    assert result["priority"] != "H"
+    assert result["next_step_decision"] == "test_first"
+    assert result["red_flags"] == []
+    assert "局部软组织超声" in result["test_items"]
+
+
 def test_surgery_final_result_matches_internal_round1_contract():
     payload = {
         "chief_complaint": "minor cut",
@@ -288,6 +359,77 @@ def test_surgery_round1_can_require_tests_and_outpatient_procedure_together():
     assert result["needs_outpatient_procedure"] is True
     assert result["procedure_can_parallel_with_tests"] is True
     assert result["outpatient_procedure_category"] == "debridement_dressing"
+
+
+def test_surgery_round1_reply_uses_chinese_directive_for_procedure_and_tests():
+    message = build_patient_reply(
+        {
+            "clinical_impression": "The current presentation is low risk overall, but it still needs an outpatient surgical procedure stage before the follow-up review can be considered complete.",
+            "patient_plan": "Recommended next step: complete the outpatient procedure arrangement first, then return for the surgical follow-up review.",
+            "disposition_advice": "Recommended next step: complete the outpatient procedure arrangement first, then return for the surgical follow-up review.",
+            "tests_suggested": ["伤口超声"],
+            "test_items": ["伤口超声"],
+            "needs_outpatient_procedure": True,
+            "outpatient_procedure_category": "debridement_dressing",
+            "procedure_can_parallel_with_tests": True,
+        },
+        message_type="final",
+        consultation_round=1,
+        payload={},
+    )
+
+    assert "The current presentation" not in message
+    assert "Recommended next step" not in message
+    assert "我已为你开具伤口超声检查" in message
+    assert "安排了门诊清创换药" in message
+    assert "先完成检查和处置" in message
+
+
+def test_surgery_round1_reply_avoids_mechanical_action_suffix():
+    message = build_patient_reply(
+        {
+            "clinical_impression": "初步考虑术后伤口轻度炎症反应，无明显感染或裂开征象",
+            "medication_or_action": ["局部碘伏消毒，无菌敷料覆盖"],
+            "tests_suggested": [],
+            "test_items": [],
+        },
+        message_type="final",
+        consultation_round=1,
+        payload={},
+    )
+
+    assert "覆盖。处理。" not in message
+    assert "目前可以先局部碘伏消毒，无菌敷料覆盖。" in message
+
+
+def test_surgery_rule_based_round1_procedure_result_is_chinese():
+    payload = {
+        "chief_complaint": "forearm laceration",
+        "symptoms": "cut, swelling, dressing needed",
+        "message": "I cut my forearm on metal. It may need cleaning or dressing before follow-up.",
+        "onset_time": "today",
+        "allergies": [],
+        "vitals": {"temp_c": 37.0, "heart_rate": 92},
+    }
+    memory = _build_memory(
+        chief_complaint=payload["chief_complaint"],
+        onset_time="today",
+        symptoms=["cut", "swelling", "dressing needed"],
+        vitals=payload["vitals"],
+    )
+    context = _build_policy_runtime_context(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=payload["symptoms"],
+        message=payload["message"],
+    )
+
+    result = validate_surgery_result(None, rule_based_surgery(payload), payload, memory=memory, policy_runtime_context=context)
+
+    assert "Recommended next step" not in result["patient_plan"]
+    assert "The current presentation" not in result["clinical_impression"]
+    assert "开具" in result["patient_plan"]
+    assert "安排" in result["patient_plan"]
+    assert "完成检查和处置" in result["patient_plan"]
 
 
 def test_surgery_reassessment_reply_answers_question_without_template_prefix():

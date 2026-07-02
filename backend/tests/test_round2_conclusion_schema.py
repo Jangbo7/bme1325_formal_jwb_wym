@@ -97,8 +97,64 @@ def test_internal_medicine_round2_with_report_does_not_repeat_basic_tests():
     assert result["primary_disposition"] == "outpatient_management"
     assert result["medication_recommendation"]["recommended"] is True
     assert result["prescription_plan"]
-    assert result["prescription_plan"][0]["drug_name"] == "质子泵抑制剂"
+    assert result["prescription_plan"][0]["drug_name"] == "奥美拉唑"
+    assert result["prescription_plan"][0]["dose_text"] == "20mg"
+    assert result["prescription_plan"][0]["frequency_text"] == "每日2次"
+    assert result["prescription_plan"][0]["duration_text"] == "14天"
     assert "幽门螺杆菌" in result["clinical_impression"]
+
+
+def test_internal_medicine_round2_english_llm_h_pylori_result_is_sanitized_with_specific_prescription():
+    payload = {
+        "chief_complaint": "Burning upper abdominal pain",
+        "symptoms": "epigastric burning pain",
+        "message": "I brought the breath test result.",
+        "consultation_round": 2,
+        "simulated_report": {
+            "category_code": "medical_laboratory",
+            "report_summary": {"h_pylori": "positive"},
+            "test_items": ["H. pylori breath test"],
+        },
+    }
+    memory = _round2_memory(
+        chief_complaint=payload["chief_complaint"],
+        symptoms=["epigastric burning pain"],
+    )
+    llm_result = {
+        "department": "Internal Medicine",
+        "priority": "L",
+        "clinical_impression": "Confirmed H. pylori-positive gastritis based on positive breath test and typical symptoms.",
+        "final_assessment_summary": "No evidence of complications or need for urgent intervention.",
+        "patient_facing_plan": "You have a stomach infection caused by H. pylori. We will start a 14-day course of antibiotics.",
+        "primary_disposition": "outpatient_management",
+        "medication_recommendation": {
+            "recommended": True,
+            "intent": "eradication",
+            "summary": "Prescribe triple therapy.",
+        },
+        "prescription_plan": [
+            {
+                "drug_name": "PPI",
+                "dose_text": "usual dose",
+                "frequency_text": "bid",
+                "duration_text": "14 days",
+            }
+        ],
+    }
+
+    result = validate_internal_medicine_result(
+        llm_result,
+        rule_based_internal_medicine(payload),
+        payload,
+        memory=memory,
+    )
+
+    assert "Confirmed" not in result["clinical_impression"]
+    assert "No evidence" not in result["final_assessment_summary"]
+    assert "You have" not in result["patient_facing_plan"]
+    assert "幽门螺杆菌" in result["clinical_impression"]
+    assert result["prescription_plan"][0]["drug_name"] == "奥美拉唑"
+    assert {item["drug_name"] for item in result["prescription_plan"]} >= {"奥美拉唑", "枸橼酸铋钾", "四环素", "甲硝唑"}
 
 
 def test_surgery_round2_can_recommend_admission_and_surgery_evaluation_together():

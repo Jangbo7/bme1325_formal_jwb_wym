@@ -3,6 +3,8 @@ from app.agents.department_runtime.prompting import (
     build_shared_consultation_system_prompt,
     build_shared_consultation_user_prompt,
     build_shared_follow_up_llm_messages,
+    build_shared_physical_exam_decision_llm_messages,
+    build_shared_physical_exam_result_llm_messages,
 )
 from app.agents.surgery.workflow import ConsultationProgress
 
@@ -25,6 +27,51 @@ FIELD_PROMPTS = {
         "请按 0 到 10 分描述一下现在疼痛的强度，10 分代表最难受。",
     ],
 }
+
+
+def _format_known_vitals(shared_memory: dict) -> str:
+    vitals = (shared_memory.get("clinical_memory") or {}).get("vitals") or {}
+    parts: list[str] = []
+    if vitals.get("temp_c") not in (None, ""):
+        parts.append(f"体温{vitals.get('temp_c')}℃")
+    if vitals.get("heart_rate") not in (None, ""):
+        parts.append(f"心率{vitals.get('heart_rate')}次/分")
+    if vitals.get("systolic_bp") not in (None, "") and vitals.get("diastolic_bp") not in (None, ""):
+        parts.append(f"血压{vitals.get('systolic_bp')}/{vitals.get('diastolic_bp')}mmHg")
+    if vitals.get("pain_score") not in (None, ""):
+        parts.append(f"疼痛评分{vitals.get('pain_score')}分")
+    return "，".join(parts)
+
+
+def _triage_info_analysis(shared_memory: dict) -> str:
+    vitals = (shared_memory.get("clinical_memory") or {}).get("vitals") or {}
+    analyses: list[str] = []
+    try:
+        temp_c = float(vitals.get("temp_c")) if vitals.get("temp_c") not in (None, "") else None
+    except Exception:
+        temp_c = None
+    try:
+        heart_rate = float(vitals.get("heart_rate")) if vitals.get("heart_rate") not in (None, "") else None
+    except Exception:
+        heart_rate = None
+    try:
+        pain_score = float(vitals.get("pain_score")) if vitals.get("pain_score") not in (None, "") else None
+    except Exception:
+        pain_score = None
+
+    if temp_c is not None:
+        if temp_c >= 37.3:
+            analyses.append("体温有点高")
+    if heart_rate is not None and heart_rate >= 100:
+        analyses.append("心率偏快")
+    if pain_score is not None and pain_score >= 4:
+        analyses.append("疼痛评分不低")
+    if not analyses and vitals:
+        if temp_c is not None:
+            analyses.append("体温目前不高，分诊生命体征整体还算平稳")
+        else:
+            analyses.append("分诊生命体征整体还算平稳")
+    return "；".join(analyses)
 
 
 def build_follow_up_question(
@@ -78,6 +125,9 @@ def build_initial_message(
 ) -> str:
     del policy_runtime_context
     complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or "这次外科问题"
+    vitals_text = _format_known_vitals(shared_memory)
+    triage_analysis = _triage_info_analysis(shared_memory)
+    vitals_sentence = f"分诊记录里我也看到{vitals_text}，{triage_analysis}。" if vitals_text and triage_analysis else ""
     if progress.patient_reply_count == 0:
         if int(consultation_round or 1) >= 2:
             return (
@@ -86,6 +136,7 @@ def build_initial_message(
             )
         return (
             f"我先为你做这一轮外科初步问诊。你提到的主要问题是“{complaint}”。"
+            f"{vitals_sentence}"
             "请再补充一下它是从什么时候开始的、是否和外伤或近期手术有关、有没有过敏史，以及现在最难受的表现是什么。"
         )
     return "我收到你的补充了。请继续说一下疼痛、出血、肿胀、伤口或活动受限方面有没有新的变化。"
@@ -98,6 +149,16 @@ def build_consultation_system_prompt(
     consultation_round: int = 1,
 ) -> str:
     del policy_runtime_context
+    style_rules = (
+        "所有患者可见字段必须使用中文，包括 note、patient_plan、clinical_impression、disposition_advice、"
+        "medication_or_action、outpatient_procedure_reason；不要输出英文句子。"
+        "一轮需要检查或门诊外科处置时，措辞应是“我已为你开具/安排……，请你完成后回来复诊”，不要写成仅供参考的“建议”。"
+        "一轮最终结论中，如果事实支持，可以用“初步考虑”“更像是”给出1-2个可能诊断方向，但不要写成已经确诊。"
+    )
+    if policy_prompt_context:
+        policy_prompt_context = f"{policy_prompt_context}\n{style_rules}"
+    else:
+        policy_prompt_context = style_rules
     return build_shared_consultation_system_prompt(
         base_role_text="你是外科门诊问诊助手。",
         consultation_round=consultation_round,
@@ -164,7 +225,64 @@ def build_follow_up_llm_messages(
     )
 
 
+def build_physical_exam_decision_llm_messages(
+    shared_memory: dict,
+    message: str,
+    missing_fields: list[str],
+    *,
+    payload: dict | None = None,
+    policy_runtime_context=None,
+    consultation_round: int = 1,
+) -> list[dict]:
+    return build_shared_physical_exam_decision_llm_messages(
+        shared_memory,
+        message,
+        missing_fields,
+        payload=payload,
+        policy_runtime_context=policy_runtime_context,
+        consultation_round=consultation_round,
+        language="zh",
+        assistant_label="Surgery",
+    )
+
+
+def build_physical_exam_result_llm_messages(
+    shared_memory: dict,
+    message: str,
+    exam_decision: dict,
+    *,
+    payload: dict | None = None,
+    policy_runtime_context=None,
+    consultation_round: int = 1,
+) -> list[dict]:
+    return build_shared_physical_exam_result_llm_messages(
+        shared_memory,
+        message,
+        exam_decision,
+        payload=payload,
+        policy_runtime_context=policy_runtime_context,
+        consultation_round=consultation_round,
+        language="zh",
+        assistant_label="Surgery",
+    )
+
+
 def build_final_message(result: dict, *, message_type: str = "final") -> str:
+    def _looks_english(text: str) -> bool:
+        value = str(text or "").strip()
+        if not value:
+            return False
+        ascii_letters = sum(1 for ch in value if ch.isascii() and ch.isalpha())
+        cjk_letters = sum(1 for ch in value if "\u4e00" <= ch <= "\u9fff")
+        return ascii_letters >= 16 and ascii_letters > cjk_letters * 2
+
+    def _preferred_text(*values: str, fallback: str = "") -> str:
+        for value in values:
+            text = str(value or "").strip()
+            if text and not _looks_english(text):
+                return text
+        return fallback
+
     is_round2 = bool(
         result.get("primary_disposition")
         or result.get("final_assessment_summary")
@@ -177,8 +295,16 @@ def build_final_message(result: dict, *, message_type: str = "final") -> str:
             "final_update": "[外科二轮结论更新]",
             "final_no_change": "[外科二轮结论未变]",
         }.get(message_type, "[外科二轮结论]")
-        summary = str(result.get("final_assessment_summary") or result.get("clinical_impression") or "").strip()
-        plan = str(result.get("patient_facing_plan") or result.get("patient_plan") or "").strip()
+        summary = _preferred_text(
+            result.get("final_assessment_summary") or "",
+            result.get("clinical_impression") or "",
+            fallback="这次复查结果支持继续按外科门诊方案处理。",
+        )
+        plan = _preferred_text(
+            result.get("patient_facing_plan") or "",
+            result.get("patient_plan") or "",
+            fallback="请按外科门诊安排继续处理，并根据症状变化按时复诊。",
+        )
         return "\n".join(
             part
             for part in [

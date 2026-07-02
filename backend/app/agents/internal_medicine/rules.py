@@ -263,6 +263,65 @@ def _extract_allergy_status(text: str, lowered: str) -> tuple[list[str] | None, 
     return None, None, 0.0
 
 
+CHRONIC_CONDITION_KEYWORDS = (
+    ("hypertension", ("hypertension", "high blood pressure", "高血压")),
+    ("diabetes", ("diabetes", "糖尿病")),
+    ("coronary_heart_disease", ("coronary heart disease", "heart disease", "冠心病", "心脏病")),
+    ("asthma", ("asthma", "哮喘")),
+    ("copd", ("copd", "chronic obstructive pulmonary disease", "慢阻肺", "慢性阻塞性肺疾病")),
+    ("kidney_disease", ("kidney disease", "renal disease", "肾病", "肾功能不全")),
+    ("liver_disease", ("liver disease", "hepatic disease", "肝病", "肝功能不全")),
+)
+
+
+def _extract_chronic_conditions(text: str, lowered: str) -> tuple[list[str] | None, str | None, float]:
+    if not text:
+        return None, None, 0.0
+    unsure_tokens = [
+        "not sure",
+        "unclear",
+        "don't know",
+        "do not know",
+        "不清楚",
+        "不太清楚",
+        "记不清",
+        "不确定",
+        "不知道",
+    ]
+    if any(token in lowered for token in unsure_tokens) or any(token in text for token in unsure_tokens):
+        chronic_terms = ("chronic", "history", "慢性病", "既往病史", "高血压", "糖尿病", "哮喘", "慢阻肺")
+        if any(token in lowered for token in chronic_terms) or any(token in text for token in chronic_terms):
+            return None, "uncertain", 0.5
+
+    no_chronic_tokens = [
+        "no chronic disease",
+        "no chronic diseases",
+        "no chronic conditions",
+        "no past medical history",
+        "no hypertension",
+        "no diabetes",
+        "没有慢性病",
+        "无慢性病",
+        "没有既往病史",
+        "无既往病史",
+        "没有高血压",
+        "无高血压",
+        "没有糖尿病",
+        "无糖尿病",
+    ]
+    has_chronic_marker = any(token in lowered for token in ("history of", "diagnosed with"))
+    if (any(token in lowered for token in no_chronic_tokens) or any(token in text for token in no_chronic_tokens)) and not has_chronic_marker:
+        return [], "known", 0.95
+
+    matched = []
+    for canonical, tokens in CHRONIC_CONDITION_KEYWORDS:
+        if any(token in lowered for token in tokens) or any(token in text for token in tokens):
+            matched.append(canonical)
+    if matched:
+        return list(dict.fromkeys(matched)), "known", 0.85
+    return None, None, 0.0
+
+
 def extract_structured_updates(message: str) -> dict:
     text = (message or "").strip()
     lowered = text.lower()
@@ -271,6 +330,8 @@ def extract_structured_updates(message: str) -> dict:
         "onset_time": None,
         "allergies": None,
         "allergy_status": None,
+        "chronic_conditions": None,
+        "chronic_conditions_status": None,
         "symptoms": [],
         "extracted_fields": [],
         "confidence_by_field": {},
@@ -293,6 +354,13 @@ def extract_structured_updates(message: str) -> dict:
         extracted["allergy_status"] = allergy_status
         extracted["extracted_fields"].append("allergies")
         extracted["confidence_by_field"]["allergies"] = allergy_conf
+
+    chronic_conditions, chronic_status, chronic_conf = _extract_chronic_conditions(text, lowered)
+    if chronic_status:
+        extracted["chronic_conditions"] = chronic_conditions or []
+        extracted["chronic_conditions_status"] = chronic_status
+        extracted["extracted_fields"].append("past_medical_history")
+        extracted["confidence_by_field"]["past_medical_history"] = chronic_conf
 
     if extracted["chief_complaint"]:
         extracted["extracted_fields"].append("chief_complaint")
@@ -572,6 +640,22 @@ def _matches_direct_treat_whitelist(payload: dict, memory, result: dict, outcome
     return diagnosis_level <= 1
 
 
+def _usable_round1_impression(result: dict, fallback: str) -> str:
+    impression = str(result.get("clinical_impression") or result.get("note") or "").strip().rstrip("。")
+    generic_markers = (
+        "信息还不足",
+        "辅助检查",
+        "完善检查",
+        "complete auxiliary",
+        "complete tests",
+        "routine first",
+        "recommended next step",
+    )
+    if impression and not any(marker.lower() in impression.lower() for marker in generic_markers):
+        return impression
+    return fallback.rstrip("。")
+
+
 def _apply_round1_outcome_policy(
     result: dict,
     payload: dict,
@@ -606,16 +690,16 @@ def _apply_round1_outcome_policy(
             decision = "treat_and_discharge"
             recommended_department = None
             recommended_department_reason = None
-            clinical_impression = "目前更像是低风险、相对局限的门诊常见问题。"
+            clinical_impression = _usable_round1_impression(applied, "目前更像是低风险、相对局限的门诊常见问题。")
             next_step_reason = "当前最小必要信息已经采集完成，没有红旗信号，且符合保守直接处理白名单。"
             disposition_advice = "根据当前这一轮评估，可以直接进入门诊后续处理、缴费取药或离院指导，暂不需要二轮内科复诊。"
         else:
             decision = default_decision
             recommended_department = None
             recommended_department_reason = None
-            clinical_impression = "目前信息还不足以支持直接处理，建议先完善辅助检查。"
+            clinical_impression = _usable_round1_impression(applied, "目前还不能下定论，需要先结合检查结果进一步判断。")
             next_step_reason = "当前既不符合紧急升级条件，也不满足保守直接处理白名单。"
-            disposition_advice = "建议先完成提示的检查，再回内科进一步复诊。"
+            disposition_advice = "请先完成已开具的检查，再带结果回来内科复诊。"
 
     applied["next_step_decision"] = decision
     applied["needs_second_internal_medicine_consultation"] = decision == "test_first"
@@ -673,6 +757,176 @@ def _extract_round2_report(payload: dict) -> dict:
     if isinstance(diagnostic_session, dict) and isinstance(diagnostic_session.get("report"), dict):
         return diagnostic_session.get("report") or {}
     return {}
+
+
+def _round2_context_text(payload: dict, result: dict | None = None) -> str:
+    report = _extract_round2_report(payload)
+    report_summary = report.get("report_summary") if isinstance(report.get("report_summary"), dict) else {}
+    return " ".join(
+        str(part or "")
+        for part in [
+            payload.get("chief_complaint"),
+            payload.get("symptoms"),
+            payload.get("message"),
+            json.dumps(report_summary, ensure_ascii=False),
+            report.get("report_text") if isinstance(report, dict) else "",
+            json.dumps(result or {}, ensure_ascii=False),
+        ]
+    ).lower()
+
+
+def _looks_english(text: str) -> bool:
+    value = str(text or "").strip()
+    if not value:
+        return False
+    ascii_letters = sum(1 for ch in value if ch.isascii() and ch.isalpha())
+    cjk_letters = sum(1 for ch in value if "\u4e00" <= ch <= "\u9fff")
+    return ascii_letters >= 16 and ascii_letters > cjk_letters * 2
+
+
+def _prefer_chinese_text(current: str, fallback: str, default: str) -> str:
+    current = str(current or "").strip()
+    fallback = str(fallback or "").strip()
+    if current and not _looks_english(current):
+        return current
+    if fallback and not _looks_english(fallback):
+        return fallback
+    return default
+
+
+def _explicit_h_pylori_prescription_plan() -> list[dict]:
+    return [
+        {
+            "drug_name": "奥美拉唑",
+            "intent": "acid_suppression",
+            "dose_text": "20mg",
+            "frequency_text": "每日2次",
+            "duration_text": "14天",
+            "instructions": "早晚餐前服用；如本院常用其他质子泵抑制剂，可由医生等效替换。",
+            "requires_doctor_review": True,
+        },
+        {
+            "drug_name": "枸橼酸铋钾",
+            "intent": "bismuth_quadruple_therapy",
+            "dose_text": "220mg",
+            "frequency_text": "每日4次",
+            "duration_text": "14天",
+            "instructions": "餐前和睡前服用；肾功能异常、孕期或铋剂禁忌者需医生调整。",
+            "requires_doctor_review": True,
+        },
+        {
+            "drug_name": "四环素",
+            "intent": "h_pylori_eradication",
+            "dose_text": "500mg",
+            "frequency_text": "每日4次",
+            "duration_text": "14天",
+            "instructions": "按医嘱规律服用；孕期、哺乳期、儿童或四环素禁忌者需改方案。",
+            "requires_doctor_review": True,
+        },
+        {
+            "drug_name": "甲硝唑",
+            "intent": "h_pylori_eradication",
+            "dose_text": "500mg",
+            "frequency_text": "每日3-4次",
+            "duration_text": "14天",
+            "instructions": "用药期间避免饮酒；既往不耐受或禁忌者需医生调整。",
+            "requires_doctor_review": True,
+        },
+    ]
+
+
+def _is_generic_prescription_plan(plan: list[dict]) -> bool:
+    if not plan:
+        return True
+    generic_names = {"质子泵抑制剂", "幽门螺杆菌根除方案", "根除方案", "相关药物", "ppi", "p.p.i."}
+    for item in plan:
+        name = str(item.get("drug_name") or "").strip()
+        dose = str(item.get("dose_text") or "").strip()
+        frequency = str(item.get("frequency_text") or "").strip()
+        lowered_name = name.lower()
+        lowered_dose = dose.lower()
+        lowered_frequency = frequency.lower()
+        if (
+            not name
+            or name in generic_names
+            or lowered_name in generic_names
+            or "方案" in name
+            or "常规" in dose
+            or "usual" in lowered_dose
+            or "依方案" in frequency
+            or lowered_frequency in {"bid", "tid", "qid", "qd"}
+        ):
+            return True
+    return False
+
+
+def _apply_round2_language_and_prescription_policy(result: dict, fallback: dict, payload: dict) -> dict:
+    applied = dict(result)
+    context_text = _round2_context_text(payload, applied)
+    h_pylori_context = any(token in context_text for token in ("h_pylori", "h. pylori", "幽门螺杆菌"))
+    if h_pylori_context:
+        applied["clinical_impression"] = _prefer_chinese_text(
+            applied.get("clinical_impression"),
+            fallback.get("clinical_impression"),
+            "这次检查提示幽门螺杆菌阳性，结合症状更像幽门螺杆菌相关胃炎或消化性溃疡问题。",
+        )
+        applied["final_assessment_summary"] = _prefer_chinese_text(
+            applied.get("final_assessment_summary"),
+            fallback.get("final_assessment_summary"),
+            "目前不需要重复基础检查，重点是启动规范根除治疗并安排复查确认是否根除。",
+        )
+        applied["patient_facing_plan"] = _prefer_chinese_text(
+            applied.get("patient_facing_plan"),
+            fallback.get("patient_facing_plan"),
+            "我会按幽门螺杆菌阳性的结果为你安排根除治疗；疗程结束后按医嘱复查呼气试验或粪便抗原，确认是否已经根除。",
+        )
+        applied["patient_plan"] = _prefer_chinese_text(
+            applied.get("patient_plan"),
+            fallback.get("patient_plan"),
+            applied["patient_facing_plan"],
+        )
+        applied["disposition_advice"] = _prefer_chinese_text(
+            applied.get("disposition_advice"),
+            fallback.get("disposition_advice"),
+            applied["patient_facing_plan"],
+        )
+        medication = dict(applied.get("medication_recommendation") or {})
+        summary = _prefer_chinese_text(
+            medication.get("summary"),
+            (fallback.get("medication_recommendation") or {}).get("summary") if isinstance(fallback.get("medication_recommendation"), dict) else "",
+            "建议启动幽门螺杆菌铋剂四联根除治疗，具体用药需医生确认过敏史、禁忌证和既往抗生素使用情况。",
+        )
+        applied["medication_recommendation"] = {
+            **medication,
+            "recommended": True,
+            "intent": medication.get("intent") or "h_pylori_eradication",
+            "summary": summary,
+        }
+        prescription_plan = normalize_prescription_plan(applied.get("prescription_plan"))
+        if _is_generic_prescription_plan(prescription_plan):
+            applied["prescription_plan"] = _explicit_h_pylori_prescription_plan()
+        applied["needs_medication"] = True
+        return applied
+
+    default_summary = "这次检查结果支持继续按门诊方案处理，当前不需要重复基础检查。"
+    default_plan = "我会结合这次检查结果给你安排后续门诊处理；如果症状加重或出现新的危险信号，请及时复诊或急诊处理。"
+    for key, default in (
+        ("clinical_impression", default_summary),
+        ("final_assessment_summary", default_summary),
+        ("patient_facing_plan", default_plan),
+        ("patient_plan", default_plan),
+        ("disposition_advice", default_plan),
+    ):
+        applied[key] = _prefer_chinese_text(applied.get(key), fallback.get(key), default)
+    medication = dict(applied.get("medication_recommendation") or {})
+    if medication.get("recommended"):
+        medication["summary"] = _prefer_chinese_text(
+            medication.get("summary"),
+            (fallback.get("medication_recommendation") or {}).get("summary") if isinstance(fallback.get("medication_recommendation"), dict) else "",
+            "用药需要医生结合本次报告、过敏史和既往用药情况确认。",
+        )
+        applied["medication_recommendation"] = medication
+    return applied
 
 
 def _build_round2_internal_medicine_result(payload: dict) -> dict | None:
@@ -797,28 +1051,9 @@ def _build_round2_internal_medicine_result(payload: dict) -> dict | None:
             "medication_recommendation": {
                 "recommended": True,
                 "intent": "targeted_treatment",
-                "summary": "建议由医生评估后给予抑酸治疗，并结合幽门螺杆菌阳性结果决定是否启动根除方案。",
+                "summary": "建议启动幽门螺杆菌铋剂四联根除治疗，具体用药需医生确认过敏史、禁忌证和既往抗生素使用情况。",
             },
-            "prescription_plan": [
-                {
-                    "drug_name": "质子泵抑制剂",
-                    "intent": "acid_suppression",
-                    "dose_text": "按常规门诊剂量",
-                    "frequency_text": "每日 1-2 次",
-                    "duration_text": "2-4 周",
-                    "instructions": "餐前服用，具体品种和剂量由医生结合病史确认。",
-                    "requires_doctor_review": True,
-                },
-                {
-                    "drug_name": "幽门螺杆菌根除方案",
-                    "intent": "eradication_consideration",
-                    "dose_text": "按标准根除方案评估",
-                    "frequency_text": "依方案执行",
-                    "duration_text": "通常 10-14 天",
-                    "instructions": "需由医生结合过敏史、既往用药史和地区耐药情况确认是否启动。",
-                    "requires_doctor_review": True,
-                },
-            ],
+            "prescription_plan": _explicit_h_pylori_prescription_plan(),
             "followup_recommendation": {
                 "observation_required": False,
                 "observation_setting": "none",
@@ -1065,4 +1300,6 @@ def validate_internal_medicine_result(
             fallback_result=fallback,
             consultation_round=consultation_round or 2,
         )
+        normalized = _apply_round2_language_and_prescription_policy(normalized, fallback, payload)
+        normalized = normalize_round2_conclusion(normalized, consultation_round=consultation_round or 2)
     return normalized

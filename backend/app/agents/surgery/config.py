@@ -15,6 +15,8 @@ from app.agents.surgery.prompts import (
     build_follow_up_llm_messages,
     build_follow_up_question,
     build_initial_message,
+    build_physical_exam_decision_llm_messages,
+    build_physical_exam_result_llm_messages,
     build_transition_follow_up_question,
 )
 from app.agents.surgery.rules import (
@@ -51,6 +53,8 @@ def build_surgery_runtime_config() -> DepartmentAgentConfig:
         build_initial_message=build_initial_message,
         build_follow_up_question=build_follow_up_question,
         build_follow_up_llm_messages=build_follow_up_llm_messages,
+        build_physical_exam_decision_llm_messages=build_physical_exam_decision_llm_messages,
+        build_physical_exam_result_llm_messages=build_physical_exam_result_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
         build_post_final_answer_llm_messages=build_post_final_answer_llm_messages,
         build_final_message=build_final_message,

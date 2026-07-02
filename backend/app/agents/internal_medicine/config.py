@@ -15,6 +15,8 @@ from app.agents.internal_medicine.prompts import (
     build_final_message,
     build_follow_up_question,
     build_initial_message,
+    build_physical_exam_decision_llm_messages,
+    build_physical_exam_result_llm_messages,
     build_transition_follow_up_question,
 )
 from app.agents.internal_medicine.rules import (
@@ -45,6 +47,7 @@ def build_internal_medicine_runtime_config() -> DepartmentAgentConfig:
         working_memory_cls=WorkingMemory,
         progress_from_dict=ConsultationProgress.from_dict,
         min_patient_reply_count_before_complete=2,
+        optional_round1_followup_fields=("past_medical_history",),
         create_session_events=("start", "evaluate"),
         continue_session_event="receive_reply",
         followup_events=("need_followup", "wait_for_reply"),
@@ -52,6 +55,8 @@ def build_internal_medicine_runtime_config() -> DepartmentAgentConfig:
         build_initial_message=build_initial_message,
         build_follow_up_question=build_follow_up_question,
         build_follow_up_llm_messages=build_follow_up_llm_messages,
+        build_physical_exam_decision_llm_messages=build_physical_exam_decision_llm_messages,
+        build_physical_exam_result_llm_messages=build_physical_exam_result_llm_messages,
         build_transition_follow_up_question=build_transition_follow_up_question,
         build_post_final_answer_llm_messages=build_post_final_answer_llm_messages,
         build_final_message=build_final_message,

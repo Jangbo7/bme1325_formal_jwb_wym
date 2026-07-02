@@ -152,7 +152,7 @@ def test_patient_agent_debug_step_reaches_outpatient_disposition(tmp_path, monke
     assert "triaged" in visit_states
     assert "waiting_test" in visit_states
     assert "in_second_consultation" in visit_states
-    assert any(
+    assert not any(
         "[History reviewed]" in entry["message"]
         for entry in final_snapshot["transcript"]
         if entry["counterparty"] == "internal_medicine_agent"

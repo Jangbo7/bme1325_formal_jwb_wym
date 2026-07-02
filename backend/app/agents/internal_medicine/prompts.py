@@ -2,8 +2,11 @@ from app.agents.department_runtime.prompting import (
     build_shared_consultation_system_prompt,
     build_shared_consultation_user_prompt,
     build_shared_follow_up_llm_messages,
+    build_shared_physical_exam_decision_llm_messages,
+    build_shared_physical_exam_result_llm_messages,
 )
 from app.agents.department_runtime.conclusions import round2_response_keys
+from app.agents.department_runtime.replies import normalize_prescription_plan
 from app.agents.internal_medicine.workflow import ConsultationProgress
 
 
@@ -21,7 +24,56 @@ FIELD_PROMPTS = {
         "有已知的药物或食物过敏吗？如果没有，直接告诉我“没有过敏”就可以。",
         "我再确认一下过敏史：目前已知有药物或食物过敏吗？",
     ],
+    "past_medical_history": [
+        "您以前有高血压、糖尿病、哮喘、慢阻肺，或者其他长期慢性病吗？",
+        "我再单独确认一下既往病史：以前有没有长期慢性病或重要基础疾病？",
+    ],
 }
+
+
+def _format_known_vitals(shared_memory: dict) -> str:
+    vitals = (shared_memory.get("clinical_memory") or {}).get("vitals") or {}
+    parts: list[str] = []
+    if vitals.get("temp_c") not in (None, ""):
+        parts.append(f"体温{vitals.get('temp_c')}℃")
+    if vitals.get("heart_rate") not in (None, ""):
+        parts.append(f"心率{vitals.get('heart_rate')}次/分")
+    if vitals.get("systolic_bp") not in (None, "") and vitals.get("diastolic_bp") not in (None, ""):
+        parts.append(f"血压{vitals.get('systolic_bp')}/{vitals.get('diastolic_bp')}mmHg")
+    if vitals.get("pain_score") not in (None, ""):
+        parts.append(f"疼痛评分{vitals.get('pain_score')}分")
+    return "，".join(parts)
+
+
+def _triage_info_analysis(shared_memory: dict) -> str:
+    vitals = (shared_memory.get("clinical_memory") or {}).get("vitals") or {}
+    analyses: list[str] = []
+    try:
+        temp_c = float(vitals.get("temp_c")) if vitals.get("temp_c") not in (None, "") else None
+    except Exception:
+        temp_c = None
+    try:
+        heart_rate = float(vitals.get("heart_rate")) if vitals.get("heart_rate") not in (None, "") else None
+    except Exception:
+        heart_rate = None
+    try:
+        pain_score = float(vitals.get("pain_score")) if vitals.get("pain_score") not in (None, "") else None
+    except Exception:
+        pain_score = None
+
+    if temp_c is not None:
+        if temp_c >= 37.3:
+            analyses.append("体温有点高")
+    if heart_rate is not None and heart_rate >= 100:
+        analyses.append("心率偏快")
+    if pain_score is not None and pain_score >= 4:
+        analyses.append("疼痛评分不低")
+    if not analyses and vitals:
+        if temp_c is not None:
+            analyses.append("体温目前不高，分诊生命体征整体还算平稳")
+        else:
+            analyses.append("分诊生命体征整体还算平稳")
+    return "；".join(analyses)
 
 
 def build_follow_up_question(
@@ -83,6 +135,9 @@ def build_initial_message(
 ) -> str:
     del policy_runtime_context
     complaint = shared_memory.get("clinical_memory", {}).get("chief_complaint") or "当前这次不适"
+    vitals_text = _format_known_vitals(shared_memory)
+    triage_analysis = _triage_info_analysis(shared_memory)
+    vitals_sentence = f"分诊记录里我也看到{vitals_text}，{triage_analysis}。" if vitals_text and triage_analysis else ""
     if progress.patient_reply_count == 0:
         if int(consultation_round or 1) >= 2:
             return (
@@ -91,6 +146,7 @@ def build_initial_message(
             )
         return (
             f"我先为您做这一轮内科初步问诊。您提到的主要问题是“{complaint}”。"
+            f"{vitals_sentence}"
             "请再补充一下它是从什么时候开始的、有没有过敏史，以及现在最难受的表现是什么。"
         )
     return "我收到您的补充了。请继续说明症状的具体变化，这样我能继续判断。"
@@ -198,7 +254,7 @@ def build_consultation_system_prompt(
 ) -> str:
     del policy_runtime_context
     return build_shared_consultation_system_prompt(
-        base_role_text="浣犳槸鍐呯闂ㄨ瘖闂瘖鍔╂墜銆?",
+        base_role_text="你是内科门诊问诊助手。",
         consultation_round=consultation_round,
         language="zh",
         policy_prompt_context=policy_prompt_context,
@@ -259,6 +315,48 @@ def build_follow_up_llm_messages(
         policy_runtime_context=policy_runtime_context,
         language="zh",
         assistant_label="鍐呯",
+    )
+
+
+def build_physical_exam_decision_llm_messages(
+    shared_memory: dict,
+    message: str,
+    missing_fields: list[str],
+    *,
+    payload: dict | None = None,
+    policy_runtime_context=None,
+    consultation_round: int = 1,
+) -> list[dict]:
+    return build_shared_physical_exam_decision_llm_messages(
+        shared_memory,
+        message,
+        missing_fields,
+        payload=payload,
+        policy_runtime_context=policy_runtime_context,
+        consultation_round=consultation_round,
+        language="zh",
+        assistant_label="Internal Medicine",
+    )
+
+
+def build_physical_exam_result_llm_messages(
+    shared_memory: dict,
+    message: str,
+    exam_decision: dict,
+    *,
+    payload: dict | None = None,
+    policy_runtime_context=None,
+    consultation_round: int = 1,
+) -> list[dict]:
+    return build_shared_physical_exam_result_llm_messages(
+        shared_memory,
+        message,
+        exam_decision,
+        payload=payload,
+        policy_runtime_context=policy_runtime_context,
+        consultation_round=consultation_round,
+        language="zh",
+        assistant_label="Internal Medicine",
     )
 
 
@@ -361,6 +459,7 @@ def build_final_message(result: dict, *, message_type: str = "final") -> str:
         tests = [str(item).strip() for item in (result.get("tests_suggested") or []) if str(item).strip()]
         red_flags = [str(item).strip() for item in (result.get("return_precautions") or result.get("red_flags") or []) if str(item).strip()]
         medication = dict(result.get("medication_recommendation") or {})
+        prescription_plan = normalize_prescription_plan(result.get("prescription_plan"))
         admission = dict(result.get("admission_recommendation") or {})
         procedure = dict(result.get("procedure_recommendation") or {})
         followup = dict(result.get("followup_recommendation") or {})
@@ -384,6 +483,18 @@ def build_final_message(result: dict, *, message_type: str = "final") -> str:
         ]
         if medication.get("recommended"):
             lines.append(f"用药建议：{medication.get('summary') or '建议由医生结合本轮结果评估并开具门诊用药。'}")
+        if prescription_plan:
+            prescription_text = []
+            for item in prescription_plan:
+                parts = [
+                    str(item.get("dose_text") or "").strip(),
+                    str(item.get("frequency_text") or "").strip(),
+                    str(item.get("duration_text") or "").strip(),
+                    str(item.get("instructions") or "").strip(),
+                ]
+                detail = "，".join(part for part in parts if part)
+                prescription_text.append(f"{item.get('drug_name')}（{detail}）" if detail else str(item.get("drug_name")))
+            lines.append(f"处方明细：{'；'.join(prescription_text)}")
         if admission.get("recommended"):
             lines.append(f"住院建议：{admission.get('reason') or '建议住院进一步处理。'}")
         if procedure.get("surgery_evaluation_recommended"):

@@ -455,6 +455,17 @@ def build_fake_config(counters: dict) -> DepartmentAgentConfig:
     )
 
 
+def enable_fake_physical_exam_prompts(service: FakeDepartmentService) -> None:
+    service.config.build_physical_exam_decision_llm_messages = lambda *args, **kwargs: [
+        {"role": "system", "content": "physical exam decision"},
+        {"role": "user", "content": "decide"},
+    ]
+    service.config.build_physical_exam_result_llm_messages = lambda *args, **kwargs: [
+        {"role": "system", "content": "physical exam result"},
+        {"role": "user", "content": "simulate"},
+    ]
+
+
 def test_department_agent_runtime_create_session_enters_followup():
     counters = {
         "retrieve_rules": 0,
@@ -487,6 +498,526 @@ def test_department_agent_runtime_create_session_enters_followup():
     assert counters["retrieve_rules"] == 1
     assert counters["fallback_result"] == 1
     assert counters["after_persist"] == 1
+    assert response["dialogue"]["answer_source"] == "fallback_formatter"
+    assert response["dialogue"]["response_source"] == "fallback"
+
+
+def test_department_agent_runtime_create_session_does_not_trigger_physical_exam():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(
+        counters=counters,
+        llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
+    )
+    enable_fake_physical_exam_prompts(service)
+    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "llm initial question"
+
+    def fail_physical_exam(*args, **kwargs):
+        raise AssertionError("physical exam should not run during create_session")
+
+    service.request_physical_exam_decision_from_llm = fail_physical_exam
+    service.request_physical_exam_result_from_llm = fail_physical_exam
+
+    response = service.create_session(
+        {
+            "patient_id": "patient-no-exam-create",
+            "session_id": "fake-session-no-exam-create",
+            "visit_id": "visit-no-exam-create",
+            "name": "Patient No Exam Create",
+        }
+    )
+
+    assert response["dialogue"]["message_type"] == "followup"
+    assert response["dialogue"]["assistant_message"] == "llm initial question"
+    turns = service.session_repo.list_turns("fake-session-no-exam-create")
+    assert [turn["metadata"].get("message_type") for turn in turns] == ["followup"]
+
+
+def test_department_agent_runtime_first_reply_skips_physical_exam_when_not_needed():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(
+        counters=counters,
+        llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
+    )
+    enable_fake_physical_exam_prompts(service)
+    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "llm initial question"
+    service.request_consultation_from_llm = lambda *args, **kwargs: {
+        "department": "Fake Department",
+        "priority": "M",
+        "diagnosis_level": 1,
+        "note": "final",
+        "patient_plan": "plan",
+    }
+    service.request_physical_exam_decision_from_llm = lambda *args, **kwargs: {
+        "exam_needed": False,
+        "exam_type": "",
+        "exam_targets": [],
+        "doctor_action_message": "",
+    }
+    service.request_physical_exam_result_from_llm = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("physical exam result should not be requested")
+    )
+    service.create_session(
+        {
+            "patient_id": "patient-skip-exam",
+            "session_id": "fake-session-skip-exam",
+            "visit_id": "visit-skip-exam",
+            "name": "Patient Skip Exam",
+        }
+    )
+
+    response = service.continue_session(
+        "fake-session-skip-exam",
+        {
+            "patient_id": "patient-skip-exam",
+            "visit_id": "visit-skip-exam",
+            "name": "Patient Skip Exam",
+            "message": "I had cough since yesterday and no allergies.",
+        },
+    )
+
+    assert response["dialogue"]["message_type"] == "final"
+    turns = service.session_repo.list_turns("fake-session-skip-exam")
+    assert not [turn for turn in turns if str(turn["metadata"].get("message_type", "")).startswith("physical_exam")]
+    session_memory = service.memory_repo.get_agent_session_memory("fake-session-skip-exam", "patient-skip-exam", agent_type="fake_department")
+    assert session_memory["physical_exam_decision_checked"] is True
+    assert session_memory["physical_exam_completed"] is False
+    assert "physical_exam" not in session_memory
+
+
+def test_department_agent_runtime_first_reply_appends_physical_exam_turns_once():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(
+        counters=counters,
+        llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
+    )
+    enable_fake_physical_exam_prompts(service)
+    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "llm initial question"
+    captured_consultation_payloads = []
+
+    def consultation_result(payload, *args, **kwargs):
+        captured_consultation_payloads.append(dict(payload))
+        return {
+            "department": "Fake Department",
+            "priority": "M",
+            "diagnosis_level": 1,
+            "note": "final",
+            "patient_plan": "plan",
+        }
+
+    service.request_consultation_from_llm = consultation_result
+    decision_calls = {"count": 0}
+
+    def exam_decision(*args, **kwargs):
+        decision_calls["count"] += 1
+        return {
+            "exam_needed": True,
+            "exam_type": "respiratory_basic_exam",
+            "exam_targets": ["throat", "lung auscultation"],
+            "doctor_action_message": "我先看一下咽喉，并听一下肺部。",
+        }
+
+    service.request_physical_exam_decision_from_llm = exam_decision
+    service.request_physical_exam_result_from_llm = lambda *args, **kwargs: {
+        "assistant_message": "查体看到咽部轻度充血，双肺呼吸音清。",
+        "physical_exam": {
+            "needed": True,
+            "exam_type": "respiratory_basic_exam",
+            "exam_targets": ["throat", "lung auscultation"],
+            "findings": ["咽部轻度充血", "双肺呼吸音清"],
+            "impression": "上呼吸道刺激表现，暂无明显肺部阳性体征",
+            "source": "llm_simulated_physical_exam",
+        },
+    }
+    service.request_post_final_answer_from_llm = lambda *args, **kwargs: "direct answer"
+    service.create_session(
+        {
+            "patient_id": "patient-exam-once",
+            "session_id": "fake-session-exam-once",
+            "visit_id": "visit-exam-once",
+            "name": "Patient Exam Once",
+        }
+    )
+
+    first = service.continue_session(
+        "fake-session-exam-once",
+        {
+            "patient_id": "patient-exam-once",
+            "visit_id": "visit-exam-once",
+            "name": "Patient Exam Once",
+            "message": "I had cough since yesterday and no allergies.",
+        },
+    )
+    second = service.continue_system_session(
+        "fake-session-exam-once",
+        {
+            "patient_id": "patient-exam-once",
+            "visit_id": "visit-exam-once",
+            "name": "Patient Exam Once",
+            "message": "",
+        },
+    )
+    third = service.continue_system_session(
+        "fake-session-exam-once",
+        {
+            "patient_id": "patient-exam-once",
+            "visit_id": "visit-exam-once",
+            "name": "Patient Exam Once",
+            "message": "",
+        },
+    )
+    fourth = service.continue_session(
+        "fake-session-exam-once",
+        {
+            "patient_id": "patient-exam-once",
+            "visit_id": "visit-exam-once",
+            "name": "Patient Exam Once",
+            "message": "What should I watch for?",
+        },
+    )
+
+    assert first["dialogue"]["message_type"] == "physical_exam_intent"
+    assert first["dialogue"]["pending_auto_continue"] is True
+    assert second["dialogue"]["message_type"] == "physical_exam_result"
+    assert second["dialogue"]["pending_auto_continue"] is True
+    assert third["dialogue"]["message_type"] == "final"
+    assert third["dialogue"]["pending_auto_continue"] is False
+    assert fourth["dialogue"]["message_type"] == "answer_only"
+    assert decision_calls["count"] == 1
+    turns = service.session_repo.list_turns("fake-session-exam-once", limit=20)
+    assistant_types = [turn["metadata"].get("message_type") for turn in turns if turn["role"] == "assistant"]
+    assert assistant_types == ["followup", "physical_exam_intent", "physical_exam_result", "final", "answer_only"]
+    assert [turn["role"] for turn in turns] == ["assistant", "user", "assistant", "assistant", "assistant", "user", "assistant"]
+    assert turns[2]["content"] == "我先看一下咽喉，并听一下肺部。"
+    assert turns[2]["metadata"]["pending_auto_continue"] is True
+    assert turns[3]["content"] == "查体看到咽部轻度充血，双肺呼吸音清。"
+    assert turns[3]["metadata"]["physical_exam"]["source"] == "llm_simulated_physical_exam"
+    assert turns[3]["metadata"]["pending_auto_continue"] is True
+    session_memory = service.memory_repo.get_agent_session_memory("fake-session-exam-once", "patient-exam-once", agent_type="fake_department")
+    assert session_memory["physical_exam_decision_checked"] is True
+    assert session_memory["physical_exam_completed"] is True
+    assert session_memory["physical_exam"]["source"] == "llm_simulated_physical_exam"
+    assert captured_consultation_payloads[0]["message"] == "I had cough since yesterday and no allergies."
+    assert captured_consultation_payloads[0]["physical_exam"]["impression"] == "上呼吸道刺激表现，暂无明显肺部阳性体征"
+
+
+def test_surgery_round1_defers_physical_exam_until_localized_site_is_known():
+    service = FakeDepartmentService(
+        counters={
+            "retrieve_rules": 0,
+            "fallback_result": 0,
+            "validate_result": 0,
+            "build_initial_message": 0,
+            "build_follow_up_question": 0,
+            "build_follow_up_llm_messages": 0,
+            "build_transition_follow_up_question": 0,
+            "build_final_message": 0,
+            "build_patient_reply": 0,
+            "build_user_prompt": 0,
+            "after_persist": 0,
+        },
+        llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
+    )
+    service.config.agent_type = "surgery"
+    enable_fake_physical_exam_prompts(service)
+    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "请问具体是哪个部位有红肿？"
+    service.request_consultation_from_llm = lambda *args, **kwargs: {
+        "department": "Fake Surgery",
+        "priority": "M",
+        "diagnosis_level": 1,
+        "note": "final",
+        "patient_plan": "plan",
+    }
+
+    exam_decision_calls = {"count": 0}
+
+    def exam_decision(*args, **kwargs):
+        exam_decision_calls["count"] += 1
+        return {
+            "exam_needed": True,
+            "exam_type": "wound_basic_exam",
+            "exam_targets": ["手术伤口"],
+            "doctor_action_message": "我先看一下这个部位的伤口情况。",
+        }
+
+    service.request_physical_exam_decision_from_llm = exam_decision
+    service.request_physical_exam_result_from_llm = lambda *args, **kwargs: {
+        "assistant_message": "伤口周围轻微红肿，没有明显渗液。",
+        "physical_exam": {
+            "needed": True,
+            "exam_type": "wound_basic_exam",
+            "exam_targets": ["手术伤口"],
+            "findings": ["轻微红肿", "无明显渗液"],
+            "impression": "局部轻度炎症反应",
+            "source": "llm_simulated_physical_exam",
+        },
+    }
+
+    service.create_session(
+        {
+            "patient_id": "patient-surgery-location-before-exam",
+            "session_id": "fake-session-surgery-location-before-exam",
+            "visit_id": "visit-surgery-location-before-exam",
+            "name": "Patient Surgery Location",
+        }
+    )
+
+    first = service.continue_session(
+        "fake-session-surgery-location-before-exam",
+        {
+            "patient_id": "patient-surgery-location-before-exam",
+            "visit_id": "visit-surgery-location-before-exam",
+            "name": "Patient Surgery Location",
+            "message": "手术伤口有点红肿。",
+        },
+    )
+
+    assert first["dialogue"]["message_type"] != "physical_exam_intent"
+    assert exam_decision_calls["count"] == 0
+    session_memory = service.memory_repo.get_agent_session_memory(
+        "fake-session-surgery-location-before-exam",
+        "patient-surgery-location-before-exam",
+        agent_type="surgery",
+    )
+    assert session_memory["physical_exam_deferred_reason"] == "missing_surgical_location"
+    assert "physical_exam_decision_checked" not in session_memory
+
+    second = service.continue_session(
+        "fake-session-surgery-location-before-exam",
+        {
+            "patient_id": "patient-surgery-location-before-exam",
+            "visit_id": "visit-surgery-location-before-exam",
+            "name": "Patient Surgery Location",
+            "message": "手腕。",
+        },
+    )
+
+    assert second["dialogue"]["message_type"] == "physical_exam_intent"
+    assert exam_decision_calls["count"] == 1
+
+
+def test_department_agent_runtime_rejects_action_sentence_as_physical_exam_result():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(
+        counters=counters,
+        llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
+    )
+    enable_fake_physical_exam_prompts(service)
+    service._request_json_from_llm_messages = lambda *args, **kwargs: {
+        "assistant_message": "好的，我来听一下您的肺部和检查一下咽喉。",
+        "physical_exam": {
+            "needed": True,
+            "exam_type": "respiratory_basic_exam",
+            "exam_targets": ["lung auscultation", "throat"],
+            "findings": [],
+            "impression": "",
+        },
+    }
+
+    result = service.request_physical_exam_result_from_llm(
+        {
+            "message": "有一点胸闷、气短。",
+            "consultation_round": 1,
+        },
+        {
+            "profile": {"name": "Patient"},
+            "clinical_memory": {"chief_complaint": "cough", "symptoms": ["cough"], "vitals": {}},
+        },
+        {
+            "exam_needed": True,
+            "exam_type": "respiratory_basic_exam",
+            "exam_targets": ["lung auscultation", "throat"],
+        },
+    )
+
+    assert result["assistant_message"] != "好的，我来听一下您的肺部和检查一下咽喉。"
+    assert "查体结果" in result["assistant_message"]
+    assert "呼吸音" in result["assistant_message"]
+    assert "咽部" in result["assistant_message"]
+    assert result["physical_exam"]["findings"]
+    assert result["physical_exam"]["impression"]
+    assert result["physical_exam"]["source"] == "fallback_simulated_physical_exam"
+
+
+def test_department_agent_runtime_create_session_prefers_llm_when_available():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(
+        counters=counters,
+        llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
+    )
+    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "llm initial question"
+
+    response = service.create_session(
+        {
+            "patient_id": "patient-1-llm",
+            "session_id": "fake-session-1-llm",
+            "visit_id": "visit-1-llm",
+            "name": "Patient One LLM",
+        }
+    )
+
+    assert response["dialogue"]["status"] == FakeDialogueState.AWAITING.value
+    assert response["dialogue"]["message_type"] == "followup"
+    assert response["dialogue"]["assistant_message"] == "llm initial question"
+    assert response["dialogue"]["answer_source"] == "llm"
+    assert response["dialogue"]["response_source"] == "llm"
+    assert counters["build_initial_message"] == 0
+    assert counters["retrieve_rules"] == 1
+    assert counters["fallback_result"] == 1
+    assert counters["after_persist"] == 1
+
+
+def test_department_agent_runtime_optional_past_medical_history_followup_once():
+    counters = {
+        "retrieve_rules": 0,
+        "fallback_result": 0,
+        "validate_result": 0,
+        "build_initial_message": 0,
+        "build_follow_up_question": 0,
+        "build_follow_up_llm_messages": 0,
+        "build_transition_follow_up_question": 0,
+        "build_final_message": 0,
+        "build_patient_reply": 0,
+        "build_user_prompt": 0,
+        "after_persist": 0,
+    }
+    service = FakeDepartmentService(
+        counters=counters,
+        llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
+    )
+    service.config.optional_round1_followup_fields = ("past_medical_history",)
+    captured_optional_payloads = []
+
+    def followup_message(payload, *args, question_focus=None, **kwargs):
+        if payload.get("optional_followup_focus") == "past_medical_history":
+            captured_optional_payloads.append((dict(payload), question_focus))
+            return "Do you have hypertension, diabetes, asthma, COPD, or other chronic conditions?"
+        return "llm initial question"
+
+    service.request_follow_up_message_from_llm = followup_message
+    service.request_consultation_from_llm = lambda *args, **kwargs: {
+        "department": "Fake Department",
+        "priority": "M",
+        "diagnosis_level": 1,
+        "note": "final",
+        "patient_plan": "plan",
+    }
+    service.create_session(
+        {
+            "patient_id": "patient-optional-history",
+            "session_id": "fake-session-optional-history",
+            "visit_id": "visit-optional-history",
+            "name": "Patient Optional History",
+            "chief_complaint": "cough",
+            "onset_time": "yesterday",
+            "allergies": [],
+        }
+    )
+
+    first = service.continue_session(
+        "fake-session-optional-history",
+        {
+            "patient_id": "patient-optional-history",
+            "visit_id": "visit-optional-history",
+            "name": "Patient Optional History",
+            "message": "The cough is still present.",
+        },
+    )
+
+    assert first["dialogue"]["message_type"] == "followup"
+    assert first["dialogue"]["question_focus"] == "past_medical_history"
+    assert captured_optional_payloads[0][1] == "past_medical_history"
+    assert captured_optional_payloads[0][0]["_allow_no_followup"] is True
+    memory = service.memory_repo.get_agent_session_memory(
+        "fake-session-optional-history",
+        "patient-optional-history",
+        agent_type="fake_department",
+    )
+    assert memory["consultation_progress"]["asked_fields_history"][-1] == "past_medical_history"
+
+    service.config.extract_structured_updates = lambda message: {
+        "chief_complaint": None,
+        "onset_time": None,
+        "allergies": None,
+        "allergy_status": None,
+        "chronic_conditions": [],
+        "chronic_conditions_status": "known",
+        "symptoms": [],
+        "extracted_fields": ["past_medical_history"],
+    }
+    second = service.continue_session(
+        "fake-session-optional-history",
+        {
+            "patient_id": "patient-optional-history",
+            "visit_id": "visit-optional-history",
+            "name": "Patient Optional History",
+            "message": "No hypertension or diabetes.",
+        },
+    )
+
+    assert second["dialogue"]["message_type"] == "final"
+    shared_memory = service.memory_repo.get_shared_memory("patient-optional-history", "Patient Optional History")
+    assert shared_memory["profile"]["chronic_conditions_status"] == "known"
+    assert shared_memory["profile"]["chronic_conditions"] == []
 
 
 def test_department_agent_runtime_continue_session_uses_fallback_and_hooks():
@@ -555,6 +1086,7 @@ def test_department_agent_runtime_continue_session_followup_prefers_llm_when_ava
         counters=counters,
         llm_settings={"api_key": "mock-key", "endpoint": "https://example.invalid", "model": "mock-model"},
     )
+    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "llm follow-up question"
     service.create_session(
         {
             "patient_id": "patient-3",
@@ -563,8 +1095,6 @@ def test_department_agent_runtime_continue_session_followup_prefers_llm_when_ava
             "name": "Patient Three",
         }
     )
-
-    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "llm follow-up question"
 
     response = service.continue_session(
         "fake-session-3",

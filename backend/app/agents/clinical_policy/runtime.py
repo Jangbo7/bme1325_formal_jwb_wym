@@ -153,6 +153,7 @@ class ClinicalPolicyRuntime:
         text = json.dumps(payload, ensure_ascii=False).lower()
         violations: list[str] = []
         mappings = {
+            "unsupported_formal_exam_results": ["lab result shows", "ct shows", "imaging shows", "pathology shows", "operative finding"],
             "definitive_diagnosis": ["definitive diagnosis", "final diagnosis", "diagnosed with", "确诊", "最终诊断"],
             "prescribe_medication": ["prescribe", "dosage", "mg", "bid", "tid", "qd", "处方", "剂量", "用药"],
             "change_dosage": ["increase dose", "decrease dose", "change dosage", "调整剂量"],

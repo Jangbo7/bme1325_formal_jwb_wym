@@ -98,7 +98,7 @@ behavior_policy:
     - decide_need_for_surgery
     - prescribe_medication
     - invasive_procedure_instruction
-    - fabricated_exam_results
+    - unsupported_formal_exam_results
     - false_reassurance_with_red_flags
     - skip_history_taking
   allowed_outputs:
@@ -238,4 +238,4 @@ prompt_hints:
     - Keep the conversation on patient-reported facts only.
   summary_rules:
     - Summaries should reflect patient-reported facts only.
-    - Do not invent physical examination, imaging, pathology, or operative findings.
+    - Do not invent imaging, pathology, operative, or formal auxiliary-exam findings. Basic physical examination findings are allowed only when produced by the system physical_exam workflow.

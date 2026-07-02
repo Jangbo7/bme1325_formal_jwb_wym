@@ -134,6 +134,57 @@ def test_unified_doctor_agent_debug_internal_medicine(tmp_path, monkeypatch):
     assert get_data(snapshot)["session_id"] == message["session_id"]
 
 
+def test_unified_doctor_agent_debug_auto_advance_physical_exam(tmp_path, monkeypatch):
+    client = create_test_client(tmp_path, monkeypatch)
+    service = client.app.state.container["internal_medicine_service"]
+    service.request_follow_up_message_from_llm = lambda *args, **kwargs: "Please tell me a little more."
+    service.request_physical_exam_decision_from_llm = lambda *args, **kwargs: {
+        "exam_needed": True,
+        "exam_type": "respiratory_basic_exam",
+        "exam_targets": ["throat", "lung auscultation"],
+        "doctor_action_message": "请让我检查一下您的喉咙和听一下肺部。",
+    }
+    service.request_physical_exam_result_from_llm = lambda *args, **kwargs: {
+        "assistant_message": "您的咽部轻度发红，肺部听诊呼吸音清。",
+        "physical_exam": {
+            "needed": True,
+            "exam_type": "respiratory_basic_exam",
+            "exam_targets": ["throat", "lung auscultation"],
+            "findings": ["咽部轻度发红", "肺部呼吸音清"],
+            "impression": "上呼吸道刺激表现，暂无明显肺部阳性体征",
+            "source": "llm_simulated_physical_exam",
+        },
+    }
+
+    get_data(
+        post_json(
+            client,
+            "/api/v1/doctor-agent-debug/preload",
+            {"agent_type": "internal_medicine", "preset_id": "im_round1_respiratory"},
+        )
+    )
+    intent = get_data(
+        post_json(
+            client,
+            "/api/v1/doctor-agent-debug/message",
+            {
+                "agent_type": "internal_medicine",
+                "message": "The cough started yesterday and I have no allergies.",
+            },
+        )
+    )
+    result = get_data(post_json(client, "/api/v1/doctor-agent-debug/advance?agent_type=internal_medicine", {}))
+    resumed = get_data(post_json(client, "/api/v1/doctor-agent-debug/advance", None))
+
+    assert intent["trace"]["parsed_result"]["message_type"] == "physical_exam_intent"
+    assert intent["latest_reply"]["content"] == "请让我检查一下您的喉咙和听一下肺部。"
+    assert result["trace"]["parsed_result"]["message_type"] == "physical_exam_result"
+    assert result["latest_reply"]["content"] == "您的咽部轻度发红，肺部听诊呼吸音清。"
+    assert resumed["trace"]["parsed_result"]["message_type"] == "followup"
+    assistant_types = [turn["metadata"].get("message_type") for turn in resumed["transcript"] if turn["role"] == "assistant"]
+    assert assistant_types[-3:] == ["physical_exam_intent", "physical_exam_result", "followup"]
+
+
 def test_doctor_debug_registry_contains_surgery_config(tmp_path, monkeypatch):
     client = create_test_client(tmp_path, monkeypatch)
     registry = client.app.state.container["doctor_debug_registry"]

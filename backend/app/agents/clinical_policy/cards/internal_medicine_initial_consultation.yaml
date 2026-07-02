@@ -54,7 +54,7 @@ behavior_policy:
     - field: past_medical_history
       prompt_label: past medical history
       required: false
-      runtime_supported: false
+      runtime_supported: true
     - field: visit_purpose
       prompt_label: visit purpose
       required: false
@@ -88,7 +88,7 @@ behavior_policy:
     - prescribe_medication
     - change_dosage
     - individualized_treatment_plan
-    - fabricated_exam_results
+    - unsupported_formal_exam_results
     - false_reassurance_with_red_flags
     - skip_history_taking
   allowed_outputs:
@@ -209,4 +209,4 @@ prompt_hints:
     - Help the patient narrow timeline and severity when answers are vague.
   summary_rules:
     - Summaries should reflect patient-reported facts only.
-    - Do not invent exam, laboratory, or imaging findings.
+    - Do not invent laboratory or imaging findings. Basic physical examination findings are allowed only when produced by the system physical_exam workflow.

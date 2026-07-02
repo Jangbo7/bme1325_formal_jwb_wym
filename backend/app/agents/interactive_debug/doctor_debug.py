@@ -104,11 +104,24 @@ class _BaseDoctorAgentDebugController(_BaseAgentDebugController):
         self._handle_message(config, current, message)
         return self._build_snapshot_for(config, current)
 
+    def advance(self, agent_type: str) -> AgentDebugSnapshot:
+        config = self.registry.get(agent_type)
+        current = self._current_by_agent.get(agent_type)
+        if not current:
+            raise LookupError("debug session not found")
+        self._handle_advance(config, current)
+        return self._build_snapshot_for(config, current)
+
     def get_snapshot(self, agent_type: str) -> AgentDebugSnapshot | None:
         current = self._current_by_agent.get(agent_type)
         if not current:
             return None
         return self._build_snapshot_for(self.registry.get(agent_type), current)
+
+    def infer_active_agent_type(self) -> str | None:
+        if len(self._current_by_agent) == 1:
+            return next(iter(self._current_by_agent))
+        return None
 
     def reset(self, agent_type: str) -> None:
         self._current_by_agent.pop(agent_type, None)
@@ -224,6 +237,43 @@ class _BaseDoctorAgentDebugController(_BaseAgentDebugController):
         )
         current["last_error"] = None
 
+    def _handle_advance(self, config: DoctorDebugAgentConfig, current: dict[str, Any]) -> None:
+        service = self._require_service(config)
+        patient_id = current["patient_id"]
+        session_id = current["session_id"]
+        visit_id = current["visit_id"]
+        if not hasattr(service, "continue_system_session"):
+            raise RuntimeError(f"debug service for agent '{config.agent_type}' does not support system advance")
+        before_memory = deepcopy(self.memory_repo.get_shared_memory(patient_id, patient_id))
+        response = service.continue_system_session(
+            session_id,
+            {
+                "patient_id": patient_id,
+                "visit_id": visit_id,
+                "message": "",
+                "name": self.patient_repo.get(patient_id)["name"],
+            },
+        )
+        after_memory = self.memory_repo.get_shared_memory(patient_id, patient_id)
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type=config.agent_type)
+        payload = {
+            "message": "",
+            "patient_profile": {"name": self.patient_repo.get(patient_id)["name"]},
+        }
+        current["trace"] = config.trace_builder(
+            self,
+            config,
+            payload,
+            patient_id,
+            visit_id,
+            session_id,
+            before_memory,
+            after_memory,
+            response,
+            private_memory,
+        )
+        current["last_error"] = None
+
     def _build_snapshot_for(self, config: DoctorDebugAgentConfig, current: dict[str, Any]) -> AgentDebugSnapshot:
         visit = self.visit_repo.get(current["visit_id"])
         patient = self.patient_repo.get(current["patient_id"])
@@ -274,6 +324,9 @@ class FixedDoctorDebugController:
 
     def message(self, message: str) -> AgentDebugSnapshot:
         return self.doctor_controller.message(self.fixed_agent_type, message)
+
+    def advance(self) -> AgentDebugSnapshot:
+        return self.doctor_controller.advance(self.fixed_agent_type)
 
     def get_snapshot(self) -> AgentDebugSnapshot | None:
         return self.doctor_controller.get_snapshot(self.fixed_agent_type)

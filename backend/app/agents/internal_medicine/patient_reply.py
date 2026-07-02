@@ -12,6 +12,74 @@ def _short_text(value: str) -> str:
     return str(value or "").strip().rstrip("。")
 
 
+def _looks_english(text: str) -> bool:
+    value = _short_text(text)
+    if not value:
+        return False
+    ascii_letters = sum(1 for ch in value if ch.isascii() and ch.isalpha())
+    cjk_letters = sum(1 for ch in value if "\u4e00" <= ch <= "\u9fff")
+    return ascii_letters >= 16 and ascii_letters > cjk_letters * 2
+
+
+def _preferred_text(*values: str, fallback: str = "") -> str:
+    for value in values:
+        text = _short_text(value)
+        if text and not _looks_english(text):
+            return text
+    return fallback
+
+
+def _default_round2_impression(result: dict) -> str:
+    if result.get("primary_disposition") in {"emergency_escalation", "icu_escalation"}:
+        return "这次结果提示风险比普通门诊随访更高，需要尽快升级处理"
+    if (result.get("medication_recommendation") or {}).get("recommended"):
+        return "这次检查结果支持按门诊方案用药处理，并安排后续复诊"
+    return "这次检查结果支持继续按门诊方案处理，暂时不需要重复基础检查"
+
+
+def _default_round2_plan(result: dict) -> str:
+    if result.get("primary_disposition") in {"emergency_escalation", "icu_escalation"}:
+        return "请现在直接到急诊或高优先级通道进一步评估"
+    if (result.get("medication_recommendation") or {}).get("recommended"):
+        return "我会按这次检查结果为你安排门诊用药，并按医嘱复诊观察疗效"
+    return "先按目前门诊方案处理，如果症状加重或出现新的危险信号，请及时复诊"
+
+
+def _result_test_items(result: dict) -> list[str]:
+    return [str(item).strip() for item in (result.get("tests_suggested") or result.get("test_items") or []) if str(item).strip()]
+
+
+def _mentions_test_items(text: str, tests: list[str]) -> bool:
+    normalized = str(text or "")
+    return bool(normalized and tests and any(item and item in normalized for item in tests))
+
+
+def _mentions_return_for_review(text: str) -> bool:
+    normalized = str(text or "")
+    return any(token in normalized for token in ("回来复诊", "回内科复诊", "回来内科复诊", "回来进一步复诊", "带结果回来"))
+
+
+def _round1_test_instruction(result: dict, tests: list[str]) -> str:
+    test_text = _join_items(tests)
+    patient_plan = _short_text(result.get("patient_plan") or "")
+    disposition_advice = _short_text(result.get("disposition_advice") or "")
+    for candidate in (disposition_advice, patient_plan):
+        if _mentions_test_items(candidate, tests) and "已开具" in candidate:
+            return f"{candidate}。"
+    if any(_mentions_test_items(candidate, tests) for candidate in (disposition_advice, patient_plan)):
+        return f"我已为你开具{test_text}检查，结果出来后带来复诊。"
+    generic_plan = any(token in patient_plan.lower() for token in ("辅助检查", "完善检查", "先做检查", "complete auxiliary tests", "complete tests"))
+    if patient_plan and tests and not generic_plan and "建议" not in patient_plan:
+        suffix = f"具体项目是{test_text}。" if _mentions_return_for_review(patient_plan) else f"我已为你开具{test_text}检查，结果出来后带来复诊。"
+        return f"{patient_plan}；{suffix}"
+    variants = [
+        f"我已为你开具{test_text}检查，结果出来后带来复诊。",
+        f"这次先完成{test_text}检查，拿到结果后我们再看下一步。",
+        f"我已把{test_text}检查开好，你先去做，结果出来后带来复诊。",
+    ]
+    return variants[len(test_text) % len(variants)]
+
+
 def _build_prescription_reply(prescription_plan: list[dict], medication_recommendation: dict) -> str:
     if prescription_plan:
         pieces = []
@@ -31,10 +99,10 @@ def _build_prescription_reply(prescription_plan: list[dict], medication_recommen
                 pieces.append(f"{name}，{instructions}")
             else:
                 pieces.append(str(name))
-        return f"用药方面，现阶段更适合按门诊方案评估后使用{_join_items(pieces)}。"
+        return f"用药方面，我会开具{_join_items(pieces)}。请按这个疗程规律服用；如果你有相关药物过敏、孕期/备孕、严重肝肾功能问题，取药前需要再和医生确认。"
 
     summary = _short_text((medication_recommendation or {}).get("summary") or "")
-    if summary:
+    if summary and not _looks_english(summary):
         return f"用药方面，{summary}。"
     return ""
 
@@ -56,7 +124,7 @@ def _build_followup_reply(followup: dict, return_precautions: list[str], *, incl
 def _build_round1_reassessment_answer(result: dict, topics: set[str], *, include_guidance: bool) -> str:
     clinical_impression = _short_text(result.get("clinical_impression") or result.get("note") or "")
     patient_plan = _short_text(result.get("patient_plan") or result.get("disposition_advice") or "")
-    tests = [str(item).strip() for item in (result.get("tests_suggested") or result.get("test_items") or []) if str(item).strip()]
+    tests = _result_test_items(result)
     actions = [str(item).strip() for item in (result.get("medication_or_action") or []) if str(item).strip()]
     recommended_department = str(result.get("recommended_department") or "").strip()
 
@@ -90,7 +158,7 @@ def _build_round1_reply(
 ) -> str:
     clinical_impression = _short_text(result.get("clinical_impression") or result.get("note") or "")
     patient_plan = _short_text(result.get("patient_plan") or result.get("disposition_advice") or "")
-    tests = [str(item).strip() for item in (result.get("tests_suggested") or result.get("test_items") or []) if str(item).strip()]
+    tests = _result_test_items(result)
     actions = [str(item).strip() for item in (result.get("medication_or_action") or []) if str(item).strip()]
     recommended_department = str(result.get("recommended_department") or "").strip()
     topics = detect_reassessment_topics((payload or {}).get("message") or "")
@@ -104,7 +172,7 @@ def _build_round1_reply(
             if recommended_department:
                 lines.append(f"这次更建议到{recommended_department}进一步看诊。")
             elif tests:
-                lines.append(f"接下来先把{_join_items(tests)}做了，再结合结果决定下一步。")
+                lines.append(_round1_test_instruction(result, tests))
             elif patient_plan:
                 lines.append(f"{patient_plan}。")
             if actions and not tests:
@@ -125,7 +193,7 @@ def _build_round1_reply(
     if recommended_department:
         lines.append(f"这次更建议到{recommended_department}进一步看诊。")
     elif tests:
-        lines.append(f"我建议你先把{_join_items(tests)}做了，再带结果回来复诊。")
+        lines.append(_round1_test_instruction(result, tests))
     elif patient_plan:
         lines.append(f"{patient_plan}。")
     if actions and not tests:
@@ -141,14 +209,14 @@ def _build_round2_question_answer(
 ) -> str:
     message = (payload or {}).get("message") or ""
     topics = detect_reassessment_topics(message)
-    clinical_impression = _short_text(result.get("clinical_impression") or result.get("note") or "")
-    final_summary = _short_text(result.get("final_assessment_summary") or clinical_impression or "")
-    patient_plan = _short_text(
-        result.get("patient_facing_plan")
-        or result.get("patient_plan")
-        or result.get("disposition_advice")
-        or final_summary
-        or ""
+    clinical_impression = _preferred_text(result.get("clinical_impression") or "", result.get("note") or "", fallback=_default_round2_impression(result))
+    final_summary = _preferred_text(result.get("final_assessment_summary") or "", clinical_impression, fallback=clinical_impression)
+    patient_plan = _preferred_text(
+        result.get("patient_facing_plan") or "",
+        result.get("patient_plan") or "",
+        result.get("disposition_advice") or "",
+        final_summary,
+        fallback=_default_round2_plan(result),
     )
     followup = dict(result.get("followup_recommendation") or {})
     return_precautions = [str(item).strip() for item in (result.get("return_precautions") or result.get("red_flags") or []) if str(item).strip()]
@@ -208,14 +276,14 @@ def _build_round2_reply(
     payload: dict | None,
 ) -> str:
     del changed_fields, update_reason
-    clinical_impression = _short_text(result.get("clinical_impression") or result.get("note") or "")
-    final_summary = _short_text(result.get("final_assessment_summary") or clinical_impression or "")
-    patient_plan = _short_text(
-        result.get("patient_facing_plan")
-        or result.get("patient_plan")
-        or result.get("disposition_advice")
-        or final_summary
-        or ""
+    clinical_impression = _preferred_text(result.get("clinical_impression") or "", result.get("note") or "", fallback=_default_round2_impression(result))
+    final_summary = _preferred_text(result.get("final_assessment_summary") or "", clinical_impression, fallback=clinical_impression)
+    patient_plan = _preferred_text(
+        result.get("patient_facing_plan") or "",
+        result.get("patient_plan") or "",
+        result.get("disposition_advice") or "",
+        final_summary,
+        fallback=_default_round2_plan(result),
     )
     followup = dict(result.get("followup_recommendation") or {})
     return_precautions = [str(item).strip() for item in (result.get("return_precautions") or result.get("red_flags") or []) if str(item).strip()]
@@ -246,7 +314,7 @@ def _build_round2_reply(
             include_guidance=reassessment_intent == "question_with_minor_guidance",
         )
 
-    lines = ["结合上一轮判断和这次检查结果，我的看法是这样的。"]
+    lines = ["结合上一轮问诊和这次检查结果，我的判断是这样的。"]
     if clinical_impression:
         lines.append(f"{clinical_impression}。")
     if final_summary and final_summary != clinical_impression:
@@ -260,6 +328,95 @@ def _build_round2_reply(
         lines.append(f"如果后面情况有变化，再考虑补做{_join_items(tests)}。")
     lines.extend(_build_followup_reply(followup, return_precautions, include_precautions=True))
     return "".join(part for part in lines if part).strip()
+
+
+def _build_round1_reassessment_answer(result: dict, topics: set[str], *, include_guidance: bool) -> str:
+    clinical_impression = _short_text(result.get("clinical_impression") or result.get("note") or "")
+    patient_plan = _short_text(result.get("patient_plan") or result.get("disposition_advice") or "")
+    tests = _result_test_items(result)
+    actions = [str(item).strip() for item in (result.get("medication_or_action") or []) if str(item).strip()]
+    recommended_department = str(result.get("recommended_department") or "").strip()
+
+    lines: list[str] = []
+    if "tests" in topics and tests:
+        lines.append(_round1_test_instruction(result, tests))
+    elif "medication" in topics and actions:
+        lines.append(f"现阶段可以先按{_join_items(actions)}处理。")
+    elif recommended_department and ("diagnosis" in topics or "followup" in topics):
+        lines.append(f"目前更建议转到{recommended_department}进一步处理。")
+    elif clinical_impression:
+        lines.append(f"按目前掌握的信息，{clinical_impression}。")
+
+    if include_guidance:
+        if tests:
+            lines.append(_round1_test_instruction(result, tests))
+        elif patient_plan:
+            lines.append(f"接下来更重要的是{patient_plan}。")
+    return "".join(dict.fromkeys(part for part in lines if part)).strip()
+
+
+def _build_round1_reply(
+    result: dict,
+    *,
+    message_type: str,
+    reply_style: str,
+    changed_fields: list[str],
+    update_reason: str | None,
+    reassessment_intent: str | None,
+    payload: dict | None,
+) -> str:
+    del changed_fields, update_reason
+    clinical_impression = _short_text(result.get("clinical_impression") or result.get("note") or "")
+    patient_plan = _short_text(result.get("patient_plan") or result.get("disposition_advice") or "")
+    tests = _result_test_items(result)
+    actions = [str(item).strip() for item in (result.get("medication_or_action") or []) if str(item).strip()]
+    recommended_department = str(result.get("recommended_department") or "").strip()
+    topics = detect_reassessment_topics((payload or {}).get("message") or "")
+
+    if reply_style == "round1_reassessment":
+        if reassessment_intent == "result_update":
+            lines = ["基于你刚补充的信息，我把当前判断调整一下。"]
+            if recommended_department:
+                lines.append(f"这次更建议到{recommended_department}进一步看诊。")
+            elif tests:
+                lines.append(_round1_test_instruction(result, tests))
+            elif patient_plan:
+                lines.append(f"{patient_plan}。")
+            elif clinical_impression:
+                lines.append(f"{clinical_impression}。")
+            if actions and not tests:
+                lines.append(f"目前可以先按{_join_items(actions)}处理。")
+            return "".join(lines).strip()
+
+        answer = _build_round1_reassessment_answer(
+            result,
+            topics,
+            include_guidance=reassessment_intent == "question_with_minor_guidance",
+        )
+        if answer:
+            return answer
+
+    lines: list[str] = []
+    generic_impression = "信息还不足" in clinical_impression or "辅助检查" in clinical_impression
+    if recommended_department:
+        if clinical_impression and not generic_impression:
+            lines.append(f"从你现在描述的情况看，{clinical_impression}。")
+        lines.append(f"这次更建议到{recommended_department}进一步看诊。")
+    elif tests:
+        if clinical_impression and not generic_impression:
+            lines.append(f"从你现在描述的情况看，{clinical_impression}。")
+        lines.append(_round1_test_instruction(result, tests))
+    elif patient_plan:
+        if clinical_impression and not generic_impression:
+            lines.append(f"从你现在描述的情况看，{clinical_impression}。")
+        lines.append(f"{patient_plan}。")
+    elif clinical_impression:
+        lines.append(f"根据你目前提供的情况，{clinical_impression}。")
+    else:
+        lines.append("我先记录这些信息，后续按门诊流程继续判断。")
+    if actions and not tests:
+        lines.append(f"目前可以先按{_join_items(actions)}处理。")
+    return "".join(lines).strip()
 
 
 def build_patient_reply(

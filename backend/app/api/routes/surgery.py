@@ -42,6 +42,23 @@ def send_surgery_message(session_id: str, body: SurgeryMessageRequest, request: 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/api/v1/surgery-sessions/{session_id}/advance")
+def advance_surgery_session(session_id: str, request: Request):
+    service = request.app.state.container["surgery_service"]
+    session = request.app.state.container["session_repo"].get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="session not found")
+    payload = {
+        "patient_id": session["patient_id"],
+        "visit_id": session.get("visit_id"),
+        "message": "",
+    }
+    try:
+        return service.continue_system_session(session_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get("/api/v1/surgery-sessions/{session_id}")
 def get_surgery_session(session_id: str, request: Request):
     service = request.app.state.container["surgery_service"]

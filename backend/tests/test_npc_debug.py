@@ -105,7 +105,7 @@ def test_npc_debug_step_reaches_outpatient_disposition_and_records_dialogue(tmp_
     counterparties = {entry["counterparty"] for entry in transcript}
     assert "triage_agent" in counterparties
     assert "internal_medicine_agent" in counterparties
-    assert any("[History reviewed]" in entry["message"] for entry in transcript if entry["counterparty"] == "internal_medicine_agent")
+    assert not any("[History reviewed]" in entry["message"] for entry in transcript if entry["counterparty"] == "internal_medicine_agent")
     assert final_snapshot["medical_record_summary"] is not None
     assert final_snapshot["medical_record_summary"]["entry_count"] >= 4
 

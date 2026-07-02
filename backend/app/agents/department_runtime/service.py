@@ -1,7 +1,7 @@
 import json
 import inspect
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib import request as urlrequest
 
 from app.agents.clinical_policy import ClinicalPolicyRuntime, ClinicalPolicyValidatorResult
@@ -71,6 +71,9 @@ class DepartmentAgentRuntime:
 
     def continue_session(self, session_id: str, payload: dict):
         return self.graph.invoke({"mode": "continue_session", "payload": payload, "session_id": session_id})
+
+    def continue_system_session(self, session_id: str, payload: dict):
+        return self.graph.invoke({"mode": "system_continue", "payload": payload, "session_id": session_id})
 
     @staticmethod
     def _decode_visit_data(visit_row: dict | None) -> dict:
@@ -240,6 +243,8 @@ class DepartmentAgentRuntime:
             shared_memory["profile"].get("chronic_conditions"),
             payload.get("chronic_conditions") or [],
         )
+        if payload.get("chronic_conditions"):
+            shared_memory["profile"]["chronic_conditions_status"] = "known"
 
         clinical = shared_memory["clinical_memory"]
         clinical["symptoms"] = self.config.merge_unique(
@@ -301,6 +306,11 @@ class DepartmentAgentRuntime:
             profile["allergies"] = extracted.get("allergies") or []
         elif extracted.get("allergy_status") == "uncertain" and profile.get("allergy_status") != "known":
             profile["allergy_status"] = "uncertain"
+        if extracted.get("chronic_conditions_status") == "known":
+            profile["chronic_conditions_status"] = "known"
+            profile["chronic_conditions"] = self.config.merge_unique([], extracted.get("chronic_conditions") or [])
+        elif extracted.get("chronic_conditions_status") == "uncertain" and profile.get("chronic_conditions_status") != "known":
+            profile["chronic_conditions_status"] = "uncertain"
         clinical["risk_flags"] = self.config.derive_risk_flags(clinical.get("symptoms") or [], clinical.get("vitals") or {})
         memory.private_memory["latest_extraction"] = extracted
         memory.consultation_progress.patient_reply_count += 1
@@ -319,6 +329,8 @@ class DepartmentAgentRuntime:
         merged["vitals"] = self.config.merge_vitals(clinical.get("vitals") or {}, payload.get("vitals") or {})
         merged["onset_time"] = payload.get("onset_time") or clinical.get("onset_time")
         merged["allergies"] = payload.get("allergies") or shared_memory["profile"].get("allergies") or []
+        merged["chronic_conditions"] = shared_memory["profile"].get("chronic_conditions") or []
+        merged["chronic_conditions_status"] = shared_memory["profile"].get("chronic_conditions_status") or "unknown"
         merged["visit_id"] = payload.get("visit_id")
         if consultation_context:
             merged["consultation_context"] = consultation_context
@@ -348,6 +360,8 @@ class DepartmentAgentRuntime:
                     merged["previous_round_summary"] = previous_round_summary
         if private_memory and doctor_memory_policy != "chart_only" and isinstance(private_memory.get("historical_records_template"), dict):
             merged["historical_records_template"] = private_memory.get("historical_records_template")
+        if private_memory and isinstance(private_memory.get("physical_exam"), dict):
+            merged["physical_exam"] = private_memory.get("physical_exam")
         self.extend_merged_payload(merged, payload, shared_memory, private_memory or {})
         return merged
 
@@ -582,6 +596,352 @@ class DepartmentAgentRuntime:
                 ).strip()
         return ""
 
+    @staticmethod
+    def _parse_json_object_from_text(text: str) -> dict | None:
+        parsed_text = str(text or "").strip()
+        if not parsed_text:
+            return None
+        try:
+            payload_json = json.loads(parsed_text)
+            return payload_json if isinstance(payload_json, dict) else None
+        except json.JSONDecodeError:
+            start = parsed_text.find("{")
+            end = parsed_text.rfind("}")
+            if start >= 0 and end > start:
+                payload_json = json.loads(parsed_text[start : end + 1])
+                return payload_json if isinstance(payload_json, dict) else None
+        return None
+
+    @staticmethod
+    def _coerce_string_list(value) -> list[str]:
+        if isinstance(value, str):
+            values = [part.strip() for part in value.replace(";", ",").split(",")]
+        elif isinstance(value, list):
+            values = [str(item).strip() for item in value]
+        else:
+            values = []
+        return [item for item in values if item]
+
+    def _request_json_from_llm_messages(self, messages: list[dict], *, timeout: int = 18) -> dict | None:
+        if not messages:
+            return None
+
+        def _single_attempt():
+            req = urlrequest.Request(
+                self.llm_settings["endpoint"],
+                data=json.dumps(
+                    {
+                        "model": self.llm_settings["model"],
+                        "messages": messages,
+                        "temperature": 0,
+                        "n": 1,
+                        "stream": False,
+                        "presence_penalty": 0,
+                        "frequency_penalty": 0,
+                    }
+                ).encode("utf-8"),
+                headers={
+                    "accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.llm_settings['api_key']}",
+                },
+                method="POST",
+            )
+            with urlrequest.urlopen(req, timeout=timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            text = self.extract_text_from_response(data)
+            parsed = self._parse_json_object_from_text(text)
+            if parsed is None:
+                raise ValueError("empty_or_unparseable_response")
+            return parsed
+
+        return call_with_llm_retries(_single_attempt, retries=DEFAULT_LLM_RETRIES)
+
+    @staticmethod
+    def _looks_like_physical_exam_action_message(message: str) -> bool:
+        text = str(message or "").strip().lower()
+        if not text:
+            return True
+        action_tokens = (
+            "please",
+            "let me",
+            "i will",
+            "i'll",
+            "i am going to",
+            "open your mouth",
+            "listen to",
+            "请",
+            "让我",
+            "我来",
+            "我先",
+            "张开嘴",
+            "听一下",
+            "检查一下",
+        )
+        finding_tokens = (
+            "find",
+            "finding",
+            "show",
+            "heard",
+            "not heard",
+            "clear",
+            "redness",
+            "查体",
+            "检查显示",
+            "可见",
+            "未见",
+            "闻及",
+            "未闻及",
+            "呼吸音",
+            "充血",
+            "肿大",
+            "压痛",
+        )
+        return any(token in text for token in action_tokens) and not any(token in text for token in finding_tokens)
+
+    def _build_physical_exam_result_fallback(self, exam_decision: dict, message: str = "") -> dict:
+        targets = self._coerce_string_list(exam_decision.get("exam_targets"))
+        target_text = " ".join(targets).lower()
+        patient_text = str(message or "").lower()
+        findings: list[str] = []
+
+        if any(token in target_text for token in ("throat", "咽", "喉", "tonsil", "扁桃体")):
+            findings.append("咽部轻度充血，扁桃体未见明显肿大")
+        if any(token in target_text for token in ("lung", "肺", "auscultation", "呼吸", "胸")):
+            if any(token in patient_text for token in ("wheeze", "喘", "气短", "胸闷", "shortness of breath")):
+                findings.append("双肺呼吸音基本对称，未闻及明显干湿啰音")
+            else:
+                findings.append("双肺呼吸音清，未闻及明显干湿啰音")
+        if any(token in target_text for token in ("abdomen", "腹", "tenderness", "压痛")):
+            findings.append("腹部初筛未见明显腹膜刺激征")
+        if any(token in target_text for token in ("wound", "伤口", "incision", "切口")):
+            findings.append("局部伤口外观未见活动性出血")
+        if not findings:
+            findings.append("基础查体未见明显急性阳性体征")
+
+        impression = "基础门诊查体暂未提示需要立即急诊处理的明显阳性体征"
+        assistant_message = f"查体结果：{'；'.join(findings)}。"
+        return {
+            "assistant_message": assistant_message,
+            "physical_exam": {
+                "needed": True,
+                "exam_type": str(exam_decision.get("exam_type") or "basic_outpatient_exam").strip(),
+                "exam_targets": targets,
+                "findings": findings,
+                "impression": impression,
+                "source": "fallback_simulated_physical_exam",
+            },
+        }
+
+    def build_physical_exam_decision_llm_messages(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        policy_runtime_context=None,
+    ) -> list[dict]:
+        if not self.config.build_physical_exam_decision_llm_messages:
+            return []
+        consultation_round = self._normalize_consultation_round(payload.get("consultation_round"))
+        prompt_shared_memory = self._build_prompt_shared_memory(shared_memory, payload)
+        return self._call_with_supported_kwargs(
+            self.config.build_physical_exam_decision_llm_messages,
+            prompt_shared_memory,
+            payload.get("message", ""),
+            missing_fields,
+            payload=payload,
+            policy_runtime_context=policy_runtime_context,
+            consultation_round=consultation_round,
+        ) or []
+
+    def request_physical_exam_decision_from_llm(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        policy_runtime_context=None,
+    ) -> dict | None:
+        if payload.get("_force_offline_llm"):
+            return None
+        if not self.llm_settings.get("api_key"):
+            return None
+        messages = self.build_physical_exam_decision_llm_messages(
+            payload,
+            shared_memory,
+            missing_fields,
+            policy_runtime_context=policy_runtime_context,
+        )
+        result = self._request_json_from_llm_messages(messages)
+        if not isinstance(result, dict):
+            return None
+        exam_needed = bool(result.get("exam_needed"))
+        exam_type = str(result.get("exam_type") or "").strip()
+        exam_targets = self._coerce_string_list(result.get("exam_targets"))
+        doctor_action_message = str(result.get("doctor_action_message") or "").strip()
+        if exam_needed and not doctor_action_message:
+            target_text = "、".join(exam_targets) if exam_targets else "相关体征"
+            doctor_action_message = f"我先为您做一个基础门诊查体，重点看一下{target_text}。"
+        return {
+            "exam_needed": exam_needed,
+            "exam_type": exam_type if exam_needed else "",
+            "exam_targets": exam_targets if exam_needed else [],
+            "doctor_action_message": doctor_action_message if exam_needed else "",
+        }
+
+    def _request_physical_exam_decision_with_diagnostics(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        policy_runtime_context=None,
+    ) -> tuple[dict | None, dict]:
+        diagnostics = {
+            "llm_attempted": False,
+            "llm_succeeded": False,
+            "llm_error": None,
+            "response_source": "fallback",
+            "llm_response_kind": "physical_exam_decision",
+        }
+        if payload.get("_force_offline_llm") or not self.llm_settings.get("api_key"):
+            diagnostics["llm_error"] = "llm_unavailable"
+            return None, diagnostics
+        if not self.config.build_physical_exam_decision_llm_messages:
+            diagnostics["llm_error"] = "physical_exam_decision_prompt_unavailable"
+            return None, diagnostics
+        diagnostics["llm_attempted"] = True
+        try:
+            result = self.request_physical_exam_decision_from_llm(
+                payload,
+                shared_memory,
+                missing_fields,
+                policy_runtime_context=policy_runtime_context,
+            )
+        except Exception as exc:
+            diagnostics["llm_error"] = str(exc)
+            return None, diagnostics
+        if result is not None:
+            diagnostics["llm_succeeded"] = True
+            diagnostics["response_source"] = "llm"
+        else:
+            diagnostics["llm_error"] = "empty_or_unparseable_response"
+        return result, diagnostics
+
+    def build_physical_exam_result_llm_messages(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        exam_decision: dict,
+        *,
+        policy_runtime_context=None,
+    ) -> list[dict]:
+        if not self.config.build_physical_exam_result_llm_messages:
+            return []
+        consultation_round = self._normalize_consultation_round(payload.get("consultation_round"))
+        prompt_shared_memory = self._build_prompt_shared_memory(shared_memory, payload)
+        return self._call_with_supported_kwargs(
+            self.config.build_physical_exam_result_llm_messages,
+            prompt_shared_memory,
+            payload.get("message", ""),
+            exam_decision,
+            payload=payload,
+            policy_runtime_context=policy_runtime_context,
+            consultation_round=consultation_round,
+        ) or []
+
+    def request_physical_exam_result_from_llm(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        exam_decision: dict,
+        *,
+        policy_runtime_context=None,
+    ) -> dict | None:
+        if payload.get("_force_offline_llm"):
+            return None
+        if not self.llm_settings.get("api_key"):
+            return None
+        messages = self.build_physical_exam_result_llm_messages(
+            payload,
+            shared_memory,
+            exam_decision,
+            policy_runtime_context=policy_runtime_context,
+        )
+        result = self._request_json_from_llm_messages(messages)
+        if not isinstance(result, dict):
+            return None
+        physical_exam = dict(result.get("physical_exam") or {})
+        exam_type = str(physical_exam.get("exam_type") or exam_decision.get("exam_type") or "basic_outpatient_exam").strip()
+        exam_targets = self._coerce_string_list(physical_exam.get("exam_targets") or exam_decision.get("exam_targets"))
+        findings = physical_exam.get("findings") or result.get("findings") or []
+        if isinstance(findings, str):
+            findings = [findings.strip()] if findings.strip() else []
+        elif isinstance(findings, list):
+            findings = [item for item in findings if item not in (None, "", [], {})]
+        else:
+            findings = []
+        impression = str(physical_exam.get("impression") or result.get("impression") or "").strip()
+        assistant_message = str(result.get("assistant_message") or result.get("message") or "").strip()
+        if (not findings and not impression) or self._looks_like_physical_exam_action_message(assistant_message):
+            return self._build_physical_exam_result_fallback(exam_decision, payload.get("message", ""))
+        if not assistant_message and (findings or impression):
+            findings_text = "；".join(str(item) for item in findings) if findings else impression
+            assistant_message = f"基础查体结果：{findings_text}"
+        if not assistant_message:
+            return None
+        return {
+            "assistant_message": assistant_message,
+            "physical_exam": {
+                "needed": True,
+                "exam_type": exam_type,
+                "exam_targets": exam_targets,
+                "findings": findings,
+                "impression": impression,
+                "source": "llm_simulated_physical_exam",
+            },
+        }
+
+    def _request_physical_exam_result_with_diagnostics(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        exam_decision: dict,
+        *,
+        policy_runtime_context=None,
+    ) -> tuple[dict | None, dict]:
+        diagnostics = {
+            "llm_attempted": False,
+            "llm_succeeded": False,
+            "llm_error": None,
+            "response_source": "fallback",
+            "llm_response_kind": "physical_exam_result",
+        }
+        if payload.get("_force_offline_llm") or not self.llm_settings.get("api_key"):
+            diagnostics["llm_error"] = "llm_unavailable"
+            return None, diagnostics
+        if not self.config.build_physical_exam_result_llm_messages:
+            diagnostics["llm_error"] = "physical_exam_result_prompt_unavailable"
+            return None, diagnostics
+        diagnostics["llm_attempted"] = True
+        try:
+            result = self.request_physical_exam_result_from_llm(
+                payload,
+                shared_memory,
+                exam_decision,
+                policy_runtime_context=policy_runtime_context,
+            )
+        except Exception as exc:
+            diagnostics["llm_error"] = str(exc)
+            return None, diagnostics
+        if result is not None:
+            diagnostics["llm_succeeded"] = True
+            diagnostics["response_source"] = "llm"
+        else:
+            diagnostics["llm_error"] = "empty_or_unparseable_response"
+        return result, diagnostics
+
     def request_follow_up_message_from_llm(
         self,
         payload: dict,
@@ -597,14 +957,21 @@ class DepartmentAgentRuntime:
             return None
         if not self.config.build_follow_up_llm_messages:
             return None
+        allow_no_followup = bool(payload.get("_allow_no_followup"))
         prompt_shared_memory = self._build_prompt_shared_memory(shared_memory, payload)
+        prompt_payload = dict(payload or {})
+        session_id = prompt_payload.get("session_id")
+        if session_id and "recent_turns" not in prompt_payload:
+            prompt_payload["recent_turns"] = self.session_repo.list_turns(str(session_id), limit=8)
+        if prompt_payload.get("recent_turns"):
+            prompt_shared_memory["recent_turns"] = prompt_payload.get("recent_turns")
         messages = self._call_with_supported_kwargs(
             self.config.build_follow_up_llm_messages,
             prompt_shared_memory,
             payload.get("message", ""),
             missing_fields,
             question_focus=question_focus,
-            payload=payload,
+            payload=prompt_payload,
             policy_runtime_context=policy_runtime_context,
         )
         if not messages:
@@ -644,13 +1011,54 @@ class DepartmentAgentRuntime:
                         value = payload_json.get(key)
                         if isinstance(value, str) and value.strip():
                             return value.strip()
+                    if allow_no_followup:
+                        return None
             except Exception:
                 pass
+            if allow_no_followup and parsed_text in {"{}", "[]"}:
+                return None
             if parsed_text:
                 return parsed_text
             raise ValueError("empty_or_unparseable_response")
 
         return call_with_llm_retries(_single_attempt, retries=DEFAULT_LLM_RETRIES)
+
+    def _request_follow_up_message_with_diagnostics(
+        self,
+        payload: dict,
+        shared_memory: dict,
+        missing_fields: list[str],
+        *,
+        question_focus: str | None = None,
+        policy_runtime_context=None,
+    ) -> tuple[str | None, dict]:
+        diagnostics = {
+            "llm_attempted": False,
+            "llm_succeeded": False,
+            "llm_error": None,
+            "response_source": "fallback",
+        }
+        if payload.get("_force_offline_llm") or not self.llm_settings.get("api_key"):
+            diagnostics["llm_error"] = "llm_unavailable"
+            return None, diagnostics
+        diagnostics["llm_attempted"] = True
+        try:
+            message = self.request_follow_up_message_from_llm(
+                payload,
+                shared_memory,
+                missing_fields,
+                question_focus=question_focus,
+                policy_runtime_context=policy_runtime_context,
+            )
+        except Exception as exc:
+            diagnostics["llm_error"] = str(exc)
+            return None, diagnostics
+        if message:
+            diagnostics["llm_succeeded"] = True
+            diagnostics["response_source"] = "llm"
+            return message, diagnostics
+        diagnostics["llm_error"] = "empty_or_unparseable_response"
+        return None, diagnostics
 
     def _classify_post_final_answer_mode(self, payload: dict, memory, previous_final_result: dict | None = None) -> str:
         del previous_final_result
@@ -844,6 +1252,256 @@ class DepartmentAgentRuntime:
             diagnostics["llm_error"] = "empty_or_unparseable_response"
         return result, diagnostics
 
+    @staticmethod
+    def _with_extra_turns(assistant_payload: dict, extra_turns: list[dict]) -> dict:
+        if not extra_turns:
+            return assistant_payload
+        payload = dict(assistant_payload)
+        payload["extra_turns"] = list(payload.get("extra_turns") or []) + list(extra_turns)
+        return payload
+
+    @staticmethod
+    def _surgery_localized_issue_needs_location_before_exam(merged_payload: dict, memory) -> bool:
+        text = " ".join(
+            str(part or "")
+            for part in [
+                merged_payload.get("chief_complaint"),
+                merged_payload.get("symptoms"),
+                merged_payload.get("message"),
+                *(((memory.shared_memory.get("clinical_memory") or {}).get("symptoms") or []) if memory is not None else []),
+            ]
+        ).lower()
+        localized_issue_tokens = (
+            "wound",
+            "postoperative",
+            "post-op",
+            "surgery wound",
+            "lump",
+            "mass",
+            "nodule",
+            "swelling",
+            "redness",
+            "伤口",
+            "术后",
+            "手术伤口",
+            "刀口",
+            "切口",
+            "包块",
+            "肿块",
+            "结节",
+            "红肿",
+            "肿胀",
+        )
+        if not any(token in text for token in localized_issue_tokens):
+            return False
+        location_tokens = (
+            "upper",
+            "lower",
+            "arm",
+            "forearm",
+            "wrist",
+            "hand",
+            "finger",
+            "leg",
+            "calf",
+            "thigh",
+            "knee",
+            "ankle",
+            "foot",
+            "toe",
+            "abdomen",
+            "abdominal",
+            "chest",
+            "back",
+            "neck",
+            "shoulder",
+            "elbow",
+            "左侧",
+            "右侧",
+            "左边",
+            "右边",
+            "手腕",
+            "手臂",
+            "前臂",
+            "手指",
+            "手掌",
+            "胳膊",
+            "小腿",
+            "大腿",
+            "膝",
+            "脚踝",
+            "脚",
+            "足",
+            "腹",
+            "肚",
+            "胸",
+            "背",
+            "颈",
+            "肩",
+            "肘",
+            "腰",
+        )
+        return not any(token in text for token in location_tokens)
+
+    def _maybe_start_round1_physical_exam(
+        self,
+        *,
+        merged_payload: dict,
+        memory,
+        mode: str,
+        consultation_round: int,
+        missing_fields: list[str],
+        force_offline_llm: bool,
+        policy_runtime_context=None,
+    ) -> dict | None:
+        private_memory = memory.private_memory
+        progress = memory.consultation_progress
+        if mode != "continue_session" or consultation_round != 1:
+            return None
+        if progress.patient_reply_count < 1:
+            return None
+        if private_memory.get("physical_exam_decision_checked"):
+            return None
+        if (
+            self.config.agent_type == "surgery"
+            and self._surgery_localized_issue_needs_location_before_exam(merged_payload, memory)
+        ):
+            private_memory["physical_exam_deferred_reason"] = "missing_surgical_location"
+            return None
+
+        private_memory["physical_exam_decision_checked"] = True
+        private_memory["physical_exam_patient_message"] = merged_payload.get("message", "")
+        private_memory["physical_exam_missing_fields"] = list(missing_fields or [])
+        decision, decision_diagnostics = self._request_physical_exam_decision_with_diagnostics(
+            {**merged_payload, "_force_offline_llm": force_offline_llm},
+            memory.shared_memory,
+            missing_fields,
+            policy_runtime_context=policy_runtime_context,
+        )
+        private_memory["physical_exam_decision_diagnostics"] = dict(decision_diagnostics)
+        if not decision:
+            private_memory["physical_exam_completed"] = False
+            return None
+        private_memory["physical_exam_decision"] = dict(decision)
+        if not bool(decision.get("exam_needed")):
+            private_memory["physical_exam_completed"] = False
+            return None
+        intent_message = str(decision.get("doctor_action_message") or "").strip()
+        if not intent_message:
+            private_memory["physical_exam_completed"] = False
+            return None
+        private_memory["pending_physical_exam_stage"] = "result"
+        return {
+            "assistant_message": intent_message,
+            "message_type": "physical_exam_intent",
+            "response_mode": "physical_exam",
+            "judgment_changed": False,
+            "judgment_action": "none",
+            "answer_source": "llm",
+            "llm_response_kind": "physical_exam_decision",
+            "llm_diagnostics": decision_diagnostics,
+            "pending_auto_continue": True,
+            "physical_exam": {
+                "needed": True,
+                "exam_type": decision.get("exam_type"),
+                "exam_targets": list(decision.get("exam_targets") or []),
+            },
+        }
+
+    def _continue_pending_round1_physical_exam(
+        self,
+        *,
+        merged_payload: dict,
+        memory,
+        mode: str,
+        consultation_round: int,
+        force_offline_llm: bool,
+        policy_runtime_context=None,
+    ) -> dict | None:
+        private_memory = memory.private_memory
+        if mode != "system_continue" or consultation_round != 1:
+            return None
+        stage = str(private_memory.get("pending_physical_exam_stage") or "")
+        if stage == "result":
+            decision = dict(private_memory.get("physical_exam_decision") or {})
+            if not decision:
+                private_memory.pop("pending_physical_exam_stage", None)
+                return None
+            exam_payload = {
+                **merged_payload,
+                "message": private_memory.get("physical_exam_patient_message") or merged_payload.get("message", ""),
+                "_force_offline_llm": force_offline_llm,
+            }
+            result, result_diagnostics = self._request_physical_exam_result_with_diagnostics(
+                exam_payload,
+                memory.shared_memory,
+                decision,
+                policy_runtime_context=policy_runtime_context,
+            )
+            private_memory["physical_exam_result_diagnostics"] = dict(result_diagnostics)
+            if not result:
+                private_memory["physical_exam_completed"] = False
+                private_memory.pop("pending_physical_exam_stage", None)
+                return None
+            physical_exam = dict(result.get("physical_exam") or {})
+            result_message = str(result.get("assistant_message") or "").strip()
+            if not physical_exam or not result_message:
+                private_memory["physical_exam_completed"] = False
+                private_memory.pop("pending_physical_exam_stage", None)
+                return None
+            private_memory["physical_exam"] = physical_exam
+            private_memory["physical_exam_completed"] = True
+            private_memory["pending_physical_exam_stage"] = "resume_consultation"
+            merged_payload["physical_exam"] = physical_exam
+            return {
+                "assistant_message": result_message,
+                "message_type": "physical_exam_result",
+                "response_mode": "physical_exam",
+                "judgment_changed": False,
+                "judgment_action": "none",
+                "answer_source": "llm",
+                "llm_response_kind": "physical_exam_result",
+                "llm_diagnostics": result_diagnostics,
+                "pending_auto_continue": True,
+                "physical_exam": physical_exam,
+            }
+        if stage == "resume_consultation":
+            private_memory.pop("pending_physical_exam_stage", None)
+            private_memory.pop("pending_auto_continue", None)
+            if private_memory.get("physical_exam_patient_message"):
+                merged_payload["message"] = private_memory.get("physical_exam_patient_message")
+            if isinstance(private_memory.get("physical_exam"), dict):
+                merged_payload["physical_exam"] = private_memory.get("physical_exam")
+            return None
+        return None
+
+    def _select_optional_round1_followup_focus(
+        self,
+        *,
+        memory,
+        mode: str,
+        consultation_round: int,
+        missing_fields: list[str],
+    ) -> str | None:
+        if mode not in {"continue_session", "system_continue"} or consultation_round != 1:
+            return None
+        if missing_fields:
+            return None
+        optional_fields = tuple(self.config.optional_round1_followup_fields or ())
+        if not optional_fields:
+            return None
+        progress = memory.consultation_progress
+        profile = memory.shared_memory.get("profile") or {}
+        for field_name in optional_fields:
+            if field_name in progress.asked_fields_history:
+                continue
+            if field_name == "past_medical_history":
+                status = str(profile.get("chronic_conditions_status") or "unknown").strip().lower()
+                if profile.get("chronic_conditions") or status in {"known", "uncertain"}:
+                    continue
+                return field_name
+        return None
+
     def evaluate(self, merged_payload: dict, memory, mode: str) -> tuple[dict, list[dict], list[str], dict, bool]:
         progress = memory.consultation_progress
         consultation_round = self._normalize_consultation_round(memory.private_memory.get("consultation_round"))
@@ -868,27 +1526,50 @@ class DepartmentAgentRuntime:
         fallback = self.config.fallback_result(merged_payload)
 
         if mode == "create_session" and consultation_round == 1:
-            assistant_message = self._call_with_supported_kwargs(
-                self.config.build_initial_message,
+            initial_missing_fields = self._call_with_supported_kwargs(
+                self.config.build_missing_fields,
                 memory.shared_memory,
-                progress,
-                consultation_round=consultation_round,
                 policy_runtime_context=policy_runtime_context,
             )
-            historical_note = str(memory.private_memory.get("historical_records_note") or "").strip()
-            if historical_note:
-                assistant_message = f"[History reviewed] {historical_note}\n{assistant_message}"
+            question_focus = initial_missing_fields[0] if initial_missing_fields else None
+            assistant_message, llm_diagnostics = self._request_follow_up_message_with_diagnostics(
+                {**merged_payload, "_force_offline_llm": force_offline_llm},
+                memory.shared_memory,
+                initial_missing_fields,
+                question_focus=question_focus,
+                policy_runtime_context=policy_runtime_context,
+            )
+            answer_source = "llm"
+            if not assistant_message:
+                assistant_message = self._call_with_supported_kwargs(
+                    self.config.build_initial_message,
+                    memory.shared_memory,
+                    progress,
+                    consultation_round=consultation_round,
+                    policy_runtime_context=policy_runtime_context,
+                )
+                answer_source = "fallback_formatter"
+            if question_focus:
+                progress.asked_fields_history.append(question_focus)
+                progress.last_question_focus = question_focus
+            else:
+                progress.last_question_focus = None
+            progress.last_question_text = assistant_message
             assistant_payload = {"assistant_message": assistant_message, "message_type": "followup"}
             consultation_result, missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
                 merged_payload=merged_payload,
                 memory=memory,
                 consultation_result=fallback,
-                missing_fields=self._call_with_supported_kwargs(
-                    self.config.build_missing_fields,
-                    memory.shared_memory,
-                    policy_runtime_context=policy_runtime_context,
-                ),
-                assistant_payload=assistant_payload,
+                missing_fields=initial_missing_fields,
+                assistant_payload={
+                    **assistant_payload,
+                    "response_mode": "followup",
+                    "judgment_changed": False,
+                    "judgment_action": "none",
+                    "answer_source": answer_source,
+                    "llm_response_kind": "followup_question",
+                    "llm_diagnostics": llm_diagnostics,
+                },
                 complete=False,
                 policy_runtime_context=policy_runtime_context,
             )
@@ -899,6 +1580,29 @@ class DepartmentAgentRuntime:
                 assistant_payload,
                 complete,
             )
+
+        pending_physical_exam_payload = self._continue_pending_round1_physical_exam(
+            merged_payload=merged_payload,
+            memory=memory,
+            mode=mode,
+            consultation_round=consultation_round,
+            force_offline_llm=force_offline_llm,
+            policy_runtime_context=policy_runtime_context,
+        )
+        if pending_physical_exam_payload:
+            return fallback, evidence, missing_fields, pending_physical_exam_payload, False
+
+        physical_exam_payload = self._maybe_start_round1_physical_exam(
+            merged_payload=merged_payload,
+            memory=memory,
+            mode=mode,
+            consultation_round=consultation_round,
+            missing_fields=missing_fields,
+            force_offline_llm=force_offline_llm,
+            policy_runtime_context=policy_runtime_context,
+        )
+        if physical_exam_payload:
+            return fallback, evidence, missing_fields, physical_exam_payload, False
 
         if is_post_final_reassessment:
             response_mode = self._classify_post_final_answer_mode(
@@ -1118,17 +1822,13 @@ class DepartmentAgentRuntime:
             progress.followup_count += 1
             question_focus = missing_fields[0] if missing_fields else None
             llm_followup_message = None
-            if mode == "continue_session" and progress.patient_reply_count >= 1:
-                try:
-                    llm_followup_message = self.request_follow_up_message_from_llm(
-                        {**merged_payload, "_force_offline_llm": force_offline_llm},
-                        memory.shared_memory,
-                        missing_fields,
-                        question_focus=question_focus,
-                        policy_runtime_context=policy_runtime_context,
-                    )
-                except Exception:
-                    llm_followup_message = None
+            llm_followup_message, followup_llm_diagnostics = self._request_follow_up_message_with_diagnostics(
+                {**merged_payload, "_force_offline_llm": force_offline_llm},
+                memory.shared_memory,
+                missing_fields,
+                question_focus=question_focus,
+                policy_runtime_context=policy_runtime_context,
+            )
             if question_focus:
                 asked_count = sum(1 for item in progress.asked_fields_history if item == question_focus)
                 assistant_message = llm_followup_message
@@ -1167,11 +1867,56 @@ class DepartmentAgentRuntime:
                     "judgment_action": "none",
                     "answer_source": "llm" if llm_followup_message else "fallback_formatter",
                     "llm_response_kind": "followup_question",
+                    "llm_diagnostics": followup_llm_diagnostics,
                 },
                 complete=False,
                 policy_runtime_context=policy_runtime_context,
             )
             return consultation_result, evidence, validated_missing_fields, assistant_payload, complete
+
+        optional_question_focus = self._select_optional_round1_followup_focus(
+            memory=memory,
+            mode=mode,
+            consultation_round=consultation_round,
+            missing_fields=missing_fields,
+        )
+        if optional_question_focus:
+            optional_message, optional_llm_diagnostics = self._request_follow_up_message_with_diagnostics(
+                {
+                    **merged_payload,
+                    "_force_offline_llm": force_offline_llm,
+                    "_allow_no_followup": True,
+                    "optional_followup_focus": optional_question_focus,
+                },
+                memory.shared_memory,
+                [],
+                question_focus=optional_question_focus,
+                policy_runtime_context=policy_runtime_context,
+            )
+            if optional_message:
+                progress.followup_count += 1
+                progress.asked_fields_history.append(optional_question_focus)
+                progress.last_question_focus = optional_question_focus
+                progress.last_question_text = optional_message
+                consultation_result, validated_missing_fields, assistant_payload, complete = self.apply_policy_snapshot_validation(
+                    merged_payload=merged_payload,
+                    memory=memory,
+                    consultation_result=fallback,
+                    missing_fields=[],
+                    assistant_payload={
+                        "assistant_message": optional_message,
+                        "message_type": "followup",
+                        "response_mode": "followup",
+                        "judgment_changed": False,
+                        "judgment_action": "none",
+                        "answer_source": "llm",
+                        "llm_response_kind": "optional_followup_question",
+                        "llm_diagnostics": optional_llm_diagnostics,
+                    },
+                    complete=False,
+                    policy_runtime_context=policy_runtime_context,
+                )
+                return consultation_result, evidence, validated_missing_fields, assistant_payload, complete
 
         llm_result, llm_diagnostics = self._request_consultation_with_diagnostics(
             {**merged_payload, "_force_offline_llm": force_offline_llm},
@@ -1250,7 +1995,8 @@ class DepartmentAgentRuntime:
         assistant_payload: dict,
         complete: bool,
     ):
-        timestamp = now_iso()
+        base_timestamp = datetime.now(timezone.utc)
+        timestamp = base_timestamp.isoformat()
         shared = memory.shared_memory
         private_memory = memory.private_memory
         progress = memory.consultation_progress
@@ -1278,6 +2024,7 @@ class DepartmentAgentRuntime:
         private_memory["reassessment_intent"] = assistant_payload.get("reassessment_intent")
         private_memory["reply_rendering_mode"] = assistant_payload.get("reply_rendering_mode")
         private_memory["llm_diagnostics"] = dict(assistant_payload.get("llm_diagnostics") or {})
+        private_memory["pending_auto_continue"] = bool(assistant_payload.get("pending_auto_continue", False))
         private_memory[self.config.progress_memory_key] = progress.to_dict()
         private_memory["latest_summary"] = {
             "department": consultation_result.get("department"),
@@ -1296,13 +2043,42 @@ class DepartmentAgentRuntime:
         self.memory_repo.save_shared_memory(patient_id, shared)
         self.memory_repo.save_agent_session_memory(session_id, patient_id, private_memory, agent_type=self.config.agent_type)
         self.session_repo.update_state(session_id, dialogue_state.value)
+        assistant_turn_index = 0
+        for extra_turn in assistant_payload.get("extra_turns") or []:
+            extra_content = str(extra_turn.get("content") or extra_turn.get("assistant_message") or "").strip()
+            if not extra_content:
+                continue
+            extra_timestamp = (base_timestamp + timedelta(milliseconds=assistant_turn_index * 900)).isoformat()
+            assistant_turn_index += 1
+            extra_message_type = str(extra_turn.get("message_type") or "assistant_extra")
+            extra_metadata = self.build_assistant_turn_metadata(consultation_result, extra_message_type, progress, private_memory)
+            extra_metadata.update(dict(extra_turn.get("metadata") or {}))
+            extra_metadata["agent_type"] = self.config.agent_type
+            extra_metadata["message_type"] = extra_message_type
+            extra_metadata["response_mode"] = extra_turn.get("response_mode") or extra_metadata.get("response_mode")
+            extra_metadata["llm_response_kind"] = extra_turn.get("llm_response_kind") or extra_metadata.get("llm_response_kind")
+            self.session_repo.append_turn(
+                session_id,
+                patient_id,
+                "assistant",
+                extra_content,
+                extra_timestamp,
+                metadata=extra_metadata,
+            )
+        assistant_timestamp = (base_timestamp + timedelta(milliseconds=assistant_turn_index * 900)).isoformat()
+        assistant_metadata = self.build_assistant_turn_metadata(consultation_result, message_type, progress, private_memory)
+        if assistant_payload.get("pending_auto_continue"):
+            assistant_metadata["pending_auto_continue"] = True
+            assistant_metadata["pending_stage"] = private_memory.get("pending_physical_exam_stage")
+        if assistant_payload.get("physical_exam") is not None:
+            assistant_metadata["physical_exam"] = assistant_payload.get("physical_exam")
         self.session_repo.append_turn(
             session_id,
             patient_id,
             "assistant",
             assistant_message,
-            timestamp,
-            metadata=self.build_assistant_turn_metadata(consultation_result, message_type, progress, private_memory),
+            assistant_timestamp,
+            metadata=assistant_metadata,
         )
 
         existing_patient = self.patient_repo.get(patient_id)
@@ -1348,7 +2124,7 @@ class DepartmentAgentRuntime:
             complete=complete,
             was_completed=was_completed,
             visit_row=visit_row,
-            timestamp=timestamp,
+            timestamp=assistant_timestamp,
         )
 
     def build_response(self, patient_id: str, session_id: str):
@@ -1377,6 +2153,8 @@ class DepartmentAgentRuntime:
             "patient_reply_source": private_memory.get("patient_reply_source"),
             "patient_reply_style": private_memory.get("patient_reply_style"),
             "response_source": (private_memory.get("llm_diagnostics") or {}).get("response_source"),
+            "pending_auto_continue": bool(private_memory.get("pending_auto_continue", False)),
+            "pending_stage": private_memory.get("pending_physical_exam_stage"),
         }
         dialogue.update(self.extend_dialogue_payload(private_memory, progress))
         visit_state = None
@@ -1606,6 +2384,7 @@ class DepartmentAgentRuntime:
         profile.setdefault("allergies", [])
         profile.setdefault("allergy_status", "unknown")
         profile.setdefault("chronic_conditions", [])
+        profile.setdefault("chronic_conditions_status", "known" if profile.get("chronic_conditions") else "unknown")
         clinical.setdefault("chief_complaint", None)
         clinical.setdefault("symptoms", [])
         clinical.setdefault("onset_time", None)
@@ -1648,6 +2427,8 @@ class DepartmentAgentRuntime:
         chart_view = payload.get("chart_view")
         if consultation_context:
             prompt_shared_memory["consultation_context"] = consultation_context
+        if isinstance(payload.get("physical_exam"), dict):
+            prompt_shared_memory["physical_exam"] = payload.get("physical_exam")
         if chart_view and str(consultation_context.get("intake_mode") or "").strip() == "referral_handoff":
             prompt_shared_memory["doctor_chart_view"] = chart_view
         return prompt_shared_memory

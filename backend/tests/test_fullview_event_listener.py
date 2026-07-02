@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from app.database import Database
+from app.integrations.fullview import FullviewClientError
 from app.repositories.fullview_sync import FullviewSyncRepository
 from app.services.fullview_sync import FullviewEventListener, FullviewSyncWorker
 
@@ -32,6 +34,11 @@ class EventClient:
     def delete_patient(self, patient_id: str):
         self.deleted.append(patient_id)
         return {"accepted": True, "eventSeq": 1000 + len(self.deleted)}
+
+
+class FailingEventClient(EventClient):
+    def fetch_events(self, after_seq: int, *, limit: int = 200):
+        raise FullviewClientError("[WinError 10061] connection refused")
 
 
 def event(seq: int, patient_id: str, *, event_id: str = "OP_ARRIVAL_TO_TRIAGE"):
@@ -122,6 +129,33 @@ def test_listener_pages_idempotently_and_restores_cursor(tmp_path):
         ).fetchone()["count"] == 250
     finally:
         conn.close()
+
+
+def test_listener_records_fetch_errors_without_traceback_spam(tmp_path, caplog):
+    _, repo = make_repo(tmp_path)
+    listener = FullviewEventListener(
+        repo=repo,
+        client=FailingEventClient(),
+        enabled=True,
+        interval_seconds=0.1,
+        observe_timeout_seconds=30,
+        cleanup_idle_seconds=3,
+    )
+    caplog.set_level(logging.WARNING, logger="app.services.fullview_sync")
+
+    assert listener.tick() is False
+    assert listener.tick() is False
+
+    assert listener.last_loop_error == (
+        "FullviewClientError: [WinError 10061] connection refused"
+    )
+    records = [
+        record
+        for record in caplog.records
+        if "could not fetch events" in record.getMessage()
+    ]
+    assert len(records) == 1
+    assert records[0].exc_info is None
 
 
 def test_restart_cleanup_skips_orphan_commands_and_queues_all_managed_patients(tmp_path):

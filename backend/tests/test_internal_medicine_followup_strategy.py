@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.agents.internal_medicine.rules import prioritize_missing_fields
+from app.agents.internal_medicine.rules import extract_structured_updates, prioritize_missing_fields
 from app.main import create_app
 
 PATIENT_ID = "P-11111111"
@@ -32,6 +32,26 @@ def get_data(response):
     body = response.json()
     assert body["ok"] is True
     return body["data"]
+
+
+def test_extract_structured_updates_handles_chronic_condition_history():
+    negative = extract_structured_updates("没有高血压糖尿病")
+    assert negative["chronic_conditions"] == []
+    assert negative["chronic_conditions_status"] == "known"
+    assert "past_medical_history" in negative["extracted_fields"]
+
+    english_negative = extract_structured_updates("I have no hypertension or diabetes.")
+    assert english_negative["chronic_conditions"] == []
+    assert english_negative["chronic_conditions_status"] == "known"
+
+    positive = extract_structured_updates("有高血压和糖尿病")
+    assert positive["chronic_conditions"] == ["hypertension", "diabetes"]
+    assert positive["chronic_conditions_status"] == "known"
+    assert "past_medical_history" in positive["extracted_fields"]
+
+    uncertain = extract_structured_updates("不太清楚有没有慢性病")
+    assert uncertain["chronic_conditions_status"] == "uncertain"
+    assert "past_medical_history" in uncertain["extracted_fields"]
 
 
 def registration_payload(name: str = "Player"):

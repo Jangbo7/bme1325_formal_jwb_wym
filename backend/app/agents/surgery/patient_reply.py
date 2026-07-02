@@ -26,11 +26,50 @@ def _preferred_text(*values: str, fallback: str = "") -> str:
         text = _clean(value)
         if text and not _looks_english(text):
             return text
-    for value in values:
-        text = _clean(value)
-        if text:
-            return text
     return fallback
+
+
+def _procedure_label(category: str) -> str:
+    mapping = {
+        "wound_care": "门诊伤口处理",
+        "debridement_dressing": "门诊清创换药",
+        "immobilization": "门诊固定处理",
+    }
+    return mapping.get(str(category or "").strip(), "门诊外科处置")
+
+
+def _round1_test_instruction(tests: list[str]) -> str:
+    return f"我已为你开具{_join_items(tests)}检查，结果出来后带来外科复诊。"
+
+
+def _round1_procedure_instruction(result: dict) -> str:
+    procedure_name = _procedure_label(str(result.get("outpatient_procedure_category") or ""))
+    return f"我已为你安排{procedure_name}，先把处置完成，之后再回外科复诊。"
+
+
+def _round1_next_step_instruction(result: dict, tests: list[str]) -> str:
+    needs_procedure = bool(result.get("needs_outpatient_procedure"))
+    procedure_parallel = bool(result.get("procedure_can_parallel_with_tests"))
+    if needs_procedure and tests:
+        procedure_name = _procedure_label(str(result.get("outpatient_procedure_category") or ""))
+        if procedure_parallel:
+            return f"我已为你开具{_join_items(tests)}检查，也安排了{procedure_name}；先完成检查和处置，之后带结果回外科复诊。"
+        return f"我已为你安排{procedure_name}，先完成处置；随后按已开具项目完成{_join_items(tests)}检查，带结果回外科复诊。"
+    if needs_procedure:
+        return _round1_procedure_instruction(result)
+    if tests:
+        return _round1_test_instruction(tests)
+    return ""
+
+
+def _action_sentence(actions: list[str]) -> str:
+    cleaned = [_clean(action) for action in actions if _clean(action)]
+    if not cleaned:
+        return ""
+    text = _join_items(cleaned)
+    if any(text.endswith(token) for token in ("处理", "处置", "消毒", "覆盖", "换药", "固定")):
+        return f"目前可以先{text}。"
+    return f"目前可以先按{text}处理。"
 
 
 def _build_followup_lines(followup: dict, return_precautions: list[str], *, include_precautions: bool) -> list[str]:
@@ -110,19 +149,20 @@ def _build_round1_question_answer(result: dict, topics: set[str], *, include_gui
     if "followup" in topics:
         lines.extend(_build_followup_lines(followup, return_precautions, include_precautions=True))
     elif "tests" in topics and tests:
-        lines.append(f"目前建议检查的重点是{_join_items(tests)}，这样更有助于把当前外科问题判断清楚。")
+        lines.append(_round1_next_step_instruction(result, tests))
     elif "medication" in topics and actions:
-        lines.append(f"现阶段可以先按{_join_items(actions)}处理。")
+        lines.append(_action_sentence(actions))
     elif recommended_department and ("diagnosis" in topics or "followup" in topics):
         lines.append(f"目前更建议转到{recommended_department}继续处理。")
     elif impression:
         lines.append(f"按目前掌握的信息，{impression}。")
 
     if include_guidance:
-        if patient_plan:
+        next_step = _round1_next_step_instruction(result, tests)
+        if next_step:
+            lines.append(next_step)
+        elif patient_plan:
             lines.append(f"接下来更重要的是{patient_plan}。")
-        elif tests:
-            lines.append(f"先把{_join_items(tests)}完成，再结合结果决定下一步。")
     return "".join(lines).strip()
 
 
@@ -210,12 +250,12 @@ def _build_round1_reply(
                 lines.append(f"{impression}。")
             if recommended_department:
                 lines.append(f"这次更建议转到{recommended_department}进一步处理。")
-            elif tests:
-                lines.append(f"接下来先把{_join_items(tests)}完成，再结合结果决定下一步。")
+            elif _round1_next_step_instruction(result, tests):
+                lines.append(_round1_next_step_instruction(result, tests))
             elif patient_plan:
                 lines.append(f"{patient_plan}。")
             if actions and not tests:
-                lines.append(f"目前可以先按{_join_items(actions)}处理。")
+                lines.append(_action_sentence(actions))
             return "".join(lines).strip()
 
         answer = _build_round1_question_answer(
@@ -231,13 +271,13 @@ def _build_round1_reply(
         lines.append(f"{impression}。")
     if recommended_department:
         lines.append(f"这次更建议转到{recommended_department}进一步处理。")
-    elif tests:
-        lines.append(f"我建议你先把{_join_items(tests)}做了，再带结果回来复诊。")
+    elif _round1_next_step_instruction(result, tests):
+        lines.append(_round1_next_step_instruction(result, tests))
     elif patient_plan:
         lines.append(f"{patient_plan}。")
     if actions and not tests:
-        lines.append(f"目前可以先按{_join_items(actions)}处理。")
-    return "".join(lines).strip()
+        lines.append(_action_sentence(actions))
+    return "".join(part for part in lines if part).replace("。处理。", "处理。").strip()
 
 
 def _build_round2_reply(
@@ -286,7 +326,7 @@ def _build_round2_reply(
     lines: list[str] = []
     if procedure_completed:
         lines.append("前面的门诊处置已经完成。")
-    lines.append("我现在结合这次复查结果，继续给你后续处理和维护建议。")
+    lines.append("这次结果我看过了，接下来先这样处理。")
     if impression:
         lines.append(f"这次复查结果主要提示{impression}。")
     if final_summary and final_summary != impression:

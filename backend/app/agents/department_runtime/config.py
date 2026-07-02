@@ -13,6 +13,7 @@ class DepartmentAgentConfig:
     progress_from_dict: Callable[[dict | None], Any]
     progress_memory_key: str = "consultation_progress"
     min_patient_reply_count_before_complete: int = 0
+    optional_round1_followup_fields: tuple[str, ...] = ()
     create_session_events: tuple[str, ...] = ("start", "evaluate")
     continue_session_event: str = "receive_reply"
     followup_events: tuple[str, ...] = ("need_followup", "wait_for_reply")
@@ -20,6 +21,8 @@ class DepartmentAgentConfig:
     build_initial_message: Callable[[dict, Any], str] | None = None
     build_follow_up_question: Callable[..., str] | None = None
     build_follow_up_llm_messages: Callable[..., list[dict]] | None = None
+    build_physical_exam_decision_llm_messages: Callable[..., list[dict]] | None = None
+    build_physical_exam_result_llm_messages: Callable[..., list[dict]] | None = None
     build_transition_follow_up_question: Callable[[dict], str] | None = None
     build_post_final_answer_llm_messages: Callable[..., list[dict]] | None = None
     build_post_final_answer_fallback: Callable[..., str] | None = None

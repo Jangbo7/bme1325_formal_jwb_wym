@@ -78,6 +78,22 @@ def _default_rules() -> list[dict]:
             "source": "Surgery fallback rules",
         },
         {
+            "id": "surgery-rule-soft-tissue-lump",
+            "title": "Stable superficial soft tissue lump",
+            "keywords": ["lump", "mass", "nodule", "bump", "肿块", "包块", "结节", "疙瘩"],
+            "result": {
+                "diagnosis_level": 1,
+                "priority": "L",
+                "department": "Surgery",
+                "note": "初步考虑局部皮下结节或软组织包块，需要先做局部软组织超声进一步判断性质。",
+                "test_required": True,
+                "test_category": "medical_imaging",
+                "test_items": ["局部软组织超声"],
+                "test_reason": "用于判断包块的位置、大小、边界、内部回声和周围软组织情况。",
+            },
+            "source": "Surgery fallback rules",
+        },
+        {
             "id": "surgery-rule-general",
             "title": "General surgical outpatient concern",
             "keywords": [],
@@ -332,6 +348,23 @@ def _infer_test_plan(result: dict, payload: dict) -> dict:
         result["tests_suggested"] = _normalize_string_list(result.get("tests_suggested"), result["test_items"])
         result["test_required"] = bool(result.get("test_required", True))
         result["test_reason"] = str(result.get("test_reason") or fallback.get("test_reason") or "")
+    if _looks_like_low_risk_soft_tissue_lump(payload):
+        vague_tests = {
+            "focused surgical review",
+            "additional imaging or laboratory tests if indicated",
+            "basic wound assessment",
+            "additional imaging",
+            "辅助检查",
+            "相关检查",
+            "进一步检查",
+        }
+        tests = _normalize_string_list(result.get("test_items"), result.get("tests_suggested"))
+        if not tests or all(str(item).strip().lower() in vague_tests for item in tests):
+            result["test_category"] = "medical_imaging"
+            result["test_items"] = ["局部软组织超声"]
+            result["tests_suggested"] = ["局部软组织超声"]
+            result["test_required"] = True
+            result["test_reason"] = result.get("test_reason") or "用于判断包块的位置、大小、边界、内部结构和周围软组织情况。"
     return result
 
 
@@ -352,6 +385,20 @@ def _detect_surgery_red_flags(payload: dict) -> list[str]:
         flags.append("deep or contaminated wound")
     if has_any("fracture", "dislocation", "cannot move", "can't move", "numbness", "loss of sensation", "骨折", "脱位", "麻木"):
         flags.append("suspected fracture or dislocation")
+    if has_any(
+        "rapidly worsening swelling",
+        "rapidly enlarging",
+        "quickly enlarging",
+        "rapidly growing",
+        "swelling is getting worse",
+        "肿胀明显加重",
+        "迅速肿大",
+        "快速肿大",
+        "迅速增大",
+        "快速增大",
+        "肿块突然变大",
+    ):
+        flags.append("rapidly worsening swelling")
     if has_any("severe abdominal pain", "rigid abdomen", "persistent vomiting", "cannot pass gas", "cannot pass stool", "black stool", "bloody stool", "板状腹", "持续呕吐", "停气停便", "黑便", "血便"):
         flags.append("urgent abdominal surgical concern")
     if has_any("postoperative fever", "post-op fever", "wound dehiscence", "术后发热", "伤口裂开") or (
@@ -377,6 +424,78 @@ def _detect_surgery_red_flags(payload: dict) -> list[str]:
     except Exception:
         pass
     return list(dict.fromkeys(flags))
+
+
+def _looks_like_low_risk_soft_tissue_lump(payload: dict) -> bool:
+    text = f"{payload.get('symptoms', '')} {payload.get('chief_complaint', '')} {payload.get('message', '')}".lower()
+    if not any(token in text for token in ("lump", "mass", "nodule", "bump", "肿块", "包块", "结节", "疙瘩")):
+        return False
+    if _detect_surgery_red_flags(payload):
+        return False
+    high_risk_tokens = (
+        "severe pain",
+        "worsening pain",
+        "rapidly worsening",
+        "rapidly enlarging",
+        "quickly enlarging",
+        "redness spreading",
+        "skin breakdown",
+        "ulcer",
+        "pus",
+        "purulent",
+        "fever",
+        "麻木",
+        "活动受限",
+        "明显加重",
+        "快速增大",
+        "迅速增大",
+        "破溃",
+        "流脓",
+        "发热",
+        "皮肤发黑",
+    )
+    negative_context = any(
+        phrase in text
+        for phrase in (
+            "no redness",
+            "no skin breakdown",
+            "no ulcer",
+            "no pus",
+            "no fever",
+            "无红肿",
+            "没有红肿",
+            "无破溃",
+            "没有破溃",
+            "无脓",
+            "没有脓",
+            "无发热",
+            "没有发热",
+        )
+    )
+    if not negative_context and any(token in text for token in high_risk_tokens):
+        return False
+    return True
+
+
+def _supported_round1_surgery_red_flags(payload: dict) -> list[str]:
+    return _detect_surgery_red_flags(payload)
+
+
+def _usable_round1_impression(applied: dict, fallback: str) -> str:
+    impression = str(applied.get("clinical_impression") or applied.get("note") or "").strip().rstrip("。")
+    generic_markers = (
+        "信息还不足",
+        "辅助检查",
+        "safe first-round",
+        "routine first-round",
+        "continue surgical",
+        "recommended next step",
+        "complete the recommended",
+        "preliminary impression",
+    )
+    if impression and not any(marker.lower() in impression.lower() for marker in generic_markers):
+        return impression
+    return fallback.rstrip("。")
 
 
 def _default_round1_outcome_policy() -> dict:
@@ -953,42 +1072,51 @@ def _apply_round1_outcome_policy(
     if default_decision not in ROUND1_DECISIONS:
         default_decision = "test_first"
 
-    deterministic_red_flags = _detect_surgery_red_flags(payload)
-    red_flags = list(dict.fromkeys(_normalize_string_list(applied.get("red_flags"), deterministic_red_flags) + deterministic_red_flags))
+    deterministic_red_flags = _supported_round1_surgery_red_flags(payload)
+    red_flags = list(dict.fromkeys(deterministic_red_flags))
     applied["red_flags"] = red_flags
     if red_flags:
         applied["priority"] = "H"
+    elif str(applied.get("priority") or "").upper() == "H":
+        applied["priority"] = "M"
 
     if red_flags or str(applied.get("priority") or "").upper() == "H":
         decision = "urgent_escalation"
         recommended_department = "Emergency"
-        recommended_department_reason = "Urgent surgical red flags require immediate emergency evaluation."
-        clinical_impression = "The current presentation contains urgent surgical warning features and should not continue as a routine surgery visit."
+        recommended_department_reason = "当前存在外科危险信号，需要立即急诊评估。"
+        clinical_impression = "当前表现存在外科危险信号，不适合继续按普通外科门诊流程等待。"
         next_step_reason = recommended_department_reason
-        disposition_advice = "Please go to the emergency department or seek immediate high-priority surgical evaluation now."
+        disposition_advice = "请立即前往急诊或高优先级外科通道处理。"
     else:
         referral_target = _match_referral_target(payload, memory, outcome_policy)
         if referral_target is not None:
             decision = "recommend_other_clinic"
             recommended_department = referral_target["department"]
-            recommended_department_reason = referral_target["reason"] or f"The current complaint is more suitable for {recommended_department}."
-            clinical_impression = f"The current presentation appears more suitable for {recommended_department} evaluation than continued routine surgery follow-up."
+            recommended_department_reason = referral_target["reason"] or f"当前问题更适合到{recommended_department}进一步评估。"
+            clinical_impression = f"当前表现更适合到{recommended_department}评估，而不是继续普通外科复诊。"
             next_step_reason = recommended_department_reason
-            disposition_advice = f"Recommended next step: register with {recommended_department} for further evaluation."
+            disposition_advice = f"请下一步挂{recommended_department}进一步评估。"
         elif _round1_minimum_data_collected(payload, memory) and _matches_direct_treat_whitelist(payload, memory, applied, outcome_policy):
             decision = "treat_and_discharge"
             recommended_department = None
             recommended_department_reason = None
-            clinical_impression = "The current presentation is most consistent with a low-risk surgical outpatient concern that does not need a second surgery consultation right now."
-            next_step_reason = "Minimum information has been collected, there are no urgent surgical red flags, and the case matches the conservative direct-discharge whitelist."
-            disposition_advice = "Based on the current first-round surgical assessment, you may proceed with routine outpatient follow-up, checkout, and discharge advice without a second surgery consultation."
+            clinical_impression = _usable_round1_impression(applied, "当前表现整体偏低风险，暂时不需要二轮外科复诊。")
+            next_step_reason = "已收集最低必要信息，未见外科急症危险信号，符合保守直接完成本轮门诊的条件。"
+            disposition_advice = "本轮外科初步评估可以完成，请按门诊流程继续结算和离院指导。"
         else:
             decision = default_decision
             recommended_department = None
             recommended_department_reason = None
-            clinical_impression = "The current information does not safely support direct discharge, so focused tests or follow-up assessment should come first."
-            next_step_reason = "The case does not meet urgent escalation criteria and does not qualify for the conservative direct-discharge whitelist."
-            disposition_advice = "Recommended next step: complete the suggested tests first and then return for surgical follow-up."
+            clinical_impression = _usable_round1_impression(
+                applied,
+                (
+                    "从目前查体和描述看，更像局部皮下结节或软组织包块，暂时没有明确急诊危险信号"
+                    if _looks_like_low_risk_soft_tissue_lump(payload)
+                    else "目前还不能下定论，需要先结合针对性检查结果进一步判断"
+                ),
+            )
+            next_step_reason = "当前不符合急诊升级条件，也不符合保守直接离院条件。"
+            disposition_advice = "请先完成已开具的相关检查，再带结果回来外科复诊。"
 
     procedure_only_override = False
     procedure_plan = _infer_outpatient_procedure_plan(
@@ -999,9 +1127,9 @@ def _apply_round1_outcome_policy(
     if procedure_plan["needs_outpatient_procedure"] and decision == "treat_and_discharge":
         decision = "test_first"
         procedure_only_override = True
-        clinical_impression = "The current presentation is low risk overall, but it still needs an outpatient surgical procedure stage before the follow-up review can be considered complete."
-        next_step_reason = procedure_plan["outpatient_procedure_reason"] or "An outpatient surgery procedure step is needed before the next reassessment."
-        disposition_advice = "Recommended next step: complete the outpatient procedure arrangement first, then return for the surgical follow-up review."
+        clinical_impression = _usable_round1_impression(applied, "当前表现整体风险不高，但需要先完成门诊外科处置后，才能回到外科复诊判断。")
+        next_step_reason = procedure_plan["outpatient_procedure_reason"] or "需要先完成门诊外科处置，再进行下一步复诊评估。"
+        disposition_advice = "我已为你安排门诊外科处置，请先完成处置，再回来进行外科复诊。"
     elif (
         procedure_plan["outpatient_procedure_category"] == "wound_care"
         and decision == "test_first"
@@ -1009,7 +1137,15 @@ def _apply_round1_outcome_policy(
     ):
         procedure_only_override = True
         next_step_reason = procedure_plan["outpatient_procedure_reason"] or next_step_reason
-        disposition_advice = "Recommended next step: complete the outpatient wound-care arrangement first, then return for the surgical follow-up review."
+        disposition_advice = "我已为你安排门诊伤口处理，请先完成伤口处理，再回来进行外科复诊。"
+    elif procedure_plan["needs_outpatient_procedure"] and decision == "test_first" and not red_flags:
+        procedure_name = {
+            "debridement_dressing": "门诊清创换药",
+            "immobilization": "门诊固定处理",
+            "wound_care": "门诊伤口处理",
+        }.get(procedure_plan["outpatient_procedure_category"], "门诊外科处置")
+        next_step_reason = procedure_plan["outpatient_procedure_reason"] or next_step_reason
+        disposition_advice = f"我已为你开具相关检查，并安排{procedure_name}；请先完成检查和处置，再回来进行外科复诊。"
 
     applied["next_step_decision"] = decision
     applied["needs_second_internal_medicine_consultation"] = decision == "test_first" or procedure_plan["needs_outpatient_procedure"]
@@ -1033,8 +1169,8 @@ def _apply_round1_outcome_policy(
         applied["test_items"] = []
         applied["tests_suggested"] = []
         applied["patient_plan"] = disposition_advice
-        applied["medication_or_action"] = ["Seek emergency surgical evaluation immediately."]
-        applied["note"] = f"Preliminary impression: {clinical_impression}"
+        applied["medication_or_action"] = ["立即前往急诊或高优先级外科通道评估"]
+        applied["note"] = f"初步判断：{clinical_impression}"
     elif decision == "recommend_other_clinic":
         applied["department"] = recommended_department or applied.get("department") or "Surgery"
         applied["test_required"] = False
@@ -1042,8 +1178,8 @@ def _apply_round1_outcome_policy(
         applied["test_items"] = []
         applied["tests_suggested"] = []
         applied["patient_plan"] = disposition_advice
-        applied["medication_or_action"] = [f"Prefer evaluation in {recommended_department} before further treatment decisions."] if recommended_department else []
-        applied["note"] = f"Preliminary impression: {clinical_impression}"
+        applied["medication_or_action"] = [f"请优先到{recommended_department}进一步评估，再决定后续处理。"] if recommended_department else []
+        applied["note"] = f"初步判断：{clinical_impression}"
     elif decision == "treat_and_discharge":
         applied["department"] = "Surgery"
         applied["test_required"] = False
@@ -1051,8 +1187,8 @@ def _apply_round1_outcome_policy(
         applied["test_items"] = []
         applied["tests_suggested"] = []
         applied["patient_plan"] = disposition_advice
-        applied["medication_or_action"] = ["Proceed with routine surgical outpatient follow-up, checkout, and discharge instructions."]
-        applied["note"] = f"Preliminary impression: {clinical_impression}"
+        applied["medication_or_action"] = ["继续按外科门诊流程完成结算和离院指导"]
+        applied["note"] = f"初步判断：{clinical_impression}"
         applied["red_flags"] = []
     else:
         applied["department"] = "Surgery"
@@ -1062,7 +1198,7 @@ def _apply_round1_outcome_policy(
             applied["test_items"] = []
             applied["tests_suggested"] = []
         applied["patient_plan"] = disposition_advice
-        applied["note"] = f"Preliminary impression: {clinical_impression}"
+        applied["note"] = f"初步判断：{clinical_impression}"
 
     return applied
 

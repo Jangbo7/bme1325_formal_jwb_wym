@@ -100,6 +100,9 @@ class _BaseAgentDebugController:
         self._handle_message(message)
         return self._build_snapshot()
 
+    def advance(self) -> AgentDebugSnapshot:
+        raise LookupError("debug session does not support auto advance")
+
     def _resolve_payload(self, *, preset_id: str | None, payload: dict | None) -> dict:
         if payload:
             return deepcopy(payload)
@@ -519,6 +522,41 @@ class InternalMedicineAgentDebugController(_BaseAgentDebugController):
             private_memory=private_memory,
         )
         self._current["last_error"] = None
+
+    def advance(self) -> AgentDebugSnapshot:
+        if not self._current:
+            raise LookupError("debug session not found")
+        patient_id = self._current["patient_id"]
+        session_id = self._current["session_id"]
+        visit_id = self._current["visit_id"]
+        before_memory = deepcopy(self.memory_repo.get_shared_memory(patient_id, patient_id))
+        response = self.internal_medicine_service.continue_system_session(
+            session_id,
+            {
+                "patient_id": patient_id,
+                "visit_id": visit_id,
+                "message": "",
+                "name": self.patient_repo.get(patient_id)["name"],
+            },
+        )
+        after_memory = self.memory_repo.get_shared_memory(patient_id, patient_id)
+        private_memory = self.memory_repo.get_agent_session_memory(session_id, patient_id, agent_type="internal_medicine")
+        payload = {
+            "message": "",
+            "patient_profile": {"name": self.patient_repo.get(patient_id)["name"]},
+        }
+        self._current["trace"] = self._build_trace(
+            payload=payload,
+            patient_id=patient_id,
+            visit_id=visit_id,
+            session_id=session_id,
+            before_memory=before_memory,
+            after_memory=after_memory,
+            response=response,
+            private_memory=private_memory,
+        )
+        self._current["last_error"] = None
+        return self._build_snapshot()
 
     def _build_trace(self, *, payload: dict, patient_id: str, visit_id: str, session_id: str, before_memory: dict, after_memory: dict, response, private_memory: dict) -> dict:
         merged_payload = self.internal_medicine_service.build_merged_payload(

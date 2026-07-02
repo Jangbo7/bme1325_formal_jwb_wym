@@ -38,6 +38,26 @@ def test_internal_medicine_initial_and_followup_prompts_are_chinese():
     assert "Generate one natural follow-up question" not in llm_messages[1]["content"]
 
 
+def test_internal_medicine_initial_message_mentions_known_triage_vitals():
+    shared_memory = {
+        "clinical_memory": {
+            "chief_complaint": "咳嗽咽痛",
+            "symptoms": ["咳嗽", "咽痛"],
+            "vitals": {"temp_c": 37.8, "heart_rate": 92, "pain_score": 3},
+        }
+    }
+    progress = ConsultationProgress(patient_reply_count=0)
+
+    initial_message = build_initial_message(shared_memory, progress)
+
+    assert "体温37.8℃" in initial_message
+    assert "心率92次/分" in initial_message
+    assert "疼痛评分3分" in initial_message
+    assert "体温有点高" in initial_message
+    assert "我会多问" not in initial_message
+    assert "说明这次需要重点看" not in initial_message
+
+
 def test_internal_medicine_round2_initial_message_mentions_second_round():
     shared_memory = {
         "clinical_memory": {
@@ -237,6 +257,88 @@ def test_internal_medicine_policy_fallback_uses_snapshot_red_flags_when_result_i
     assert "Please" not in assistant_message
 
 
+def test_internal_medicine_round1_test_reply_prefers_natural_patient_plan_with_items():
+    message = build_patient_reply(
+        {
+            "clinical_impression": "目前信息还不足以支持直接处理，建议先完善辅助检查。",
+            "patient_plan": "建议先完成血常规和C反应蛋白，结果出来后再回来复诊",
+            "tests_suggested": ["血常规", "C反应蛋白"],
+            "test_items": ["血常规", "C反应蛋白"],
+        },
+        message_type="final",
+        consultation_round=1,
+        payload={},
+    )
+
+    assert "血常规" in message
+    assert "C反应蛋白" in message
+    assert "已为你开具" in message
+    assert "结果出来后带来复诊" in message
+    assert "建议先完成" not in message
+    assert "根据你目前提供的情况，目前信息还不足" not in message
+    assert message.count("回来") <= 1
+
+
+def test_internal_medicine_round1_test_reply_names_items_without_generic_ordering():
+    message = build_patient_reply(
+        {
+            "clinical_impression": "目前信息还不足以支持直接处理，建议先完善辅助检查。",
+            "patient_plan": "请先完善辅助检查",
+            "tests_suggested": ["血常规", "C反应蛋白"],
+            "test_items": ["血常规", "C反应蛋白"],
+        },
+        message_type="final",
+        consultation_round=1,
+        payload={},
+    )
+
+    assert "血常规" in message
+    assert "C反应蛋白" in message
+    assert "已为你开具" in message
+    assert "拿到结果后" in message or "结果出来后" in message
+    assert "辅助检查" not in message
+    assert "根据你目前提供的情况，目前信息还不足" not in message
+
+
+def test_internal_medicine_round1_test_reply_keeps_tentative_impression():
+    message = build_patient_reply(
+        {
+            "clinical_impression": "初步考虑上呼吸道感染或急性支气管炎可能",
+            "patient_plan": "请先完成血常规、C反应蛋白检查，结果出来后再回来复诊",
+            "tests_suggested": ["血常规", "C反应蛋白"],
+            "test_items": ["血常规", "C反应蛋白"],
+        },
+        message_type="final",
+        consultation_round=1,
+        payload={},
+    )
+
+    assert "初步考虑上呼吸道感染或急性支气管炎可能" in message
+    assert "我已为你开具血常规、C反应蛋白检查" in message
+    assert "结果出来后带来复诊" in message
+    assert "建议先完善辅助检查" not in message
+    assert message.count("回来") <= 1
+
+
+def test_internal_medicine_round1_test_reply_never_hides_item_names_as_these_tests():
+    message = build_patient_reply(
+        {
+            "clinical_impression": "初步考虑急性上呼吸道感染，暂不能排除细菌感染",
+            "patient_plan": "请完成已开具的检查，再带结果回来内科复诊",
+            "tests_suggested": ["血常规", "C反应蛋白"],
+            "test_items": ["血常规", "C反应蛋白"],
+        },
+        message_type="final",
+        consultation_round=1,
+        payload={},
+    )
+
+    assert "血常规" in message
+    assert "C反应蛋白" in message
+    assert "这些检查" not in message
+    assert "具体项目是血常规、C反应蛋白" in message
+
+
 def test_internal_medicine_round2_patient_reply_is_natural_and_mentions_prescription_plan():
     message = build_patient_reply(
         {
@@ -272,6 +374,50 @@ def test_internal_medicine_round2_patient_reply_is_natural_and_mentions_prescrip
     assert "幽门螺杆菌阳性" in message
     assert "质子泵抑制剂" in message
     assert "1-2周" in message
+
+
+def test_internal_medicine_round2_patient_reply_filters_english_and_names_specific_drugs():
+    message = build_patient_reply(
+        {
+            "clinical_impression": "Confirmed H. pylori-positive gastritis based on positive breath test and typical symptoms.",
+            "final_assessment_summary": "No evidence of complications or need for urgent intervention.",
+            "patient_facing_plan": "You have a stomach infection caused by H. pylori and need a 14-day antibiotic course.",
+            "primary_disposition": "outpatient_management",
+            "medication_recommendation": {
+                "recommended": True,
+                "intent": "h_pylori_eradication",
+                "summary": "Prescribe triple therapy.",
+            },
+            "prescription_plan": [
+                {
+                    "drug_name": "奥美拉唑",
+                    "dose_text": "20mg",
+                    "frequency_text": "每日2次",
+                    "duration_text": "14天",
+                    "instructions": "早晚餐前服用",
+                },
+                {
+                    "drug_name": "甲硝唑",
+                    "dose_text": "500mg",
+                    "frequency_text": "每日3-4次",
+                    "duration_text": "14天",
+                    "instructions": "用药期间避免饮酒",
+                },
+            ],
+        },
+        message_type="final",
+        consultation_round=2,
+        reply_style="round2_conclusion",
+        payload={},
+    )
+
+    assert "Confirmed" not in message
+    assert "No evidence" not in message
+    assert "You have" not in message
+    assert "Prescribe triple therapy" not in message
+    assert "这次检查结果支持按门诊方案用药处理" in message
+    assert "奥美拉唑，20mg，每日2次，14天，早晚餐前服用" in message
+    assert "甲硝唑，500mg，每日3-4次，14天，用药期间避免饮酒" in message
 
 
 def test_internal_medicine_round2_question_only_reassessment_answers_report_without_repeating_unchanged_judgment():

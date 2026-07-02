@@ -47,6 +47,17 @@ def message_internal_medicine_agent_debug(body: AgentDebugMessageRequest, reques
     return {"ok": True, "data": snapshot.model_dump()}
 
 
+@router.post("/api/v1/internal-medicine-agent-debug/advance")
+def advance_internal_medicine_agent_debug(request: Request):
+    try:
+        snapshot = _controller(request).advance()
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "data": snapshot.model_dump()}
+
+
 @router.get("/api/v1/internal-medicine-agent-debug/snapshot")
 def snapshot_internal_medicine_agent_debug(request: Request):
     snapshot = _controller(request).get_snapshot()

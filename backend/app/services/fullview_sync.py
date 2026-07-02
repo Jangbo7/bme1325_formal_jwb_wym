@@ -296,6 +296,7 @@ class FullviewEventListener:
         self._thread: threading.Thread | None = None
         self.last_loop_error: str | None = None
         self.last_loop_error_at: str | None = None
+        self._last_fetch_error_logged: str | None = None
 
     def start(self) -> None:
         if not self.enabled or (self._thread and self._thread.is_alive()):
@@ -331,27 +332,45 @@ class FullviewEventListener:
     def tick(self) -> bool:
         processed = False
         cursor = self.repo.get_listener_cursor()
-        while True:
-            events = self.client.fetch_events(cursor, limit=200)
-            if not events:
-                break
-            for event in sorted(
-                events,
-                key=lambda item: int(item.get("eventSeq") or item.get("event_seq") or 0),
-            ):
-                self.repo.observe_event(event)
-                cursor = max(
-                    cursor,
-                    int(event.get("eventSeq") or event.get("event_seq") or 0),
-                )
-                processed = True
-            if len(events) < 200:
-                break
+        try:
+            while True:
+                events = self.client.fetch_events(cursor, limit=200)
+                if not events:
+                    break
+                for event in sorted(
+                    events,
+                    key=lambda item: int(item.get("eventSeq") or item.get("event_seq") or 0),
+                ):
+                    self.repo.observe_event(event)
+                    cursor = max(
+                        cursor,
+                        int(event.get("eventSeq") or event.get("event_seq") or 0),
+                    )
+                    processed = True
+                if len(events) < 200:
+                    break
+        except FullviewClientError as exc:
+            self._record_loop_error(exc)
+            if self.last_loop_error != self._last_fetch_error_logged:
+                logger.warning("Fullview event listener could not fetch events: %s", exc)
+                self._last_fetch_error_logged = self.last_loop_error
+            return False
+        else:
+            self._last_fetch_error_logged = None
+            self._clear_loop_error()
         timed_out = self.repo.mark_observe_timeouts(self.observe_timeout_seconds)
         cleaned = self.cleanup_tick()
         if processed and self.worker is not None:
             self.worker.wake()
         return processed or bool(timed_out) or cleaned
+
+    def _record_loop_error(self, exc: Exception) -> None:
+        self.last_loop_error = f"{type(exc).__name__}: {exc}"
+        self.last_loop_error_at = datetime.now(timezone.utc).isoformat()
+
+    def _clear_loop_error(self) -> None:
+        self.last_loop_error = None
+        self.last_loop_error_at = None
 
     def cleanup_tick(self) -> bool:
         item = self.repo.claim_cleanup(self.cleanup_idle_seconds)
@@ -390,11 +409,8 @@ class FullviewEventListener:
         while not self._stop_event.is_set():
             try:
                 processed = self.tick()
-                self.last_loop_error = None
-                self.last_loop_error_at = None
             except Exception as exc:
-                self.last_loop_error = f"{type(exc).__name__}: {exc}"
-                self.last_loop_error_at = datetime.now(timezone.utc).isoformat()
+                self._record_loop_error(exc)
                 logger.exception("Fullview event listener loop failed")
                 processed = False
             if processed:

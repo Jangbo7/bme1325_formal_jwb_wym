@@ -61,7 +61,8 @@ class DepartmentAgentGraph:
                 self.config.continue_session_event,
             )
             self.service.session_repo.update_state(session_id, dialogue_state.value)
-            self.service.append_user_turn(session_id, patient_id, payload.get("message", ""), mode)
+            if mode == "continue_session":
+                self.service.append_user_turn(session_id, patient_id, payload.get("message", ""), mode)
 
         memory = self.service.prepare_context(payload, session_id, dialogue_state)
         if mode == "continue_session":

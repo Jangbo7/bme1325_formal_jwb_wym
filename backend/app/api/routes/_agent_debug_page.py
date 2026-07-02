@@ -47,11 +47,13 @@ def render_agent_debug_page(
       font-family: Georgia, "Times New Roman", serif;
       background: radial-gradient(circle at top, #f7fff5 0%, var(--bg) 45%, #e1eade 100%);
       color: var(--ink);
+      overflow-anchor: none;
     }}
     main {{
       max-width: 1220px;
       margin: 0 auto;
       padding: 24px 16px 48px;
+      overflow-anchor: none;
     }}
     h1 {{ margin: 0 0 8px; font-size: 34px; }}
     .subtle {{ color: #526356; font-size: 14px; margin-bottom: 16px; }}
@@ -62,6 +64,7 @@ def render_agent_debug_page(
       box-shadow: 0 10px 24px rgba(28, 54, 33, 0.08);
       padding: 16px;
       margin-bottom: 16px;
+      overflow-anchor: none;
     }}
     .toolbar {{ display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }}
@@ -84,7 +87,14 @@ def render_agent_debug_page(
     }}
     button.secondary {{ background: #eef5ef; color: var(--ink); }}
     #status {{ min-height: 18px; color: #2d5b3c; font-size: 14px; margin-bottom: 10px; }}
-    #transcript {{ display: grid; gap: 10px; }}
+    #transcript {{
+      display: grid;
+      gap: 10px;
+      max-height: 520px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-right: 4px;
+    }}
     .turn {{
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -165,6 +175,15 @@ def render_agent_debug_page(
     const preloadJsonEl = document.getElementById("preloadJson");
     const traceBlock = document.getElementById("traceBlock");
     const transcriptEl = document.getElementById("transcript");
+    const transcriptState = {{
+      visible: [],
+      target: [],
+      timers: [],
+      animating: false,
+    }};
+    let autoAdvanceTimer = null;
+    let autoAdvanceInFlight = false;
+    let latestTraceText = "";
     const fields = {{
       debugSessionId: document.getElementById("debugSessionId"),
       agentType: document.getElementById("agentType"),
@@ -247,21 +266,136 @@ def render_agent_debug_page(
       preloadJsonEl.value = JSON.stringify(preset.payload, null, 2);
     }}
 
-    function renderTranscript(snapshot) {{
-      if (!snapshot || !snapshot.transcript || snapshot.transcript.length === 0) {{
+    function clearAutoAdvanceTimer() {{
+      if (autoAdvanceTimer !== null) {{
+        window.clearTimeout(autoAdvanceTimer);
+        autoAdvanceTimer = null;
+      }}
+    }}
+
+    function clearTranscriptTimers() {{
+      transcriptState.timers.forEach((timerId) => window.clearTimeout(timerId));
+      transcriptState.timers = [];
+      transcriptState.animating = false;
+    }}
+
+    function transcriptKey(turn) {{
+      return [
+        turn.role || "",
+        turn.timestamp || "",
+        turn.content || "",
+        turn.metadata?.message_type || "",
+      ].join("|");
+    }}
+
+    function isTranscriptPrefix(prefix, full) {{
+      if (prefix.length > full.length) return false;
+      return prefix.every((turn, index) => transcriptKey(turn) === transcriptKey(full[index]));
+    }}
+
+    function isSameTranscript(left, right) {{
+      return left.length === right.length && isTranscriptPrefix(left, right);
+    }}
+
+    function paintTranscript(turns, scrollToBottom = false) {{
+      if (!turns || turns.length === 0) {{
         transcriptEl.innerHTML = "<div class='value'>No transcript yet.</div>";
         return;
       }}
-      transcriptEl.innerHTML = snapshot.transcript.map((turn) => `
+      transcriptEl.innerHTML = turns.map((turn) => `
         <div class="turn">
           <small>${{turn.role}} | ${{turn.timestamp || "-"}}</small>
           <div>${{turn.content}}</div>
         </div>
       `).join("");
+      if (scrollToBottom) {{
+        transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      }}
     }}
 
-    function renderSnapshot(snapshot) {{
+    function renderTranscript(snapshot, animateNew = false) {{
+      const fullTranscript = snapshot?.transcript || [];
+      if (!snapshot || !snapshot.transcript || snapshot.transcript.length === 0) {{
+        clearTranscriptTimers();
+        transcriptState.visible = [];
+        transcriptState.target = [];
+        transcriptEl.innerHTML = "<div class='value'>No transcript yet.</div>";
+        return;
+      }}
+      if (transcriptState.animating && isTranscriptPrefix(transcriptState.visible, fullTranscript)) {{
+        return;
+      }}
+      if (!animateNew && isSameTranscript(transcriptState.visible, fullTranscript)) {{
+        return;
+      }}
+      if (!animateNew || transcriptState.visible.length === 0 || !isTranscriptPrefix(transcriptState.visible, fullTranscript)) {{
+        clearTranscriptTimers();
+        transcriptState.visible = fullTranscript.slice();
+        transcriptState.target = fullTranscript.slice();
+        paintTranscript(transcriptState.visible, false);
+        return;
+      }}
+      const newTurns = fullTranscript.slice(transcriptState.visible.length);
+      if (newTurns.length <= 1) {{
+        clearTranscriptTimers();
+        transcriptState.visible = fullTranscript.slice();
+        transcriptState.target = fullTranscript.slice();
+        paintTranscript(transcriptState.visible, true);
+        return;
+      }}
+      clearTranscriptTimers();
+      transcriptState.animating = true;
+      transcriptState.target = fullTranscript.slice();
+      const baseTurns = transcriptState.visible.slice();
+      newTurns.forEach((turn, index) => {{
+        const timerId = window.setTimeout(() => {{
+          transcriptState.visible = baseTurns.concat(newTurns.slice(0, index + 1));
+          paintTranscript(transcriptState.visible, true);
+          if (index === newTurns.length - 1) {{
+            transcriptState.animating = false;
+            transcriptState.timers = [];
+          }}
+        }}, index * 900);
+        transcriptState.timers.push(timerId);
+      }});
+    }}
+
+    function latestTranscriptTurn(snapshot) {{
+      const turns = snapshot?.transcript || [];
+      return turns.length ? turns[turns.length - 1] : null;
+    }}
+
+    function shouldAutoAdvance(snapshot) {{
+      const latest = latestTranscriptTurn(snapshot);
+      return Boolean(latest && latest.role === "assistant" && latest.metadata?.pending_auto_continue);
+    }}
+
+    function scheduleAutoAdvance(snapshot) {{
+      clearAutoAdvanceTimer();
+      if (!shouldAutoAdvance(snapshot)) return;
+      if (autoAdvanceInFlight) return;
+      autoAdvanceTimer = window.setTimeout(async () => {{
+        autoAdvanceTimer = null;
+        autoAdvanceInFlight = true;
+        try {{
+          const agent = currentAgentType() || "";
+          const query = agent ? `?agent_type=${{encodeURIComponent(agent)}}` : "";
+          const data = await api(`${{apiBase}}/advance${{query}}`, "POST", {{ agent_type: agent || null }});
+          renderSnapshot(data, {{ animateTranscript: true }});
+        }} catch (error) {{
+          statusEl.textContent = error.message;
+        }} finally {{
+          autoAdvanceInFlight = false;
+        }}
+      }}, 1000);
+    }}
+
+    function renderSnapshot(snapshot, options = {{}}) {{
       if (!snapshot) {{
+        clearAutoAdvanceTimer();
+        clearTranscriptTimers();
+        transcriptState.visible = [];
+        transcriptState.target = [];
         Object.values(fields).forEach((node) => node.textContent = "-");
         renderTranscript(null);
         traceBlock.textContent = "No trace yet.";
@@ -277,20 +411,29 @@ def render_agent_debug_page(
       fields.visitState.textContent = snapshot.visit_state || "-";
       fields.patientState.textContent = snapshot.patient_lifecycle_state || "-";
       fields.lastError.textContent = snapshot.last_error || "-";
-      renderTranscript(snapshot);
-      traceBlock.textContent = JSON.stringify({{
+      renderTranscript(snapshot, Boolean(options.animateTranscript));
+      const traceText = JSON.stringify({{
         preload_summary: snapshot.preload_summary,
         latest_reply: snapshot.latest_reply,
         trace: snapshot.trace,
         medical_record_summary: snapshot.medical_record_summary,
       }}, null, 2);
+      if (traceText !== latestTraceText) {{
+        latestTraceText = traceText;
+        traceBlock.textContent = traceText;
+      }}
+      scheduleAutoAdvance(snapshot);
+      if (options.preservePageScroll) {{
+        window.scrollTo({{ top: options.preservePageScroll.top, left: options.preservePageScroll.left, behavior: "auto" }});
+      }}
     }}
 
     async function refresh(showStatus = false) {{
       try {{
         const query = currentAgentType() ? `?agent_type=${{encodeURIComponent(currentAgentType())}}` : "";
         const snapshot = await api(`${{apiBase}}/snapshot${{query}}`);
-        renderSnapshot(snapshot);
+        const pageScroll = showStatus ? null : {{ top: window.scrollY, left: window.scrollX }};
+        renderSnapshot(snapshot, pageScroll ? {{ preservePageScroll: pageScroll }} : {{}});
         if (showStatus) statusEl.textContent = "Snapshot refreshed.";
       }} catch (error) {{
         statusEl.textContent = error.message;
@@ -318,7 +461,7 @@ def render_agent_debug_page(
         const message = document.getElementById("messageInput").value;
         const data = await api(`${{apiBase}}/message`, "POST", {{ agent_type: currentAgentType() || null, message }});
         statusEl.textContent = "Message sent.";
-        renderSnapshot(data);
+        renderSnapshot(data, {{ animateTranscript: true }});
       }} catch (error) {{
         statusEl.textContent = error.message;
       }}
@@ -328,6 +471,7 @@ def render_agent_debug_page(
       try {{
         await api(`${{apiBase}}/reset`, "POST", {{ agent_type: currentAgentType() || null }});
         statusEl.textContent = "Debug session reset.";
+        clearAutoAdvanceTimer();
         renderSnapshot(null);
       }} catch (error) {{
         statusEl.textContent = error.message;

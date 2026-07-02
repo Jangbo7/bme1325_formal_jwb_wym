@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 from app.api.routes._agent_debug_page import render_agent_debug_page
 from app.schemas.agent_debug import AgentDebugMessageRequest, AgentDebugPreloadRequest, AgentDebugResetRequest
@@ -17,6 +17,15 @@ def _resolve_agent_type(agent_type: str | None) -> str:
     if not agent_type:
         raise HTTPException(status_code=422, detail="agent_type is required")
     return agent_type
+
+
+def _resolve_agent_type_or_active(request: Request, agent_type: str | None) -> str:
+    if agent_type:
+        return agent_type
+    inferred = _controller(request).infer_active_agent_type()
+    if inferred:
+        return inferred
+    raise HTTPException(status_code=422, detail="agent_type is required")
 
 
 @router.get("/doctor-agent-debug", include_in_schema=False)
@@ -66,6 +75,27 @@ def message_doctor_agent_debug(body: AgentDebugMessageRequest, request: Request)
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "data": snapshot.model_dump()}
+
+
+@router.post("/api/v1/doctor-agent-debug/advance")
+def advance_doctor_agent_debug(
+    request: Request,
+    body: AgentDebugResetRequest | None = Body(default=None),
+    agent_type: str | None = Query(default=None),
+):
+    try:
+        snapshot = _controller(request).advance(_resolve_agent_type_or_active(request, agent_type or (body.agent_type if body else None)))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except HTTPException:
+        raise
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:

@@ -25,7 +25,7 @@ Backend URL:
 - Legacy debug pages remain available for compatibility, but operational control should prefer `runtime-console`.
 
 ## LLM Provider Switching
-The backend supports two startup-time LLM provider profiles and resolves one active profile into the existing unified `llm_settings` used by all agents.
+The backend supports three startup-time LLM provider profiles and resolves one active profile into the existing unified `llm_settings` used by all agents.
 
 - `ACTIVE_LLM_PROVIDER=current`
   - Uses `CURRENT_LLM_ENDPOINT`, `CURRENT_LLM_MODEL`, `CURRENT_LLM_API_KEY`
@@ -34,11 +34,42 @@ The backend supports two startup-time LLM provider profiles and resolves one act
   - Uses `ALIYUN_LLM_ENDPOINT`, `ALIYUN_LLM_MODEL`, `DASHSCOPE_API_KEY`
   - Default Aliyun endpoint is `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`
   - Default Aliyun model is `deepseek-v4-flash`
+- `ACTIVE_LLM_PROVIDER=deepseek_official`
+  - Uses `DEEPSEEK_LLM_ENDPOINT`, `DEEPSEEK_LLM_MODEL`, `DEEPSEEK_API_KEY`
+  - Default DeepSeek endpoint is `https://api.deepseek.com/v1/chat/completions`
+  - Default DeepSeek model is `deepseek-chat`
 
 Notes:
 - The switch happens at backend startup. There is no runtime API toggle in this version.
 - Do not commit real API keys. Put them only in `backend/.env` or your system environment.
-- `/api/v1/health` reports the active provider, endpoint, model, and whether an LLM key is currently enabled.
+- `/api/v1/health` reports the active provider, endpoint, model, and whether an LLM key is currently enabled, but it does not verify upstream connectivity.
+
+## LLM Smoke Test
+If a collaborator can see `llm_enabled=true` in `/api/v1/health` but real LLM calls still fail, run this direct upstream probe from the `backend` directory:
+
+```powershell
+cd backend
+python run_llm_smoke_test.py
+```
+
+Optional:
+
+```powershell
+python run_llm_smoke_test.py --timeout 30 --message "Reply with exactly: LLM_SMOKE_OK"
+```
+
+If the output shows an SSL/TLS handshake failure, run one more diagnostic pass:
+
+```powershell
+python run_llm_smoke_test.py --insecure
+```
+
+If `--insecure` still fails with the same SSL/TLS class of error, the issue is usually local proxy interception, firewall/VPN, broken certificate handling, or an incompatible Python/OpenSSL runtime rather than backend business logic.
+
+The script prints:
+- resolved provider / endpoint / model
+- whether the API key is present
+- whether the failure is config, authentication, rate limit, network, timeout, or malformed response
 
 ## Main Modules
 - `app/main.py`: FastAPI app wiring
